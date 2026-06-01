@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "webvibe policy",
+  "type": "object",
+  "required": ["version", "tools"],
+  "properties": {
+    "version": { "const": 1 },
+    "mode": { "enum": ["read-only", "dev"] },
+    "extends": { "type": "string" },
+    "workspace": {
+      "type": "object",
+      "properties": {
+        "root": { "type": "string" },
+        "protected": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "upstreams": { "type": "object" },
+    "tools": { "type": "array" },
+    "limits": { "type": "object" },
+    "audit": { "type": "object" }
+  }
+}

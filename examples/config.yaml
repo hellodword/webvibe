@@ -1,0 +1,14 @@
+version: 1
+server:
+  listen: "127.0.0.1:3000"
+  publicBaseUrl: "https://example.ngrok.app"
+  stateDir: "~/.webvibe"
+  mode: "read-only"
+workspace:
+  root: "."
+auth:
+  pairingCodeFile: "~/.webvibe/pairing-code"
+  accessTokenTtlDays: 30
+policy:
+  readOnly: "./policies/read-only.yaml"
+  dev: "./policies/dev.yaml"

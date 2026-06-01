@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { main } from "../../src/main.js";
+import { parseCliArgs } from "../../src/config/loader.js";
 
 describe("scaffold", () => {
-  it("exports an async main", async () => {
-    await expect(main()).resolves.toBeUndefined();
+  it("parses base CLI flags", () => {
+    expect(
+      parseCliArgs([
+        "--mode",
+        "dev",
+        "--workspace",
+        ".",
+        "--public-base-url=http://127.0.0.1:3000",
+        "--pairing-code",
+        "123456",
+      ]),
+    ).toMatchObject({
+      mode: "dev",
+      workspace: ".",
+      publicBaseUrl: "http://127.0.0.1:3000",
+      pairingCode: "123456",
+    });
   });
 });

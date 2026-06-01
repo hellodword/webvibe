@@ -1,0 +1,147 @@
+version: 1
+mode: dev
+
+extends: ./read-only.yaml
+
+upstreams:
+  desktop:
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@wonderwhy-er/desktop-commander@latest"
+    optional: true
+
+tools:
+  - name: fs.edit_file_preview
+    type: passThrough
+    upstream: fs
+    upstreamTool: edit_file
+    inputPolicy:
+      require:
+        dryRun: true
+      pathFields: ["path"]
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.edit_file_apply
+    type: passThrough
+    upstream: fs
+    upstreamTool: edit_file
+    inputPolicy:
+      require:
+        dryRun: false
+      pathFields: ["path"]
+      requirePriorPreview:
+        previewTool: fs.edit_file_preview
+        matchFields:
+          - path
+          - edits
+        ttlSeconds: 300
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      openWorldHint: false
+
+  - name: fs.write_file
+    type: passThrough
+    upstream: fs
+    upstreamTool: write_file
+    inputPolicy:
+      pathFields: ["path"]
+      requirePriorPreview:
+        previewTool: fs.read_text_file
+        matchFields:
+          - path
+        ttlSeconds: 300
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      openWorldHint: false
+
+  - name: task.npm_test
+    type: workflow
+    optional: true
+    description: Run the npm test script in the configured workspace.
+    inputSchema:
+      type: object
+      properties:
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+      additionalProperties: false
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    steps:
+      - call:
+          upstream: desktop
+          tool: execute_command
+          input:
+            command: npm test
+            timeout_ms: "${coalesce(input.timeoutSeconds, 120) * 1000}"
+
+  - name: task.cargo_test
+    type: workflow
+    optional: true
+    description: Run cargo test in the configured workspace.
+    inputSchema:
+      type: object
+      properties:
+        package:
+          type: string
+        testName:
+          type: string
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+      additionalProperties: false
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    steps:
+      - call:
+          upstream: desktop
+          tool: execute_command
+          input:
+            command: "${joinShell(['cargo','test', optional('-p', input.package), optional(input.testName)])}"
+            timeout_ms: "${coalesce(input.timeoutSeconds, 180) * 1000}"
+
+  - name: task.cargo_check
+    type: workflow
+    optional: true
+    description: Run cargo check in the configured workspace.
+    inputSchema:
+      type: object
+      properties:
+        package:
+          type: string
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+      additionalProperties: false
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    steps:
+      - call:
+          upstream: desktop
+          tool: execute_command
+          input:
+            command: "${joinShell(['cargo','check', optional('-p', input.package)])}"
+            timeout_ms: "${coalesce(input.timeoutSeconds, 180) * 1000}"
+
+limits:
+  maxToolOutputBytes: 60000
+  timeoutMs: 120000
+
+audit:
+  enabled: true

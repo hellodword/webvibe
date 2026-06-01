@@ -1,0 +1,157 @@
+version: 1
+mode: read-only
+
+workspace:
+  root: "${workspaceRoot}"
+  protected:
+    - ".git/**"
+    - ".env"
+    - "**/.env"
+    - "**/*.pem"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+
+upstreams:
+  fs:
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - "${workspaceRoot}"
+
+  git:
+    transport: stdio
+    command: uvx
+    args:
+      - mcp-server-git
+      - --repository
+      - "${workspaceRoot}"
+    optional: true
+
+tools:
+  - name: relay.info
+    type: builtIn
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: relay.list_upstreams
+    type: builtIn
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: relay.list_tools
+    type: builtIn
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.read_text_file
+    type: passThrough
+    upstream: fs
+    upstreamTool: read_text_file
+    inputPolicy:
+      pathFields: ["path"]
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.read_multiple_files
+    type: passThrough
+    upstream: fs
+    upstreamTool: read_multiple_files
+    inputPolicy:
+      pathFields: ["paths"]
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.list_directory
+    type: passThrough
+    upstream: fs
+    upstreamTool: list_directory
+    inputPolicy:
+      pathFields: ["path"]
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.search_files
+    type: passThrough
+    upstream: fs
+    upstreamTool: search_files
+    inputPolicy:
+      pathFields: ["path"]
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: fs.get_file_info
+    type: passThrough
+    upstream: fs
+    upstreamTool: get_file_info
+    inputPolicy:
+      pathFields: ["path"]
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.status
+    type: passThrough
+    upstream: git
+    upstreamTool: git_status
+    optional: true
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.diff_unstaged
+    type: passThrough
+    upstream: git
+    upstreamTool: git_diff_unstaged
+    optional: true
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.diff_staged
+    type: passThrough
+    upstream: git
+    upstreamTool: git_diff_staged
+    optional: true
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.log
+    type: passThrough
+    upstream: git
+    upstreamTool: git_log
+    optional: true
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+limits:
+  maxToolOutputBytes: 60000
+  timeoutMs: 30000
+
+audit:
+  enabled: true
