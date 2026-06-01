@@ -89,6 +89,17 @@ tools:
           input:
             command: "npm test"
             timeout_ms: "\${coalesce(input.timeoutSeconds, 5) * 1000}"
+  - name: x.slow
+    type: passThrough
+    upstream: main
+    upstreamTool: slow
+    inputSchema:
+      type: object
+      properties:
+        delayMs:
+          type: integer
+      required: ["delayMs"]
+      additionalProperties: false
 limits:
   maxToolOutputBytes: 60000
   timeoutMs: 30000

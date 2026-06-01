@@ -16,7 +16,20 @@
     },
     "upstreams": { "type": "object" },
     "tools": { "type": "array" },
-    "limits": { "type": "object" },
-    "audit": { "type": "object" }
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxToolOutputBytes": { "type": "integer", "minimum": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1 },
+        "maxCallsPerMinute": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "maxLogBytes": { "type": "integer", "minimum": 1 }
+      }
+    }
   }
 }

@@ -58,9 +58,49 @@ describe("tool router", () => {
 
       const workflow = await router.call("x.run", { timeoutSeconds: 2 }, { clientId: "c1" });
       expect(workflow).toMatchObject({ ok: true, command: "npm test", timeout: 2000 });
+      policy.limits.maxToolOutputBytes = 10;
+      await expect(
+        router.call("x.read", { path: "README.md" }, { clientId: "c2" }),
+      ).resolves.toMatchObject({ truncated: true });
+      await expect(router.call("x.nope", {}, { clientId: "c1" })).rejects.toThrow("not exposed");
       const audit = await readFile(path.join(stateDir, "audit.log"), "utf8");
       expect(audit).toContain('"tool":"x.edit_apply"');
+      expect(audit).toContain('"tool":"x.nope"');
       expect(audit).not.toContain("oldText");
+    } finally {
+      await upstreams.close();
+    }
+  });
+
+  it("enforces per-client rate limits and tool call timeout", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-router-limits-"));
+    const stateDir = path.join(root, "state");
+    const policyPath = await writeFakePolicy(root);
+    const policy = await loadPolicy(policyPath, { workspaceRoot: root, stateDir });
+    const upstreams = new UpstreamManager(policy, root);
+    await upstreams.connectAll();
+    try {
+      const registry = buildRegistry(policy, upstreams);
+      const router = new ToolRouter({
+        registry,
+        policy,
+        upstreams,
+        audit: new AuditLog(path.join(stateDir, "audit.log"), true),
+        workspaceRoot: root,
+        stateDir,
+      });
+
+      policy.limits.maxCallsPerMinute = 1;
+      await router.call("x.read", { path: "README.md" }, { clientId: "rate-client" });
+      await expect(
+        router.call("x.read", { path: "README.md" }, { clientId: "rate-client" }),
+      ).rejects.toThrow("Rate limit");
+
+      policy.limits.maxCallsPerMinute = 120;
+      policy.limits.timeoutMs = 20;
+      await expect(
+        router.call("x.slow", { delayMs: 100 }, { clientId: "timeout-client" }),
+      ).rejects.toThrow("timed out");
     } finally {
       await upstreams.close();
     }

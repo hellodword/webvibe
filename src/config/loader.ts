@@ -81,8 +81,12 @@ export function parseCliArgs(args: string[]): CliOptions {
 }
 
 export async function loadRuntimeConfig(cli: CliOptions): Promise<RuntimeConfig> {
-  const fromFile = cli.config ? await loadDataFile(cli.config) : {};
-  const config = appConfigSchema.parse(mergeConfig(fromFile, cliToConfig(cli)));
+  const configPath = cli.config ?? process.env.WEBVIBE_CONFIG;
+  const fromEnv = envToConfig(process.env);
+  const fromFile = configPath ? await loadDataFile(configPath) : {};
+  const config = appConfigSchema.parse(
+    mergeConfig(mergeConfig(fromEnv, fromFile), cliToConfig(cli)),
+  );
   const workspaceRoot = resolvePath(config.workspace.root);
   const stateDir = resolvePath(config.server.stateDir);
   const publicBaseUrl = config.server.publicBaseUrl ?? defaultPublicBaseUrl(config.server.listen);
@@ -136,6 +140,7 @@ function mergeConfig(base: unknown, overlay: unknown): unknown {
   if (!isRecord(base) || !isRecord(overlay)) return overlay ?? base;
   const result: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(overlay)) {
+    if (value === undefined) continue;
     result[key] = isRecord(value) ? mergeConfig(result[key], value) : value;
   }
   return result;
@@ -156,6 +161,30 @@ function cliToConfig(cli: CliOptions): Record<string, unknown> {
     },
     policy: {
       path: cli.policy,
+    },
+  };
+}
+
+function envToConfig(env: NodeJS.ProcessEnv): Record<string, unknown> {
+  return {
+    server: {
+      mode: env.WEBVIBE_MODE,
+      publicBaseUrl: env.WEBVIBE_PUBLIC_BASE_URL,
+      stateDir: env.WEBVIBE_STATE_DIR,
+      listen: env.WEBVIBE_LISTEN,
+    },
+    workspace: { root: env.WEBVIBE_WORKSPACE },
+    auth: {
+      pairingCode: env.WEBVIBE_PAIRING_CODE,
+      pairingCodeFile: env.WEBVIBE_PAIRING_CODE_FILE,
+      accessTokenTtlDays: env.WEBVIBE_ACCESS_TOKEN_TTL_DAYS
+        ? Number(env.WEBVIBE_ACCESS_TOKEN_TTL_DAYS)
+        : undefined,
+    },
+    policy: {
+      path: env.WEBVIBE_POLICY,
+      readOnly: env.WEBVIBE_READ_ONLY_POLICY,
+      dev: env.WEBVIBE_DEV_POLICY,
     },
   };
 }

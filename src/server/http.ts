@@ -32,7 +32,11 @@ export type WebvibeServer = {
 
 export async function startHttpServer(options: HttpServerOptions): Promise<WebvibeServer> {
   const registry = buildRegistry(options.policy, options.upstreams);
-  const audit = new AuditLog(`${options.stateDir}/audit.log`, options.policy.audit.enabled);
+  const audit = new AuditLog(
+    `${options.stateDir}/audit.log`,
+    options.policy.audit.enabled,
+    options.policy.audit.maxLogBytes,
+  );
   const router = new ToolRouter({
     registry,
     policy: options.policy,

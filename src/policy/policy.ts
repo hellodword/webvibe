@@ -89,10 +89,12 @@ export type WorkspacePolicy = {
 export type LimitsPolicy = {
   maxToolOutputBytes: number;
   timeoutMs: number;
+  maxCallsPerMinute: number;
 };
 
 export type AuditPolicy = {
   enabled: boolean;
+  maxLogBytes: number;
 };
 
 export type RelayPolicy = {

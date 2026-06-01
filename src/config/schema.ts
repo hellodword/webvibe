@@ -117,13 +117,19 @@ export const policySchema = z
       .object({
         maxToolOutputBytes: z.number().int().positive().default(60000),
         timeoutMs: z.number().int().positive().default(30000),
+        maxCallsPerMinute: z.number().int().positive().default(120),
       })
-      .default({ maxToolOutputBytes: 60000, timeoutMs: 30000 }),
+      .default({ maxToolOutputBytes: 60000, timeoutMs: 30000, maxCallsPerMinute: 120 }),
     audit: z
       .object({
         enabled: z.boolean().default(true),
+        maxLogBytes: z
+          .number()
+          .int()
+          .positive()
+          .default(10 * 1024 * 1024),
       })
-      .default({ enabled: true }),
+      .default({ enabled: true, maxLogBytes: 10 * 1024 * 1024 }),
   })
   .passthrough();
 

@@ -38,16 +38,28 @@ const tools = [
       additionalProperties: false,
     },
   },
+  {
+    name: "slow",
+    description: "Slow fake tool",
+    inputSchema: {
+      type: "object",
+      properties: {
+        delayMs: { type: "integer" },
+      },
+      required: ["delayMs"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 const rl = readline.createInterface({ input: process.stdin });
 
-rl.on("line", (line) => {
+rl.on("line", async (line) => {
   if (!line.trim()) return;
   const request = JSON.parse(line);
   if (!("id" in request)) return;
   try {
-    const result = handle(request.method, request.params ?? {});
+    const result = await handle(request.method, request.params ?? {});
     process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: request.id, result })}\n`);
   } catch (error) {
     process.stdout.write(
@@ -60,7 +72,7 @@ rl.on("line", (line) => {
   }
 });
 
-function handle(method, params) {
+async function handle(method, params) {
   if (method === "initialize") {
     return {
       protocolVersion: "2025-06-18",
@@ -76,6 +88,10 @@ function handle(method, params) {
       return { ok: true, applied: !params.arguments.dryRun, args: params.arguments };
     if (params.name === "run")
       return { ok: true, command: params.arguments.command, timeout: params.arguments.timeout_ms };
+    if (params.name === "slow") {
+      await new Promise((resolve) => setTimeout(resolve, params.arguments.delayMs));
+      return { ok: true, delayMs: params.arguments.delayMs };
+    }
   }
   throw new Error(`Unsupported method: ${method}`);
 }

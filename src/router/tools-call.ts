@@ -8,7 +8,7 @@ import { AuditLog, buildAuditRecord } from "../state/audit.js";
 import { redactJson } from "../state/redaction.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
-import { ForbiddenError, toError } from "../util/errors.js";
+import { ForbiddenError, TimeoutError, toError } from "../util/errors.js";
 import { sha256 } from "../util/hash.js";
 import { assertToolAllowed } from "./namespace.js";
 import { executeWorkflow } from "./workflow.js";
@@ -36,16 +36,27 @@ type PreviewRecord = {
 
 export class ToolRouter {
   private previews: PreviewRecord[] = [];
+  private rateWindows = new Map<string, number[]>();
 
   constructor(private readonly options: ToolCallOptions) {}
 
   async call(name: string, rawArgs: unknown, caller: CallerIdentity): Promise<unknown> {
-    assertToolAllowed(name, this.options.registry);
-    const entry = this.options.registry.get(name)!;
     const startedAt = Date.now();
-    const args = assertToolInput(entry.policy, rawArgs);
+    let entry: RegisteredTool | undefined;
+    let args: Record<string, unknown> =
+      typeof rawArgs === "object" && rawArgs !== null && !Array.isArray(rawArgs)
+        ? (rawArgs as Record<string, unknown>)
+        : {};
     try {
-      const output = await this.execute(entry.policy, args, caller);
+      assertToolAllowed(name, this.options.registry);
+      entry = this.options.registry.get(name)!;
+      args = assertToolInput(entry.policy, rawArgs);
+      this.assertRateLimit(caller);
+      const output = await this.withTimeout(
+        this.execute(entry.policy, args, caller),
+        this.options.policy.limits.timeoutMs,
+        name,
+      );
       const finalOutput = this.prepareOutput(output);
       this.rememberPreview(name, args, caller);
       await this.options.audit.write(
@@ -69,8 +80,8 @@ export class ToolRouter {
           clientId: caller.clientId,
           subject: caller.subject,
           tool: name,
-          type: entry.policy.type,
-          upstream: entry.policy.type === "passThrough" ? entry.policy.upstream : undefined,
+          type: entry?.policy.type ?? "unknown",
+          upstream: entry?.policy.type === "passThrough" ? entry.policy.upstream : undefined,
           status: "error",
           startedAt,
           input: args,
@@ -230,5 +241,37 @@ export class ToolRouter {
       truncated: true,
       text: Buffer.from(text).subarray(0, maxBytes).toString("utf8"),
     };
+  }
+
+  private assertRateLimit(caller: CallerIdentity): void {
+    const limit = this.options.policy.limits.maxCallsPerMinute;
+    const key = caller.clientId ?? caller.subject ?? "anonymous";
+    const now = Date.now();
+    const windowStart = now - 60_000;
+    const current = (this.rateWindows.get(key) ?? []).filter(
+      (timestamp) => timestamp > windowStart,
+    );
+    if (current.length >= limit) throw new ForbiddenError("Rate limit exceeded");
+    current.push(now);
+    this.rateWindows.set(key, current);
+  }
+
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    toolName: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new TimeoutError(`Tool '${toolName}' timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }

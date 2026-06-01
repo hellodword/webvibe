@@ -21,6 +21,12 @@ Custom policy:
 npm run dev -- --mode dev --policy ./my-policy.yaml --workspace . --pairing-code 123456
 ```
 
+Environment overrides:
+
+```bash
+WEBVIBE_POLICY=./my-policy.yaml WEBVIBE_MODE=dev npm run dev
+```
+
 Commit convention:
 
 ```text

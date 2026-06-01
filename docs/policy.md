@@ -8,8 +8,8 @@ Important fields:
 - `tools`: ChatGPT-facing tools. Types are `builtIn`, `passThrough`, and
   `workflow`.
 - `workspace.protected`: generic path deny patterns.
-- `limits`: output byte limit and timeout defaults.
-- `audit`: JSONL audit logging switch.
+- `limits`: output byte limit, tool-call timeout, and per-client call rate.
+- `audit`: JSONL audit logging switch and rotation size.
 
 Pass-through tools map one public tool name to one upstream tool:
 
@@ -39,3 +39,14 @@ configured upstream:
 
 Input policy supports fixed required values, denied values, protected path
 checks, and preview-before-apply matching.
+
+Configuration priority is:
+
+```text
+CLI flags > config file > WEBVIBE_* environment variables > defaults
+```
+
+Useful environment variables include `WEBVIBE_CONFIG`, `WEBVIBE_MODE`,
+`WEBVIBE_POLICY`, `WEBVIBE_WORKSPACE`, `WEBVIBE_PUBLIC_BASE_URL`,
+`WEBVIBE_LISTEN`, `WEBVIBE_STATE_DIR`, `WEBVIBE_PAIRING_CODE`, and
+`WEBVIBE_PAIRING_CODE_FILE`.

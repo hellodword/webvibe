@@ -8,9 +8,12 @@ Security model:
   glob patterns.
 - Preview/apply: destructive edit tools can require a matching prior preview.
 - Output limit: over-limit results are truncated and marked.
+- Timeout: every public tool call is bounded by `limits.timeoutMs`.
+- Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
 - Redaction: common bearer tokens, API keys, cloud secrets, and private keys are
   removed from output/audit material.
 - Audit: every `tools/call` writes JSONL with hashes and sizes, not raw inputs.
+  Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
 The relay intentionally does not expose raw arbitrary shell, argv, stdin, kill
 process, or Git mutation tools in default policies.
