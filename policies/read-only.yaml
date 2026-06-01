@@ -115,6 +115,10 @@ tools:
     upstream: git
     upstreamTool: git_status
     optional: true
+    outputSchema: &gitOutputSchema
+      type: object
+      description: Git upstream result. Structured fields vary by git server tool.
+      additionalProperties: true
     annotations:
       readOnlyHint: true
       destructiveHint: false
@@ -125,6 +129,7 @@ tools:
     upstream: git
     upstreamTool: git_diff_unstaged
     optional: true
+    outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true
       destructiveHint: false
@@ -135,6 +140,7 @@ tools:
     upstream: git
     upstreamTool: git_diff_staged
     optional: true
+    outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true
       destructiveHint: false
@@ -145,6 +151,7 @@ tools:
     upstream: git
     upstreamTool: git_log
     optional: true
+    outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true
       destructiveHint: false

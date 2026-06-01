@@ -53,7 +53,20 @@ describe("local task runner upstream", () => {
     await runner.initialize();
 
     await expect(runner.listTools()).resolves.toEqual([
-      expect.objectContaining({ name: "run_task" }),
+      expect.objectContaining({
+        name: "run_task",
+        outputSchema: expect.objectContaining({
+          required: [
+            "status",
+            "taskId",
+            "exitCode",
+            "stdout",
+            "stderr",
+            "durationMs",
+            "timeoutSeconds",
+          ],
+        }),
+      }),
     ]);
     await expect(runner.callTool("run_task", { taskId: "unknown" })).rejects.toThrow("Unknown");
     await expect(runner.callTool("run_task", { taskId: "ok" })).resolves.toMatchObject({

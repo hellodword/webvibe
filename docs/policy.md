@@ -21,6 +21,10 @@ Pass-through tools map one public tool name to one upstream tool:
   upstreamTool: read_text_file
 ```
 
+Tools may define `outputSchema` to describe their structured result payload for
+ChatGPT and MCP clients. If a pass-through upstream already provides one,
+webvibe forwards it unless the policy overrides it.
+
 Workflow tools expose narrow stable actions while delegating execution to a
 configured upstream:
 

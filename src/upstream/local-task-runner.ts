@@ -57,6 +57,28 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           required: ["taskId"],
           additionalProperties: false,
         },
+        outputSchema: {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["ok", "failed", "timeout", "unavailable"] },
+            taskId: { type: "string" },
+            exitCode: { type: ["integer", "null"] },
+            stdout: { type: "string" },
+            stderr: { type: "string" },
+            durationMs: { type: "integer" },
+            timeoutSeconds: { type: "integer" },
+          },
+          required: [
+            "status",
+            "taskId",
+            "exitCode",
+            "stdout",
+            "stderr",
+            "durationMs",
+            "timeoutSeconds",
+          ],
+          additionalProperties: false,
+        },
       },
     ];
   }

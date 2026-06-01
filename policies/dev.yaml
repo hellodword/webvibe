@@ -159,6 +159,26 @@ tools:
           minimum: 1
           maximum: 36000
       additionalProperties: false
+    outputSchema: &taskOutputSchema
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed, timeout, unavailable]
+        taskId:
+          type: string
+        exitCode:
+          type: ["integer", "null"]
+        stdout:
+          type: string
+        stderr:
+          type: string
+        durationMs:
+          type: integer
+        timeoutSeconds:
+          type: integer
+      required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
+      additionalProperties: false
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -178,6 +198,7 @@ tools:
     type: workflow
     description: Run the npm build script in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -194,6 +215,7 @@ tools:
     type: workflow
     description: Run the npm lint script in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 1800
       maximum: 36000
@@ -210,6 +232,7 @@ tools:
     type: workflow
     description: Run the npm typecheck script in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 1800
       maximum: 36000
@@ -226,6 +249,7 @@ tools:
     type: workflow
     description: Run the npm start script in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 300
       maximum: 36000
@@ -242,6 +266,7 @@ tools:
     type: workflow
     description: Run cargo test in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 6000
       maximum: 36000
@@ -258,6 +283,7 @@ tools:
     type: workflow
     description: Run cargo check in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -274,6 +300,7 @@ tools:
     type: workflow
     description: Run cargo build in the configured workspace.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -290,6 +317,7 @@ tools:
     type: workflow
     description: Run cargo clippy for all targets and features.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -306,6 +334,7 @@ tools:
     type: workflow
     description: Check Rust formatting with cargo fmt.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 600
       maximum: 36000
@@ -322,6 +351,7 @@ tools:
     type: workflow
     description: Run Go tests for all packages.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -338,6 +368,7 @@ tools:
     type: workflow
     description: Build all Go packages.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 3000
       maximum: 36000
@@ -354,6 +385,7 @@ tools:
     type: workflow
     description: Run go vet for all packages.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 1800
       maximum: 36000
@@ -370,6 +402,7 @@ tools:
     type: workflow
     description: Check Go formatting with gofmt.
     inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
     timeoutSeconds:
       default: 600
       maximum: 36000
