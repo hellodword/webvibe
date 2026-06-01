@@ -22,6 +22,7 @@ export class UpstreamManager {
         this.clients.set(id, client);
         this.descriptors.set(id, await client.listTools());
       } catch (error: any) {
+        await client.close().catch(() => {});
         const health = {
           id,
           healthy: false,

@@ -11,6 +11,7 @@ upstreams:
       - -y
       - "@wonderwhy-er/desktop-commander@latest"
     optional: true
+    timeoutMs: 5000
 
 tools:
   - name: fs.edit_file_preview
