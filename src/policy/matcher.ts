@@ -45,13 +45,6 @@ export function getPath(value: unknown, dottedPath: string): unknown {
   }, value);
 }
 
-export function selectFields(
-  input: Record<string, unknown>,
-  fields: string[],
-): Record<string, unknown> {
-  return Object.fromEntries(fields.map((field) => [field, getPath(input, field)]));
-}
-
 function normalizePathValues(value: unknown): string[] {
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.flatMap((item) => normalizePathValues(item));

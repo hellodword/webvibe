@@ -51,8 +51,8 @@ tools:
             taskId: npm_test
 ```
 
-Input policy supports fixed required values, denied values, protected path
-checks, and preview-before-apply matching.
+Input policy supports fixed required values, denied values, and protected path
+checks.
 
 Configuration priority is:
 

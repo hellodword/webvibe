@@ -39,11 +39,6 @@ export type TaskPolicy = {
 export type InputPolicy = {
   require?: Record<string, unknown>;
   deny?: Record<string, unknown>;
-  requirePriorPreview?: {
-    previewTool: string;
-    matchFields: string[];
-    ttlSeconds?: number;
-  };
   pathFields?: string[];
   protectedPathPolicy?: "deny" | "allow";
 };

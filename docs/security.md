@@ -6,7 +6,6 @@ Security model:
 - Namespacing: public tool names are policy-chosen, not copied automatically.
 - Protected paths: path fields are checked against workspace root and protected
   glob patterns.
-- Preview/apply: destructive edit tools can require a matching prior preview.
 - Narrow tasks: default dev tasks run only policy-defined executable/argument
   pairs through `local-task-runner`.
 - Output limit: over-limit results are truncated and marked.

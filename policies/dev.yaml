@@ -121,12 +121,6 @@ tools:
       require:
         dryRun: false
       pathFields: ["path"]
-      requirePriorPreview:
-        previewTool: fs.edit_file_preview
-        matchFields:
-          - path
-          - edits
-        ttlSeconds: 300
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -138,11 +132,6 @@ tools:
     upstreamTool: write_file
     inputPolicy:
       pathFields: ["path"]
-      requirePriorPreview:
-        previewTool: fs.read_text_file
-        matchFields:
-          - path
-        ttlSeconds: 300
     annotations:
       readOnlyHint: false
       destructiveHint: true

@@ -16,13 +16,6 @@ const inputPolicySchema = z
   .object({
     require: z.record(z.string(), z.unknown()).optional(),
     deny: z.record(z.string(), z.unknown()).optional(),
-    requirePriorPreview: z
-      .object({
-        previewTool: z.string(),
-        matchFields: z.array(z.string()),
-        ttlSeconds: z.number().int().positive().optional(),
-      })
-      .optional(),
     pathFields: z.array(z.string()).optional(),
     protectedPathPolicy: z.enum(["deny", "allow"]).optional(),
   })

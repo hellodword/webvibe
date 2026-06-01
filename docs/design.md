@@ -41,7 +41,7 @@ JSON-RPC, config parsing, stdio process management, and schema validation.
 Only two modes exist:
 
 - `read-only`: read/search/list context and read-only Git tools when available.
-- `dev`: extends read-only and adds policy-defined edit preview/apply plus fixed
+- `dev`: extends read-only and adds policy-defined edit/write tools plus fixed
   npm, cargo, and Go task tools.
 
 Mode chooses a default policy. `--policy` can replace the defaults completely.

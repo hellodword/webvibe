@@ -2,14 +2,13 @@ import stableStringify from "fast-json-stable-stringify";
 
 import { interpolateValue } from "../config/interpolation.js";
 import { assertToolInput } from "../policy/engine.js";
-import { assertInputPolicy, selectFields } from "../policy/matcher.js";
+import { assertInputPolicy } from "../policy/matcher.js";
 import type { RelayPolicy, ToolPolicy } from "../policy/policy.js";
 import { AuditLog, buildAuditRecord } from "../state/audit.js";
 import { redactJson } from "../state/redaction.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import { ForbiddenError, TimeoutError, toError } from "../util/errors.js";
-import { sha256 } from "../util/hash.js";
 import { assertToolAllowed } from "./namespace.js";
 import { executeWorkflow } from "./workflow.js";
 
@@ -27,15 +26,7 @@ export type ToolCallOptions = {
   stateDir: string;
 };
 
-type PreviewRecord = {
-  clientId?: string;
-  tool: string;
-  hash: string;
-  expiresAt: number;
-};
-
 export class ToolRouter {
-  private previews: PreviewRecord[] = [];
   private rateWindows = new Map<string, number[]>();
 
   constructor(private readonly options: ToolCallOptions) {}
@@ -58,7 +49,6 @@ export class ToolRouter {
         name,
       );
       const finalOutput = this.prepareOutput(output);
-      this.rememberPreview(name, args, caller);
       await this.options.audit.write(
         buildAuditRecord({
           clientId: caller.clientId,
@@ -106,7 +96,6 @@ export class ToolRouter {
         workspace: this.options.policy.workspace,
         workspaceRoot: this.options.workspaceRoot,
       });
-      this.assertPreviewIfRequired(tool, args, caller);
       const upstreamInput = tool.mapInput
         ? (interpolateValue(tool.mapInput, {
             workspaceRoot: this.options.workspaceRoot,
@@ -172,64 +161,6 @@ export class ToolRouter {
       return { tools: Array.from(this.options.registry.values()).map((entry) => entry.descriptor) };
     }
     throw new ForbiddenError(`Unknown built-in tool: ${name}`);
-  }
-
-  private assertPreviewIfRequired(
-    tool: Extract<ToolPolicy, { type: "passThrough" }>,
-    args: Record<string, unknown>,
-    caller: CallerIdentity,
-  ): void {
-    const previewPolicy = tool.inputPolicy?.requirePriorPreview;
-    if (!previewPolicy) return;
-    const expectedHash = sha256(selectFields(args, previewPolicy.matchFields));
-    const now = Date.now();
-    this.previews = this.previews.filter((record) => record.expiresAt > now);
-    const found = this.previews.find(
-      (record) =>
-        record.clientId === caller.clientId &&
-        record.tool === previewPolicy.previewTool &&
-        record.hash === expectedHash,
-    );
-    if (!found) throw new ForbiddenError("Tool call requires matching prior preview");
-  }
-
-  private rememberPreview(
-    name: string,
-    args: Record<string, unknown>,
-    caller: CallerIdentity,
-  ): void {
-    const ttlSeconds = this.findLongestPreviewTtl(name);
-    if (!ttlSeconds) return;
-    for (const fields of this.findPreviewFieldSets(name)) {
-      this.previews.push({
-        clientId: caller.clientId,
-        tool: name,
-        hash: sha256(selectFields(args, fields)),
-        expiresAt: Date.now() + ttlSeconds * 1000,
-      });
-    }
-  }
-
-  private findPreviewFieldSets(name: string): string[][] {
-    const fieldSets: string[][] = [];
-    for (const entry of this.options.registry.values()) {
-      const tool = entry.policy;
-      if (tool.type !== "passThrough") continue;
-      const preview = tool.inputPolicy?.requirePriorPreview;
-      if (preview?.previewTool === name) fieldSets.push(preview.matchFields);
-    }
-    return fieldSets;
-  }
-
-  private findLongestPreviewTtl(name: string): number {
-    let ttl = 0;
-    for (const entry of this.options.registry.values()) {
-      const tool = entry.policy;
-      if (tool.type !== "passThrough") continue;
-      const preview = tool.inputPolicy?.requirePriorPreview;
-      if (preview?.previewTool === name) ttl = Math.max(ttl, preview.ttlSeconds ?? 300);
-    }
-    return ttl;
   }
 
   private prepareOutput(output: unknown): unknown {

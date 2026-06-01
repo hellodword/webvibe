@@ -64,10 +64,6 @@ tools:
       require:
         dryRun: false
       pathFields: ["path"]
-      requirePriorPreview:
-        previewTool: x.edit_preview
-        matchFields: ["path", "edits"]
-        ttlSeconds: 60
     annotations:
       readOnlyHint: false
       destructiveHint: true

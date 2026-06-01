@@ -12,7 +12,7 @@ import { buildRegistry } from "../../src/upstream/registry.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("tool router", () => {
-  it("exposes policy tools, routes calls, and enforces preview/apply", async () => {
+  it("exposes policy tools, routes calls, and enforces input policy", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-router-"));
     const stateDir = path.join(root, "state");
     const policyPath = await writeFakePolicy(root);
@@ -35,19 +35,6 @@ describe("tool router", () => {
 
       await expect(router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
-      );
-      await expect(
-        router.call(
-          "x.edit_apply",
-          { path: "file.txt", edits: [{ oldText: "a", newText: "b" }], dryRun: false },
-          { clientId: "c1" },
-        ),
-      ).rejects.toThrow("prior preview");
-
-      await router.call(
-        "x.edit_preview",
-        { path: "file.txt", edits: [{ oldText: "a", newText: "b" }], dryRun: true },
-        { clientId: "c1" },
       );
       const applied = await router.call(
         "x.edit_apply",
