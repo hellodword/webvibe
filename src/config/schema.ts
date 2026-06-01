@@ -77,7 +77,29 @@ const workflowToolSchema = z
     inputSchema: z.record(z.string(), z.unknown()),
     outputSchema: z.record(z.string(), z.unknown()).optional(),
     annotations: annotationsSchema.optional(),
+    timeoutSeconds: z
+      .object({
+        default: z.number().int().positive(),
+        maximum: z.number().int().positive(),
+        bufferSeconds: z.number().int().positive().optional(),
+      })
+      .optional(),
     steps: z.array(workflowStepSchema).min(1),
+  })
+  .passthrough();
+
+const taskPolicySchema = z
+  .object({
+    executable: z.string(),
+    args: z.array(z.string()).optional(),
+    cwd: z.string().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    requiredFiles: z.array(z.string()).optional(),
+    requiredPackageScript: z.string().optional(),
+    defaultTimeoutSeconds: z.number().int().positive().optional(),
+    maxTimeoutSeconds: z.number().int().positive().optional(),
+    failOnStdout: z.boolean().optional(),
+    description: z.string().optional(),
   })
   .passthrough();
 
@@ -97,7 +119,7 @@ export const policySchema = z
         z.string(),
         z
           .object({
-            transport: z.enum(["stdio", "streamable-http"]),
+            transport: z.enum(["stdio", "streamable-http", "local-task-runner"]),
             command: z.string().optional(),
             args: z.array(z.string()).optional(),
             url: z.string().optional(),
@@ -106,6 +128,7 @@ export const policySchema = z
             headers: z.record(z.string(), z.string()).optional(),
             optional: z.boolean().optional(),
             timeoutMs: z.number().int().positive().optional(),
+            tasks: z.record(z.string(), taskPolicySchema).optional(),
           })
           .passthrough(),
       )

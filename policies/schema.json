@@ -14,7 +14,33 @@
         "protected": { "type": "array", "items": { "type": "string" } }
       }
     },
-    "upstreams": { "type": "object" },
+    "upstreams": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "transport": { "enum": ["stdio", "streamable-http", "local-task-runner"] },
+          "tasks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["executable"],
+              "properties": {
+                "executable": { "type": "string" },
+                "args": { "type": "array", "items": { "type": "string" } },
+                "cwd": { "type": "string" },
+                "env": { "type": "object" },
+                "requiredFiles": { "type": "array", "items": { "type": "string" } },
+                "requiredPackageScript": { "type": "string" },
+                "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
+                "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
+                "failOnStdout": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
     "tools": { "type": "array" },
     "limits": {
       "type": "object",

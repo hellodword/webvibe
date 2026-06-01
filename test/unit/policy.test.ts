@@ -24,5 +24,11 @@ describe("default policies", () => {
     expect(readOnly.tools.map((tool) => tool.name)).not.toContain("fs.write_file");
     expect(dev.tools.map((tool) => tool.name)).toContain("fs.write_file");
     expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_test");
+    expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_build");
+    expect(dev.tools.map((tool) => tool.name)).toContain("task.cargo_clippy");
+    expect(dev.tools.map((tool) => tool.name)).toContain("task.go_fmt_check");
+    expect(Object.keys(dev.upstreams)).not.toContain(["desk", "top"].join(""));
+    expect(JSON.stringify(dev)).not.toContain("execute_");
+    expect(dev.upstreams.tasks.transport).toBe("local-task-runner");
   });
 });

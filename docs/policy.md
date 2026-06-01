@@ -4,7 +4,8 @@ Policy is the only source of upstream server and upstream tool knowledge.
 
 Important fields:
 
-- `upstreams`: named MCP servers using `stdio` or `streamable-http`.
+- `upstreams`: named MCP servers using `stdio`, `streamable-http`, or the
+  built-in `local-task-runner`.
 - `tools`: ChatGPT-facing tools. Types are `builtIn`, `passThrough`, and
   `workflow`.
 - `workspace.protected`: generic path deny patterns.
@@ -20,21 +21,30 @@ Pass-through tools map one public tool name to one upstream tool:
   upstreamTool: read_text_file
 ```
 
-Workflow tools expose narrow stable commands while delegating execution to a
+Workflow tools expose narrow stable actions while delegating execution to a
 configured upstream:
 
 ```yaml
-- name: task.npm_test
-  type: workflow
-  inputSchema:
-    type: object
-    additionalProperties: false
-  steps:
-    - call:
-        upstream: desktop
-        tool: execute_command
-        input:
-          command: npm test
+upstreams:
+  tasks:
+    transport: local-task-runner
+    tasks:
+      npm_test:
+        executable: npm
+        args: ["test"]
+
+tools:
+  - name: task.npm_test
+    type: workflow
+    inputSchema:
+      type: object
+      additionalProperties: false
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_test
 ```
 
 Input policy supports fixed required values, denied values, protected path

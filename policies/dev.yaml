@@ -4,14 +4,100 @@ mode: dev
 extends: ./read-only.yaml
 
 upstreams:
-  desktop:
-    transport: stdio
-    command: npx
-    args:
-      - -y
-      - "@wonderwhy-er/desktop-commander@latest"
-    optional: true
-    timeoutMs: 5000
+  tasks:
+    transport: local-task-runner
+    cwd: "${workspaceRoot}"
+    tasks:
+      npm_test:
+        executable: npm
+        args: ["test"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: test
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_build:
+        executable: npm
+        args: ["run", "build", "--if-present"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: build
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_lint:
+        executable: npm
+        args: ["run", "lint", "--if-present"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: lint
+        defaultTimeoutSeconds: 1800
+        maxTimeoutSeconds: 36000
+      npm_typecheck:
+        executable: npm
+        args: ["run", "typecheck", "--if-present"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: typecheck
+        defaultTimeoutSeconds: 1800
+        maxTimeoutSeconds: 36000
+      npm_start:
+        executable: npm
+        args: ["start"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: start
+        defaultTimeoutSeconds: 300
+        maxTimeoutSeconds: 36000
+      cargo_test:
+        executable: cargo
+        args: ["test"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 6000
+        maxTimeoutSeconds: 36000
+      cargo_check:
+        executable: cargo
+        args: ["check"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_build:
+        executable: cargo
+        args: ["build"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_clippy:
+        executable: cargo
+        args: ["clippy", "--all-targets", "--all-features"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_fmt_check:
+        executable: cargo
+        args: ["fmt", "--check"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 600
+        maxTimeoutSeconds: 36000
+      go_test:
+        executable: go
+        args: ["test", "./..."]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      go_build:
+        executable: go
+        args: ["build", "./..."]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      go_vet:
+        executable: go
+        args: ["vet", "./..."]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 1800
+        maxTimeoutSeconds: 36000
+      go_fmt_check:
+        executable: gofmt
+        args: ["-l", "."]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 600
+        maxTimeoutSeconds: 36000
+        failOnStdout: true
 
 tools:
   - name: fs.edit_file_preview
@@ -64,81 +150,237 @@ tools:
 
   - name: task.npm_test
     type: workflow
-    optional: true
     description: Run the npm test script in the configured workspace.
-    inputSchema:
+    inputSchema: &taskInputSchema
       type: object
       properties:
         timeoutSeconds:
           type: integer
           minimum: 1
-          maximum: 600
+          maximum: 36000
       additionalProperties: false
-    annotations:
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: &taskAnnotations
       readOnlyHint: false
       destructiveHint: false
       openWorldHint: false
     steps:
       - call:
-          upstream: desktop
-          tool: execute_command
+          upstream: tasks
+          tool: run_task
           input:
-            command: npm test
-            timeout_ms: "${coalesce(input.timeoutSeconds, 120) * 1000}"
+            taskId: npm_test
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_build
+    type: workflow
+    description: Run the npm build script in the configured workspace.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_build
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_lint
+    type: workflow
+    description: Run the npm lint script in the configured workspace.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 1800
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_lint
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
+
+  - name: task.npm_typecheck
+    type: workflow
+    description: Run the npm typecheck script in the configured workspace.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 1800
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_typecheck
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
+
+  - name: task.npm_start
+    type: workflow
+    description: Run the npm start script in the configured workspace.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 300
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_start
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 300)}"
 
   - name: task.cargo_test
     type: workflow
-    optional: true
     description: Run cargo test in the configured workspace.
-    inputSchema:
-      type: object
-      properties:
-        package:
-          type: string
-        testName:
-          type: string
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 600
-      additionalProperties: false
-    annotations:
-      readOnlyHint: false
-      destructiveHint: false
-      openWorldHint: false
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 6000
+      maximum: 36000
+    annotations: *taskAnnotations
     steps:
       - call:
-          upstream: desktop
-          tool: execute_command
+          upstream: tasks
+          tool: run_task
           input:
-            command: "${joinShell(['cargo','test', optional('-p', input.package), optional(input.testName)])}"
-            timeout_ms: "${coalesce(input.timeoutSeconds, 180) * 1000}"
+            taskId: cargo_test
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 6000)}"
 
   - name: task.cargo_check
     type: workflow
-    optional: true
     description: Run cargo check in the configured workspace.
-    inputSchema:
-      type: object
-      properties:
-        package:
-          type: string
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 600
-      additionalProperties: false
-    annotations:
-      readOnlyHint: false
-      destructiveHint: false
-      openWorldHint: false
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
     steps:
       - call:
-          upstream: desktop
-          tool: execute_command
+          upstream: tasks
+          tool: run_task
           input:
-            command: "${joinShell(['cargo','check', optional('-p', input.package)])}"
-            timeout_ms: "${coalesce(input.timeoutSeconds, 180) * 1000}"
+            taskId: cargo_check
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_build
+    type: workflow
+    description: Run cargo build in the configured workspace.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_build
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_clippy
+    type: workflow
+    description: Run cargo clippy for all targets and features.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_clippy
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_fmt_check
+    type: workflow
+    description: Check Rust formatting with cargo fmt.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 600
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_fmt_check
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
+
+  - name: task.go_test
+    type: workflow
+    description: Run Go tests for all packages.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_test
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.go_build
+    type: workflow
+    description: Build all Go packages.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_build
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.go_vet
+    type: workflow
+    description: Run go vet for all packages.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 1800
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_vet
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
+
+  - name: task.go_fmt_check
+    type: workflow
+    description: Check Go formatting with gofmt.
+    inputSchema: *taskInputSchema
+    timeoutSeconds:
+      default: 600
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_fmt_check
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
 
 limits:
   maxToolOutputBytes: 60000

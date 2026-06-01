@@ -1,4 +1,5 @@
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
+import { LocalTaskRunnerClient } from "./local-task-runner.js";
 import { StdioUpstreamClient } from "./stdio.js";
 import { StreamableHttpUpstreamClient } from "./streamable-http.js";
 import type { McpToolDescriptor } from "../descriptor/normalize.js";
@@ -69,6 +70,8 @@ export class UpstreamManager {
   }
 
   private createClient(id: string, upstream: UpstreamPolicy): UpstreamClient {
+    if (upstream.transport === "local-task-runner")
+      return new LocalTaskRunnerClient(id, upstream, this.workspaceRoot);
     if (upstream.transport === "stdio")
       return new StdioUpstreamClient(id, upstream, this.workspaceRoot);
     return new StreamableHttpUpstreamClient(id, upstream);

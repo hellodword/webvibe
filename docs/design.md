@@ -11,8 +11,9 @@ Traffic shape:
 ChatGPT Web -> webvibe -> policy-selected upstream MCP servers
 ```
 
-Code knows generic upstreams, transports, tools, workflows, and policies. Default
-server commands and upstream tool names live in `policies/*.yaml`, not `src/`.
+Code knows generic upstreams, transports, tools, workflows, local task execution,
+and policies. Default server commands and task commands live in
+`policies/*.yaml`, not `src/`.
 
 ## Why Not Fork Codex
 
@@ -41,6 +42,6 @@ Only two modes exist:
 
 - `read-only`: read/search/list context and read-only Git tools when available.
 - `dev`: extends read-only and adds policy-defined edit preview/apply plus fixed
-  workflow tools.
+  npm, cargo, and Go task tools.
 
 Mode chooses a default policy. `--policy` can replace the defaults completely.

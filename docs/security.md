@@ -7,6 +7,8 @@ Security model:
 - Protected paths: path fields are checked against workspace root and protected
   glob patterns.
 - Preview/apply: destructive edit tools can require a matching prior preview.
+- Narrow tasks: default dev tasks run only policy-defined executable/argument
+  pairs through `local-task-runner`.
 - Output limit: over-limit results are truncated and marked.
 - Timeout: every public tool call is bounded by `limits.timeoutMs`.
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
@@ -15,5 +17,5 @@ Security model:
 - Audit: every `tools/call` writes JSONL with hashes and sizes, not raw inputs.
   Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
-The relay intentionally does not expose raw arbitrary shell, argv, stdin, kill
-process, or Git mutation tools in default policies.
+The relay intentionally does not expose raw arbitrary shell, command strings,
+stdin, kill process, or Git mutation tools in default policies.

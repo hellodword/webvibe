@@ -11,7 +11,7 @@ export type ToolAnnotations = {
 };
 
 export type UpstreamPolicy = {
-  transport: "stdio" | "streamable-http";
+  transport: "stdio" | "streamable-http" | "local-task-runner";
   command?: string;
   args?: string[];
   url?: string;
@@ -20,6 +20,20 @@ export type UpstreamPolicy = {
   headers?: Record<string, string>;
   optional?: boolean;
   timeoutMs?: number;
+  tasks?: Record<string, TaskPolicy>;
+};
+
+export type TaskPolicy = {
+  executable: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  requiredFiles?: string[];
+  requiredPackageScript?: string;
+  defaultTimeoutSeconds?: number;
+  maxTimeoutSeconds?: number;
+  failOnStdout?: boolean;
+  description?: string;
 };
 
 export type InputPolicy = {
@@ -76,7 +90,14 @@ export type WorkflowToolPolicy = {
   inputSchema: JsonSchema;
   outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
+  timeoutSeconds?: ToolTimeoutPolicy;
   steps: WorkflowStep[];
+};
+
+export type ToolTimeoutPolicy = {
+  default: number;
+  maximum: number;
+  bufferSeconds?: number;
 };
 
 export type ToolPolicy = BuiltInToolPolicy | PassThroughToolPolicy | WorkflowToolPolicy;

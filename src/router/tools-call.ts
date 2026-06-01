@@ -54,7 +54,7 @@ export class ToolRouter {
       this.assertRateLimit(caller);
       const output = await this.withTimeout(
         this.execute(entry.policy, args, caller),
-        this.options.policy.limits.timeoutMs,
+        this.toolTimeoutMs(entry.policy, args),
         name,
       );
       const finalOutput = this.prepareOutput(output);
@@ -273,5 +273,17 @@ export class ToolRouter {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  private toolTimeoutMs(tool: ToolPolicy, args: Record<string, unknown>): number {
+    if (tool.type !== "workflow" || !tool.timeoutSeconds)
+      return this.options.policy.limits.timeoutMs;
+    const raw = args.timeoutSeconds;
+    const requested = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : undefined;
+    const seconds = Math.min(
+      Math.max(requested ?? tool.timeoutSeconds.default, 1),
+      tool.timeoutSeconds.maximum,
+    );
+    return (seconds + (tool.timeoutSeconds.bufferSeconds ?? 5)) * 1000;
   }
 }
