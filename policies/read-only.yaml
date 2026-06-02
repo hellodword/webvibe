@@ -23,16 +23,6 @@ upstreams:
       - "@modelcontextprotocol/server-filesystem"
       - "${workspaceRoot}"
 
-  git:
-    transport: stdio
-    command: uvx
-    args:
-      - mcp-server-git
-      - --repository
-      - "${workspaceRoot}"
-    optional: true
-    timeoutMs: 5000
-
 tools:
   - name: relay.info
     type: builtIn
@@ -50,6 +40,92 @@ tools:
 
   - name: relay.list_tools
     type: builtIn
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: env.inspect
+    type: builtIn
+    description: Inspect the current local environment with sanitized ENV/PATH, command availability, project manifests, webvibe tools, and guidance.
+    inputSchema:
+      type: object
+      additionalProperties: false
+    outputSchema: &genericObjectOutputSchema
+      type: object
+      additionalProperties: true
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: project.inspect
+    type: builtIn
+    description: Inspect project manifests, lockfiles, package managers, languages, and npm scripts.
+    inputSchema:
+      type: object
+      properties:
+        maxDepth:
+          type: integer
+          minimum: 0
+          maximum: 8
+        maxManifests:
+          type: integer
+          minimum: 1
+          maximum: 200
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: code.search
+    type: builtIn
+    description: Search workspace text files by literal query while skipping protected paths.
+    inputSchema:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 500
+        path:
+          type: string
+        glob:
+          type: string
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 200
+        caseSensitive:
+          type: boolean
+      required: [query]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: code.file_tree
+    type: builtIn
+    description: Return a bounded workspace file tree while skipping protected paths.
+    inputSchema:
+      type: object
+      properties:
+        path:
+          type: string
+        depth:
+          type: integer
+          minimum: 0
+          maximum: 8
+        maxEntries:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
     annotations:
       readOnlyHint: true
       destructiveHint: false
@@ -111,24 +187,43 @@ tools:
       openWorldHint: false
 
   - name: git.status
-    type: passThrough
-    upstream: git
-    upstreamTool: git_status
-    optional: true
+    type: builtIn
+    inputSchema: &emptyInputSchema
+      type: object
+      additionalProperties: false
     outputSchema: &gitOutputSchema
       type: object
-      description: Git upstream result. Structured fields vary by git server tool.
-      additionalProperties: true
+      properties:
+        status:
+          type: string
+          enum: [ok, failed, timeout, unavailable]
+        command:
+          type: string
+        exitCode:
+          type: ["integer", "null"]
+        stdout:
+          type: string
+        stderr:
+          type: string
+        durationMs:
+          type: integer
+        unavailableReason:
+          type: string
+      required: [status, command, exitCode, stdout, stderr, durationMs]
+      additionalProperties: false
     annotations:
       readOnlyHint: true
       destructiveHint: false
       openWorldHint: false
 
   - name: git.diff_unstaged
-    type: passThrough
-    upstream: git
-    upstreamTool: git_diff_unstaged
-    optional: true
+    type: builtIn
+    inputSchema: &gitPathInputSchema
+      type: object
+      properties:
+        path:
+          type: string
+      additionalProperties: false
     outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true
@@ -136,10 +231,8 @@ tools:
       openWorldHint: false
 
   - name: git.diff_staged
-    type: passThrough
-    upstream: git
-    upstreamTool: git_diff_staged
-    optional: true
+    type: builtIn
+    inputSchema: *gitPathInputSchema
     outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true
@@ -147,10 +240,72 @@ tools:
       openWorldHint: false
 
   - name: git.log
-    type: passThrough
-    upstream: git
-    upstreamTool: git_log
-    optional: true
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        maxCount:
+          type: integer
+          minimum: 1
+          maximum: 200
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.show
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        revision:
+          type: string
+          minLength: 1
+          maxLength: 200
+        path:
+          type: string
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.branch
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        all:
+          type: boolean
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.ls_files
+    type: builtIn
+    inputSchema: *gitPathInputSchema
+    outputSchema: *gitOutputSchema
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: git.rev_parse
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        revision:
+          type: string
+          minLength: 1
+          maxLength: 200
+      additionalProperties: false
     outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: true

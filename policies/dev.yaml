@@ -43,6 +43,51 @@ upstreams:
         requiredPackageScript: start
         defaultTimeoutSeconds: 300
         maxTimeoutSeconds: 36000
+      npm_install:
+        executable: npm
+        args: ["install"]
+        requiredFiles: ["package.json"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_ci:
+        executable: npm
+        args: ["ci"]
+        requiredFiles: ["package.json", "package-lock.json"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_add_package:
+        executable: npm
+        args: ["install"]
+        requiredFiles: ["package.json"]
+        allowExtraArgs: true
+        maxExtraArgs: 21
+        allowedExtraArgs: ["--save-dev"]
+        extraArgPattern: '^(?:@[-A-Za-z0-9_.]+/)?[-A-Za-z0-9_.]+(?:@[-A-Za-z0-9_.*~^<>!=+:/]+)?$'
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_remove_package:
+        executable: npm
+        args: ["uninstall"]
+        requiredFiles: ["package.json"]
+        allowExtraArgs: true
+        maxExtraArgs: 20
+        extraArgPattern: '^(?:@[-A-Za-z0-9_.]+/)?[-A-Za-z0-9_.]+$'
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      npm_format:
+        executable: npm
+        args: ["run", "format"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: format
+        defaultTimeoutSeconds: 1800
+        maxTimeoutSeconds: 36000
+      npm_lint_fix:
+        executable: npm
+        args: ["run", "lint", "--", "--fix"]
+        requiredFiles: ["package.json"]
+        requiredPackageScript: lint
+        defaultTimeoutSeconds: 1800
+        maxTimeoutSeconds: 36000
       cargo_test:
         executable: cargo
         args: ["test"]
@@ -73,6 +118,33 @@ upstreams:
         requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
+      cargo_fetch:
+        executable: cargo
+        args: ["fetch"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_update:
+        executable: cargo
+        args: ["update"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_add:
+        executable: cargo
+        args: ["add"]
+        requiredFiles: ["Cargo.toml"]
+        allowExtraArgs: true
+        maxExtraArgs: 20
+        extraArgPattern: '^[A-Za-z0-9_-]+(?:@[A-Za-z0-9_.+~-]+)?$'
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      cargo_fmt:
+        executable: cargo
+        args: ["fmt"]
+        requiredFiles: ["Cargo.toml"]
+        defaultTimeoutSeconds: 600
+        maxTimeoutSeconds: 36000
       go_test:
         executable: go
         args: ["test", "./..."]
@@ -98,6 +170,60 @@ upstreams:
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
         failOnStdout: true
+      go_mod_download:
+        executable: go
+        args: ["mod", "download"]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      go_mod_tidy:
+        executable: go
+        args: ["mod", "tidy"]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      go_get:
+        executable: go
+        args: ["get"]
+        requiredFiles: ["go.mod"]
+        allowExtraArgs: true
+        maxExtraArgs: 20
+        extraArgPattern: '^[A-Za-z0-9_.~+:/@-]+(?:/[A-Za-z0-9_.~+:/@-]+)*$'
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      go_fmt:
+        executable: go
+        args: ["fmt", "./..."]
+        requiredFiles: ["go.mod"]
+        defaultTimeoutSeconds: 600
+        maxTimeoutSeconds: 36000
+      uv_sync:
+        executable: uv
+        args: ["sync"]
+        requiredFiles: ["pyproject.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      uv_add:
+        executable: uv
+        args: ["add"]
+        requiredFiles: ["pyproject.toml"]
+        allowExtraArgs: true
+        maxExtraArgs: 20
+        extraArgPattern: '^[A-Za-z0-9_.@/+~!<>=\[\],:-]+$'
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      uv_run_pytest:
+        executable: uv
+        args: ["run", "pytest"]
+        requiredFiles: ["pyproject.toml"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
+      pip_install_requirements:
+        executable: pip
+        args: ["install", "-r", "requirements.txt"]
+        requiredFiles: ["requirements.txt"]
+        defaultTimeoutSeconds: 3000
+        maxTimeoutSeconds: 36000
 
 tools:
   - name: repo.file_manifest
@@ -235,6 +361,49 @@ tools:
       "openai/toolInvocation/invoking": "Applying changes"
       "openai/toolInvocation/invoked": "Changes applied"
 
+  - name: git.commit_paths
+    type: builtIn
+    description: Commit only explicit workspace-relative paths with the provided message; protected paths are rejected and unrelated dirty files are not included.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 80
+          items:
+            type: string
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required: [paths, message]
+      additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed, timeout, unavailable]
+        command:
+          type: string
+        exitCode:
+          type: ["integer", "null"]
+        stdout:
+          type: string
+        stderr:
+          type: string
+        durationMs:
+          type: integer
+        unavailableReason:
+          type: string
+      required: [status, command, exitCode, stdout, stderr, durationMs]
+      additionalProperties: false
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      openWorldHint: false
+
   - name: task.npm_test
     type: workflow
     description: Run the npm test script in the configured workspace.
@@ -264,6 +433,8 @@ tools:
           type: integer
         timeoutSeconds:
           type: integer
+        unavailableReason:
+          type: string
       required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
       additionalProperties: false
     timeoutSeconds:
@@ -348,6 +519,128 @@ tools:
           input:
             taskId: npm_start
             timeoutSeconds: "${coalesce(input.timeoutSeconds, 300)}"
+
+  - name: task.npm_install
+    type: workflow
+    description: Run npm install in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_install
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_ci
+    type: workflow
+    description: Run npm ci in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_ci
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_add_package
+    type: workflow
+    description: Add one or more npm packages in the configured workspace.
+    inputSchema: &npmPackageTaskInputSchema
+      type: object
+      properties:
+        packages:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+        dev:
+          type: boolean
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 36000
+      required: [packages]
+      additionalProperties: false
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_add_package
+            extraArgs: "${input.dev ? ['--save-dev', ...input.packages] : input.packages}"
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_remove_package
+    type: workflow
+    description: Remove one or more npm packages in the configured workspace.
+    inputSchema: *npmPackageTaskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_remove_package
+            extraArgs: "${input.packages}"
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.npm_format
+    type: workflow
+    description: Run the npm format script in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 1800
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_format
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
+
+  - name: task.npm_lint_fix
+    type: workflow
+    description: Run npm lint with --fix in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 1800
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: npm_lint_fix
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
 
   - name: task.cargo_test
     type: workflow
@@ -434,6 +727,91 @@ tools:
             taskId: cargo_fmt_check
             timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
 
+  - name: task.cargo_fetch
+    type: workflow
+    description: Run cargo fetch in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_fetch
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_update
+    type: workflow
+    description: Run cargo update in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_update
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_add
+    type: workflow
+    description: Add one or more Cargo packages in the configured workspace.
+    inputSchema: &packageTaskInputSchema
+      type: object
+      properties:
+        packages:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 36000
+      required: [packages]
+      additionalProperties: false
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_add
+            extraArgs: "${input.packages}"
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.cargo_fmt
+    type: workflow
+    description: Run cargo fmt in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 600
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: cargo_fmt
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
+
   - name: task.go_test
     type: workflow
     description: Run Go tests for all packages.
@@ -501,6 +879,144 @@ tools:
           input:
             taskId: go_fmt_check
             timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
+
+  - name: task.go_mod_download
+    type: workflow
+    description: Run go mod download in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_mod_download
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.go_mod_tidy
+    type: workflow
+    description: Run go mod tidy in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_mod_tidy
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.go_get
+    type: workflow
+    description: Run go get for one or more modules in the configured workspace.
+    inputSchema: *packageTaskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_get
+            extraArgs: "${input.packages}"
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.go_fmt
+    type: workflow
+    description: Run go fmt for all packages.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 600
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: go_fmt
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
+
+  - name: task.uv_sync
+    type: workflow
+    description: Run uv sync in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: uv_sync
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.uv_add
+    type: workflow
+    description: Add one or more uv packages in the configured workspace.
+    inputSchema: *packageTaskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: uv_add
+            extraArgs: "${input.packages}"
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.pip_install_requirements
+    type: workflow
+    description: Run pip install -r requirements.txt in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: pip_install_requirements
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+
+  - name: task.uv_run_pytest
+    type: workflow
+    description: Run pytest through uv in the configured workspace.
+    inputSchema: *taskInputSchema
+    outputSchema: *taskOutputSchema
+    timeoutSeconds:
+      default: 3000
+      maximum: 36000
+    annotations: *taskAnnotations
+    steps:
+      - call:
+          upstream: tasks
+          tool: run_task
+          input:
+            taskId: uv_run_pytest
+            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
 
 limits:
   maxToolOutputBytes: 60000

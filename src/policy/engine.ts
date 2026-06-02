@@ -6,6 +6,7 @@ export function validateJsonSchema(schema: unknown, value: unknown, path = "inpu
   if (!isJsonObject(schema)) return;
   const type = schema.type;
   if (type === "object") validateObjectSchema(schema, value, path);
+  if (type === "array") validateArraySchema(schema, value, path);
   if (type === "string" && typeof value !== "string")
     throw new BadRequestError(`${path} must be string`);
   if (type === "boolean" && typeof value !== "boolean")
@@ -16,6 +17,17 @@ export function validateJsonSchema(schema: unknown, value: unknown, path = "inpu
     throw new BadRequestError(`${path} must be integer`);
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
     throw new BadRequestError(`${path} must be one of enum values`);
+  }
+  if (typeof value === "string") {
+    if (typeof schema.minLength === "number" && value.length < schema.minLength) {
+      throw new BadRequestError(`${path} is below minimum length`);
+    }
+    if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
+      throw new BadRequestError(`${path} is above maximum length`);
+    }
+    if (typeof schema.pattern === "string" && !new RegExp(schema.pattern).test(value)) {
+      throw new BadRequestError(`${path} does not match pattern`);
+    }
   }
   if (typeof value === "number") {
     if (typeof schema.minimum === "number" && value < schema.minimum) {
@@ -32,6 +44,21 @@ export function assertToolInput(tool: ToolPolicy, args: unknown): Record<string,
   const schema = "inputSchema" in tool ? tool.inputSchema : undefined;
   if (schema) validateJsonSchema(schema, normalized);
   return normalized;
+}
+
+function validateArraySchema(schema: Record<string, unknown>, value: unknown, path: string): void {
+  if (!Array.isArray(value)) throw new BadRequestError(`${path} must be array`);
+  if (typeof schema.minItems === "number" && value.length < schema.minItems) {
+    throw new BadRequestError(`${path} has too few items`);
+  }
+  if (typeof schema.maxItems === "number" && value.length > schema.maxItems) {
+    throw new BadRequestError(`${path} has too many items`);
+  }
+  if (schema.items) {
+    for (let index = 0; index < value.length; index += 1) {
+      validateJsonSchema(schema.items, value[index], `${path}[${index}]`);
+    }
+  }
 }
 
 function validateObjectSchema(schema: Record<string, unknown>, value: unknown, path: string): void {

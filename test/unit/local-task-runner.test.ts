@@ -47,6 +47,19 @@ describe("local task runner upstream", () => {
           defaultTimeoutSeconds: 1,
           maxTimeoutSeconds: 1,
         },
+        dynamic: {
+          executable: process.execPath,
+          args: ["-e", "console.log(process.argv.slice(1).join('|'))"],
+          allowExtraArgs: true,
+          maxExtraArgs: 2,
+          extraArgPattern: "^[A-Za-z0-9_-]+$",
+          defaultTimeoutSeconds: 2,
+        },
+        missingExecutable: {
+          executable: "webvibe-missing-executable",
+          args: ["--version"],
+          defaultTimeoutSeconds: 2,
+        },
       },
     };
     const runner = new LocalTaskRunnerClient("tasks", policy, root);
@@ -76,6 +89,7 @@ describe("local task runner upstream", () => {
     });
     await expect(runner.callTool("run_task", { taskId: "missingScript" })).resolves.toMatchObject({
       status: "unavailable",
+      unavailableReason: "build",
     });
     await expect(runner.callTool("run_task", { taskId: "format" })).resolves.toMatchObject({
       status: "failed",
@@ -85,5 +99,20 @@ describe("local task runner upstream", () => {
       status: "timeout",
       timeoutSeconds: 1,
     });
+    await expect(
+      runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["alpha", "beta"] }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      stdout: "alpha|beta",
+    });
+    await expect(
+      runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["bad arg"] }),
+    ).rejects.toThrow("not allowed");
+    await expect(runner.callTool("run_task", { taskId: "missingExecutable" })).resolves.toMatchObject(
+      {
+        status: "unavailable",
+        unavailableReason: "Missing executable: webvibe-missing-executable",
+      },
+    );
   });
 });

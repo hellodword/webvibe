@@ -95,6 +95,10 @@
         "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "failOnStdout": { "type": "boolean" },
+        "allowExtraArgs": { "type": "boolean" },
+        "maxExtraArgs": { "type": "integer", "minimum": 1 },
+        "extraArgPattern": { "type": "string" },
+        "allowedExtraArgs": { "type": "array", "items": { "type": "string" } },
         "description": { "type": "string" }
       }
     },

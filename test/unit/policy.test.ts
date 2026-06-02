@@ -25,13 +25,44 @@ describe("default policies", () => {
     const devTools = dev.tools.map((tool) => tool.name);
 
     expect(readOnlyTools).toContain("fs.read_text_file");
+    expect(readOnlyTools).toEqual(
+      expect.arrayContaining([
+        "env.inspect",
+        "project.inspect",
+        "code.search",
+        "code.file_tree",
+        "git.show",
+        "git.branch",
+        "git.ls_files",
+        "git.rev_parse",
+      ]),
+    );
     expect(devTools).toEqual(
       expect.arrayContaining([
         "repo.file_manifest",
         "repo.preview_changeset",
         "repo.apply_changeset",
+        "git.commit_paths",
         "task.npm_test",
         "task.npm_build",
+        "task.npm_install",
+        "task.npm_ci",
+        "task.npm_add_package",
+        "task.npm_remove_package",
+        "task.go_mod_download",
+        "task.go_mod_tidy",
+        "task.go_get",
+        "task.cargo_fetch",
+        "task.cargo_update",
+        "task.cargo_add",
+        "task.uv_sync",
+        "task.uv_add",
+        "task.pip_install_requirements",
+        "task.npm_format",
+        "task.npm_lint_fix",
+        "task.cargo_fmt",
+        "task.go_fmt",
+        "task.uv_run_pytest",
         "task.cargo_clippy",
         "task.go_fmt_check",
       ]),
@@ -40,10 +71,13 @@ describe("default policies", () => {
       [],
     );
     expect(dev.upstreams.tasks.transport).toBe("local-task-runner");
+    expect(devTools.filter((name) => /pnpm|yarn|bun|poetry|maven|gradle|dotnet|ruby|php/.test(name))).toEqual(
+      [],
+    );
     expect(
       readOnly.tools
         .filter((tool) => tool.name.startsWith("git."))
-        .every((tool) => tool.outputSchema),
+        .every((tool) => tool.type === "builtIn" && tool.outputSchema),
     ).toBe(true);
     expect(
       dev.tools

@@ -97,6 +97,10 @@ export const taskPolicySchema = z
     defaultTimeoutSeconds: z.number().int().positive().optional(),
     maxTimeoutSeconds: z.number().int().positive().optional(),
     failOnStdout: z.boolean().optional(),
+    allowExtraArgs: z.boolean().optional(),
+    maxExtraArgs: z.number().int().positive().optional(),
+    extraArgPattern: z.string().optional(),
+    allowedExtraArgs: z.array(z.string()).optional(),
     description: z.string().optional(),
   })
   .passthrough();

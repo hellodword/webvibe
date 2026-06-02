@@ -23,15 +23,20 @@ state directory, mode or custom policy path, and pairing code.
 
 ## Default Modes
 
-- `read-only`: relay info, read-only filesystem tools, and optional read-only Git
-  tools.
-- `dev`: everything in `read-only`, plus batch workspace changeset tools and
-  fixed npm, Cargo, and Go task tools.
+- `read-only`: relay info, sanitized environment inspection, project/code
+  inspection, read-only filesystem tools, and stable read-only Git tools.
+- `dev`: everything in `read-only`, plus batch workspace changeset tools,
+  `git.commit_paths`, and fixed npm, Go, Rust, and Python task tools.
 
 For ChatGPT Web coding work, use `dev` mode. Let the model read/search first,
-then use `repo.file_manifest`, `repo.preview_changeset`, and
-`repo.apply_changeset`. Default dev mode applies a reviewed multi-file changeset
-in one write tool call instead of exposing raw per-file write tools.
+starting with `env.inspect` when environment capability is unclear, then use
+`repo.file_manifest`, `repo.preview_changeset`, and `repo.apply_changeset`.
+Default dev mode applies a reviewed multi-file changeset in one write tool call
+instead of exposing raw per-file write tools.
+
+The default tool list is stable. If a named task cannot run in the current
+workspace or host environment, the call returns `status: "unavailable"` and an
+`unavailableReason` instead of disappearing from the tool list.
 
 ## Documents
 

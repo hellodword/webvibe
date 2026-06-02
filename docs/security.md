@@ -18,6 +18,8 @@ Security model:
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
 - Redaction: common bearer tokens, API keys, cloud secrets, and private keys are
   removed from output/audit material.
+- Environment inspection: `env.inspect` returns sanitized ENV/PATH categories,
+  not raw secret values or raw PATH entries.
 - Audit: every `tools/call` writes JSONL with hashes and sizes, not raw inputs.
   Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
@@ -53,6 +55,15 @@ narrow named task call instead of a raw shell request. Policy must define each
 task ID, executable, arguments, cwd, required files, script requirements, and
 timeout.
 
+Some dependency tasks accept package/module names. Those are still not command
+strings: policy must enable `allowExtraArgs`, set a maximum argument count, and
+provide an allowlist or regular expression. Invalid arguments fail before a
+process is spawned.
+
+The default named tasks cover npm, Go, Rust, and Python only. The default policy
+does not expose pnpm, bun, yarn, Poetry, JVM, .NET, Ruby, PHP, raw shell,
+process control, `git push`, `git reset --hard`, or arbitrary checkout tools.
+
 ## Batch Changesets
 
 Default dev workspace edits go through:
@@ -66,3 +77,29 @@ Default dev workspace edits go through:
 without partial writes. If an apply operation fails after writing starts, prior
 paths are rolled back from snapshots. The confirmation point is the reviewed
 changeset, not each individual file edit.
+
+## Environment Inspection
+
+`env.inspect` is read-only and intentionally lossy:
+
+- ENV values are not returned except a small safe allowlist such as `CI`,
+  `NODE_ENV`, `TERM`, and locale keys.
+- Sensitive ENV keys matching token, secret, key, password, cookie, auth,
+  credential, Kubernetes, Docker, and cloud-provider patterns are counted but
+  their names and values are not returned.
+- PATH is summarized by directory category such as `system`, `workspace`,
+  `node-modules`, `nix-store`, `homebrew`, and `user-home`; raw directories are
+  not returned.
+- Container, devcontainer, CI, and editor detection returns confidence and
+  sanitized evidence labels, not container IDs, pod names, hostnames, or user
+  home paths.
+
+This lets the model choose realistic tools without exposing local secrets or
+high-cardinality machine identifiers.
+
+## Git Commits
+
+`git.commit_paths` stages and commits only explicit workspace-relative paths.
+It rejects protected paths, refuses empty commits, and uses `git commit --only`
+so unrelated staged or unstaged files are not included. The default policy does
+not expose `git push`, `reset --hard`, or arbitrary checkout.

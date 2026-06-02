@@ -31,6 +31,19 @@ Built-in tools are implemented by the relay:
 - `relay.info`
 - `relay.list_upstreams`
 - `relay.list_tools`
+- `env.inspect`
+- `project.inspect`
+- `code.search`
+- `code.file_tree`
+- `git.status`
+- `git.diff_unstaged`
+- `git.diff_staged`
+- `git.log`
+- `git.show`
+- `git.branch`
+- `git.ls_files`
+- `git.rev_parse`
+- `git.commit_paths` in dev mode
 - `repo.file_manifest`
 - `repo.preview_changeset`
 - `repo.apply_changeset`
@@ -91,8 +104,11 @@ By default, path fields must stay inside `workspace.root` and must not match
 
 ## Default Modes
 
-`read-only` exposes relay info, read-only filesystem tools, and optional
-read-only Git tools.
+`read-only` exposes relay info, `env.inspect`, `project.inspect`,
+`code.search`, `code.file_tree`, read-only filesystem tools, and stable
+read-only Git tools. `env.inspect` should be the first call when the model needs
+to know whether the workspace has npm, Go, Rust, Python, `make`, CI,
+devcontainer, or editor signals available.
 
 Default dev mode exposes batch workspace editing through built-in `repo.*`
 tools instead of raw per-file write tools:
@@ -113,6 +129,32 @@ Changeset limits default to 80 paths, 5 MiB per changeset, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
 overwrite newer workspace edits.
 
-Default dev task tools run policy-defined npm, Cargo, and Go commands through
-`local-task-runner`. They do not expose arbitrary command strings or stdin,
-which are common triggers for ChatGPT Web safety review.
+Default dev task tools run policy-defined npm, Go, Rust, and Python commands
+through `local-task-runner`. They do not expose arbitrary command strings or
+stdin, which are common triggers for ChatGPT Web safety review.
+
+Default dev also exposes dependency and fix/verification task tools for npm, Go,
+Rust, and Python only: `task.npm_install`, `task.npm_ci`,
+`task.npm_add_package`, `task.npm_remove_package`, `task.go_mod_download`,
+`task.go_mod_tidy`, `task.go_get`, `task.cargo_fetch`, `task.cargo_update`,
+`task.cargo_add`, `task.uv_sync`, `task.uv_add`,
+`task.pip_install_requirements`, `task.npm_format`, `task.npm_lint_fix`,
+`task.cargo_fmt`, `task.go_fmt`, and `task.uv_run_pytest`. The default policy
+does not include pnpm, bun, yarn, Poetry, JVM, .NET, Ruby, or PHP tasks.
+
+Task tools remain listed even when a manifest, command, or package script is
+missing. Calls return `status: "unavailable"` plus `unavailableReason`, so
+ChatGPT Web does not need a manual refresh to reconcile dynamically hidden
+tools.
+
+`git.commit_paths` is the only default Git mutation tool. It requires explicit
+`paths` and `message`, rejects protected paths, refuses empty commits, and
+commits only the named pathspecs so unrelated dirty files are not included.
+
+## Stable Tool Registration
+
+Default policies avoid environment-dependent hiding for the public tool list.
+ChatGPT Web refreshes MCP tools manually, so dynamic registration can leave the
+model reasoning over stale tools. webvibe instead keeps the list stable and uses
+structured `unavailable` results for missing commands, manifests, scripts, or
+unsupported workspaces.

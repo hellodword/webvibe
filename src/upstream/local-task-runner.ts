@@ -4,7 +4,9 @@ import { spawn } from "node:child_process";
 
 import type { McpToolDescriptor } from "../descriptor/normalize.js";
 import type { TaskPolicy, UpstreamPolicy } from "../policy/policy.js";
+import { BadRequestError } from "../util/errors.js";
 import { isInside } from "../util/paths.js";
+import { findExecutable } from "../workspace/inspect/command.js";
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
 
 type TaskResult = {
@@ -15,6 +17,7 @@ type TaskResult = {
   stderr: string;
   durationMs: number;
   timeoutSeconds: number;
+  unavailableReason?: string;
 };
 
 export class LocalTaskRunnerClient implements UpstreamClient {
@@ -53,6 +56,11 @@ export class LocalTaskRunnerClient implements UpstreamClient {
               minimum: 1,
               maximum: Math.max(...taskIds.map((taskId) => this.maxTimeoutSeconds(taskId)), 1),
             },
+            extraArgs: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 20,
+            },
           },
           required: ["taskId"],
           additionalProperties: false,
@@ -67,6 +75,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             stderr: { type: "string" },
             durationMs: { type: "integer" },
             timeoutSeconds: { type: "integer" },
+            unavailableReason: { type: "string" },
           },
           required: [
             "status",
@@ -110,10 +119,13 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     const unavailable = await this.checkAvailability(taskId, task, cwd, timeoutSeconds, startedAt);
     if (unavailable) return unavailable;
 
+    const env = { ...process.env, ...this.policy.env, ...task.env };
+    const extraArgs = this.extraArgsForTask(task, args.extraArgs);
+
     return new Promise<TaskResult>((resolve) => {
-      const child = spawn(task.executable, task.args ?? [], {
+      const child = spawn(task.executable, [...(task.args ?? []), ...extraArgs], {
         cwd,
-        env: { ...process.env, ...this.policy.env, ...task.env },
+        env,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -153,6 +165,9 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           stderr: stderr || error.message,
           durationMs: Date.now() - startedAt,
           timeoutSeconds,
+          ...(error.code === "ENOENT"
+            ? { unavailableReason: `Missing executable: ${displayExecutable(task.executable)}` }
+            : {}),
         });
       });
       child.on("close", (code) => {
@@ -179,6 +194,16 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     timeoutSeconds: number,
     startedAt: number,
   ): Promise<TaskResult | undefined> {
+    const env = { ...process.env, ...this.policy.env, ...task.env };
+    const executable = await findExecutable(task.executable, env, this.workspaceRoot);
+    if (executable.status === "missing") {
+      return unavailable(
+        taskId,
+        timeoutSeconds,
+        startedAt,
+        `Missing executable: ${displayExecutable(task.executable)}`,
+      );
+    }
     for (const file of task.requiredFiles ?? []) {
       const target = path.resolve(cwd, file);
       if (!isInside(cwd, target)) return unavailable(taskId, timeoutSeconds, startedAt, file);
@@ -229,6 +254,31 @@ export class LocalTaskRunnerClient implements UpstreamClient {
   private tasks(): Record<string, TaskPolicy> {
     return this.policy.tasks ?? {};
   }
+
+  private extraArgsForTask(task: TaskPolicy, raw: unknown): string[] {
+    if (raw === undefined || raw === null) return [];
+    if (!task.allowExtraArgs) throw new BadRequestError("Task does not accept extraArgs");
+    if (!Array.isArray(raw)) throw new BadRequestError("extraArgs must be an array");
+    const maxArgs = task.maxExtraArgs ?? 20;
+    if (raw.length > maxArgs) throw new BadRequestError("extraArgs has too many items");
+    const pattern = task.extraArgPattern ? new RegExp(task.extraArgPattern) : undefined;
+    const allowed = new Set(task.allowedExtraArgs ?? []);
+    return raw.map((item) => {
+      if (typeof item !== "string") throw new BadRequestError("extraArgs items must be string");
+      if (item.length === 0 || item.length > 200 || item.includes("\0")) {
+        throw new BadRequestError("extraArgs item is invalid");
+      }
+      if (!allowed.has(item) && pattern && !pattern.test(item)) {
+        throw new BadRequestError(`extraArgs item is not allowed: ${item}`);
+      }
+      if (!allowed.has(item) && !pattern) throw new BadRequestError("extraArgs are not allowed by pattern");
+      return item;
+    });
+  }
+}
+
+function displayExecutable(executable: string): string {
+  return executable.includes("/") || executable.includes("\\") ? path.basename(executable) : executable;
 }
 
 function unavailable(
@@ -245,5 +295,6 @@ function unavailable(
     stderr: `Task unavailable: ${reason}`,
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
+    unavailableReason: reason,
   };
 }
