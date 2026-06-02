@@ -23,25 +23,29 @@ state directory, mode or custom policy path, and pairing code.
 
 ## Default Modes
 
-- `read-only`: relay info, sanitized environment inspection, project/code
-  inspection, read-only filesystem tools, and stable read-only Git tools.
-- `dev`: everything in `read-only`, plus batch workspace changeset tools,
-  `git.commit_paths`, and fixed npm, Go, Rust, and Python task tools.
+- `read-only`: `context.get`, read-only file tools, read-only Git tools, and
+  `diagnostics.health` through the compact ChatGPT Web tool surface.
+- `dev`: everything in `read-only`, plus one-shot batch file changes,
+  `git.commit`, and one `task.run` entrypoint for fixed npm, Go, Rust, and
+  Python tasks.
 
-For ChatGPT Web coding work, use `dev` mode. Let the model read/search first,
-starting with `env.inspect` when environment capability is unclear, then use
-`repo.file_manifest`, `repo.preview_changeset`, and `repo.apply_changeset`.
-Default dev mode applies a reviewed multi-file changeset in one write tool call
-instead of exposing raw per-file write tools.
+For ChatGPT Web coding work, use `dev` mode. The model should call
+`context.get` first, then read only relevant files, use `change.plan` to inspect
+one complete batch file change, and use one `change.apply` call for the full
+requested file change. Default dev mode does not expose raw per-file write tools
+or arbitrary shell execution.
 
 The default tool list is stable. If a named task cannot run in the current
 workspace or host environment, the call returns `status: "unavailable"` and an
 `unavailableReason` instead of disappearing from the tool list.
+Task availability and accepted task arguments are returned by `context.get`.
 
 ## Documents
 
 - [Architecture](docs/architecture.md): relay boundary, modules, upstreams, and
   why this project does not fork Codex.
+- [ChatGPT Web Workflow](docs/chatgpt-web-workflow.md): recommended tool order,
+  one-shot file approval, tasks, and tool refresh behavior.
 - [Policy](docs/policy.md): policy file shape, tool types, limits, and custom
   policies.
 - [Security](docs/security.md): default-deny model, OAuth/pairing, path guards,

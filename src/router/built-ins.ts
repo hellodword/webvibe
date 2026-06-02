@@ -2,21 +2,17 @@ import type { RelayPolicy } from "../policy/policy.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { ForbiddenError } from "../util/errors.js";
-import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
-import { fileTree, searchCode } from "../workspace/inspect/code.js";
-import { inspectEnvironment } from "../workspace/inspect/env.js";
+import { applyChangeset, previewChangeset } from "../workspace/changeset.js";
+import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
 import {
-  gitBranch,
   gitCommitPaths,
   gitDiffStaged,
   gitDiffUnstaged,
   gitLog,
-  gitLsFiles,
-  gitRevParse,
   gitShow,
   gitStatus,
 } from "../workspace/inspect/git.js";
-import { inspectProject } from "../workspace/inspect/project.js";
+import { getContext, getDiagnostics } from "./context.js";
 
 export type BuiltInContext = {
   registry: Map<string, RegisteredTool>;
@@ -30,40 +26,42 @@ export function callBuiltIn(
   args: Record<string, unknown>,
   context: BuiltInContext,
 ): unknown | Promise<unknown> {
-  if (name === "relay.info") {
-    return {
-      name: "webvibe",
-      mode: context.policy.mode,
-      tools: Array.from(context.registry.keys()),
-    };
-  }
-  if (name === "relay.list_upstreams") {
-    return { upstreams: context.upstreams.listHealth() };
-  }
-  if (name === "relay.list_tools") {
-    return { tools: Array.from(context.registry.values()).map((entry) => entry.descriptor) };
-  }
-  if (name === "env.inspect") {
-    return inspectEnvironment({
+  if (name === "context.get") {
+    return getContext({
       registry: context.registry,
       policy: context.policy,
+      upstreams: context.upstreams,
       workspaceRoot: context.workspaceRoot,
     });
   }
-  if (name === "project.inspect") {
-    return inspectProject(args, {
+  if (name === "diagnostics.health") {
+    return getDiagnostics({
+      registry: context.registry,
+      policy: context.policy,
+      upstreams: context.upstreams,
       workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
     });
   }
-  if (name === "code.search") {
+  if (name === "read.search") {
     return searchCode(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });
   }
-  if (name === "code.file_tree") {
+  if (name === "read.tree") {
     return fileTree(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+    });
+  }
+  if (name === "read.files") {
+    return readFiles(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+    });
+  }
+  if (name === "read.stat") {
+    return fileStat(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });
@@ -74,19 +72,15 @@ export function callBuiltIn(
       workspace: context.policy.workspace,
     });
   }
-  if (name === "git.diff_unstaged") {
-    return gitDiffUnstaged(args, {
+  if (name === "git.diff") {
+    const scope = args.scope === "staged" ? "staged" : "unstaged";
+    const diff = scope === "staged" ? gitDiffStaged : gitDiffUnstaged;
+    return diff(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });
   }
-  if (name === "git.diff_staged") {
-    return gitDiffStaged(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-    });
-  }
-  if (name === "git.log") {
+  if (name === "git.history") {
     return gitLog(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
@@ -98,50 +92,40 @@ export function callBuiltIn(
       workspace: context.policy.workspace,
     });
   }
-  if (name === "git.branch") {
-    return gitBranch(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-    });
-  }
-  if (name === "git.ls_files") {
-    return gitLsFiles(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-    });
-  }
-  if (name === "git.rev_parse") {
-    return gitRevParse(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-    });
-  }
-  if (name === "git.commit_paths") {
+  if (name === "git.commit") {
     return gitCommitPaths(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });
   }
-  if (name === "repo.file_manifest") {
-    return fileManifest(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-      limits: context.policy.limits,
-    });
-  }
-  if (name === "repo.preview_changeset") {
+  if (name === "change.plan") {
     return previewChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
-  if (name === "repo.apply_changeset") {
+  if (name === "change.apply") {
     return applyChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
+  }
+  if (name === "task.run") {
+    if (!context.upstreams.isAvailable("tasks")) {
+      return {
+        status: "unavailable",
+        taskId: typeof args.taskId === "string" ? args.taskId : "",
+        exitCode: null,
+        stdout: "",
+        stderr: "Task upstream is unavailable",
+        durationMs: 0,
+        timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
+        unavailableReason: "Task upstream is unavailable",
+      };
+    }
+    return context.upstreams.call("tasks", "run_task", args);
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
 }

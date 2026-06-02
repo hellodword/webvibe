@@ -46,52 +46,10 @@ export function normalizeDescriptor(
 }
 
 function builtInOutputSchema(name: string): Record<string, unknown> | undefined {
-  if (name === "relay.info") {
+  if (name === "context.get" || name === "diagnostics.health") {
     return {
       type: "object",
-      properties: {
-        name: { type: "string" },
-        mode: { type: "string", enum: ["read-only", "dev"] },
-        tools: { type: "array", items: { type: "string" } },
-      },
-      required: ["name", "tools"],
-      additionalProperties: false,
-    };
-  }
-  if (name === "relay.list_upstreams") {
-    return {
-      type: "object",
-      properties: {
-        upstreams: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              healthy: { type: "boolean" },
-              optional: { type: "boolean" },
-              error: { type: "string" },
-            },
-            required: ["id", "healthy", "optional"],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["upstreams"],
-      additionalProperties: false,
-    };
-  }
-  if (name === "relay.list_tools") {
-    return {
-      type: "object",
-      properties: {
-        tools: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
-      },
-      required: ["tools"],
-      additionalProperties: false,
+      additionalProperties: true,
     };
   }
   return undefined;

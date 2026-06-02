@@ -34,6 +34,17 @@ describe("tool router", () => {
         stateDir,
       });
 
+      await expect(
+        router.call("read.files", { paths: ["README.md"] }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        status: "blocked",
+        code: "CONTEXT_REQUIRED",
+        nextTool: "context.get",
+      });
+      await expect(router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
+        status: "ok",
+        toolSurface: { version: "2.0.0" },
+      });
       await expect(router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
       );
@@ -45,16 +56,12 @@ describe("tool router", () => {
       expect(applied).toMatchObject({ ok: true, applied: true });
 
       await writeFile(path.join(root, "code.txt"), "old\n");
-      const manifest = await router.call(
-        "repo.file_manifest",
-        { paths: ["code.txt"] },
-        { clientId: "c1" },
-      );
-      expect(manifest).toMatchObject({
-        files: [{ path: "code.txt", exists: true, type: "file" }],
+      const files = await router.call("read.files", { paths: ["code.txt"] }, { clientId: "c1" });
+      expect(files).toMatchObject({
+        files: [{ path: "code.txt", exists: true, type: "file", content: "old\n" }],
       });
       const changeset = await router.call(
-        "repo.apply_changeset",
+        "change.apply",
         {
           changes: [
             {
@@ -75,11 +82,13 @@ describe("tool router", () => {
       const workflow = await router.call("x.run", { timeoutSeconds: 2 }, { clientId: "c1" });
       expect(workflow).toMatchObject({ ok: true, command: "npm test", timeout: 2000 });
       policy.limits.maxToolOutputBytes = 10;
+      await router.call("context.get", {}, { clientId: "c2" });
       await expect(
         router.call("x.read", { path: "README.md" }, { clientId: "c2" }),
       ).resolves.toMatchObject({ truncated: true });
       await expect(router.call("x.nope", {}, { clientId: "c1" })).rejects.toThrow("not exposed");
       const audit = await readFile(path.join(stateDir, "audit.log"), "utf8");
+      expect(audit).toContain('"status":"blocked"');
       expect(audit).toContain('"tool":"x.edit_apply"');
       expect(audit).toContain('"tool":"x.nope"');
       expect(audit).not.toContain("oldText");
@@ -106,16 +115,17 @@ describe("tool router", () => {
         stateDir,
       });
 
-      policy.limits.maxCallsPerMinute = 1;
+      policy.limits.maxCallsPerMinute = 2;
+      await router.call("context.get", {}, { clientId: "rate-client" });
       await router.call("x.read", { path: "README.md" }, { clientId: "rate-client" });
       await expect(
         router.call("x.read", { path: "README.md" }, { clientId: "rate-client" }),
       ).rejects.toThrow("Rate limit");
 
       policy.limits.maxCallsPerMinute = 120;
-      policy.limits.timeoutMs = 20;
+      await router.call("context.get", {}, { clientId: "timeout-client" });
       await expect(
-        router.call("x.slow", { delayMs: 100 }, { clientId: "timeout-client" }),
+        router.call("x.slow", { delayMs: 7000 }, { clientId: "timeout-client" }),
       ).rejects.toThrow("timed out");
     } finally {
       await upstreams.close();

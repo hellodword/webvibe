@@ -11,11 +11,12 @@ export type AuditRecord = {
   tool: string;
   type: string;
   upstream?: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "blocked";
   durationMs: number;
   inputHash: string;
   outputBytes: number;
   error?: string;
+  errorCode?: string;
 };
 
 export class AuditLog {
@@ -50,11 +51,12 @@ export function buildAuditRecord(input: {
   tool: string;
   type: string;
   upstream?: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "blocked";
   startedAt: number;
   input: unknown;
   output: unknown;
   error?: string;
+  errorCode?: string;
 }): AuditRecord {
   const outputText =
     typeof input.output === "string" ? input.output : JSON.stringify(input.output ?? null);
@@ -70,5 +72,6 @@ export function buildAuditRecord(input: {
     inputHash: sha256(input.input),
     outputBytes: Buffer.byteLength(outputText),
     error: input.error,
+    errorCode: input.errorCode,
   };
 }

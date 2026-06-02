@@ -8,8 +8,8 @@ Security model:
   glob patterns.
 - Narrow tasks: default dev tasks run only policy-defined executable/argument
   pairs through `local-task-runner`.
-- Batch changesets: default dev mode applies workspace edits through one
-  `repo.apply_changeset` call instead of exposing raw per-file write tools.
+- Batch changes: default dev mode applies workspace edits through one
+  `change.apply` call instead of exposing raw per-file write tools.
 - Hash guards: update/delete changes require `expectedSha256`, and stale hashes
   fail without writing any file.
 - Symlink guard: changeset writes reject symlink targets and symlink parents.
@@ -18,7 +18,7 @@ Security model:
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
 - Redaction: common bearer tokens, API keys, cloud secrets, and private keys are
   removed from output/audit material.
-- Environment inspection: `env.inspect` returns sanitized ENV/PATH categories,
+- Context preflight: `context.get` returns sanitized ENV/PATH categories,
   not raw secret values or raw PATH entries.
 - Audit: every `tools/call` writes JSONL with hashes and sizes, not raw inputs.
   Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
@@ -47,13 +47,13 @@ Default access token TTL is 30 days.
 
 ## Narrow Local Tasks
 
-Default dev task tools go through `local-task-runner`, not a general process
+`task.run` goes through `local-task-runner`, not a general process
 control MCP server. This avoids broad capabilities commonly present in
 desktop-commander style servers, including arbitrary command strings, process
 control, wide file mutation, and session state. It also gives ChatGPT Web a
 narrow named task call instead of a raw shell request. Policy must define each
 task ID, executable, arguments, cwd, required files, script requirements, and
-timeout.
+timeout. `context.get` reports available task IDs and argument rules.
 
 Some dependency tasks accept package/module names. Those are still not command
 strings: policy must enable `allowExtraArgs`, set a maximum argument count, and
@@ -64,23 +64,22 @@ The default named tasks cover npm, Go, Rust, and Python only. The default policy
 does not expose pnpm, bun, yarn, Poetry, JVM, .NET, Ruby, PHP, raw shell,
 process control, `git push`, `git reset --hard`, or arbitrary checkout tools.
 
-## Batch Changesets
+## Batch Changes
 
 Default dev workspace edits go through:
 
-- `repo.file_manifest`: read file existence, type, size, hash, and mtime.
-- `repo.preview_changeset`: validate and diff a proposed changeset without
+- `change.plan`: validate and diff a complete proposed batch change without
   writing.
-- `repo.apply_changeset`: apply the complete changeset in one operation.
+- `change.apply`: apply the complete batch change in one write operation.
 
 `replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
 without partial writes. If an apply operation fails after writing starts, prior
 paths are rolled back from snapshots. The confirmation point is the reviewed
-changeset, not each individual file edit.
+batch change, not each individual file edit.
 
-## Environment Inspection
+## Context Preflight
 
-`env.inspect` is read-only and intentionally lossy:
+`context.get` is read-only and intentionally lossy:
 
 - ENV values are not returned except a small safe allowlist such as `CI`,
   `NODE_ENV`, `TERM`, and locale keys.
@@ -99,7 +98,7 @@ high-cardinality machine identifiers.
 
 ## Git Commits
 
-`git.commit_paths` stages and commits only explicit workspace-relative paths.
+`git.commit` stages and commits only explicit workspace-relative paths.
 It rejects protected paths, refuses empty commits, and uses `git commit --only`
 so unrelated staged or unstaged files are not included. The default policy does
 not expose `git push`, `reset --hard`, or arbitrary checkout.

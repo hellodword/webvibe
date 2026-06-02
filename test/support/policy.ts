@@ -23,19 +23,23 @@ upstreams:
     command: "__webvibe_missing_command__"
     optional: true
 tools:
-  - name: relay.info
+  - name: context.get
     type: builtIn
-  - name: relay.list_upstreams
+  - name: diagnostics.health
     type: builtIn
-  - name: relay.list_tools
+  - name: read.files
     type: builtIn
-  - name: repo.file_manifest
-    type: builtIn
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-  - name: repo.apply_changeset
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+  - name: change.apply
     type: builtIn
     annotations:
       readOnlyHint: false
@@ -98,9 +102,8 @@ tools:
             command: "npm test"
             timeout_ms: "\${coalesce(input.timeoutSeconds, 5) * 1000}"
   - name: x.slow
-    type: passThrough
-    upstream: main
-    upstreamTool: slow
+    type: workflow
+    description: Run slow fake workflow
     inputSchema:
       type: object
       properties:
@@ -108,6 +111,15 @@ tools:
           type: integer
       required: ["delayMs"]
       additionalProperties: false
+    timeoutSeconds:
+      default: 1
+      maximum: 1
+    steps:
+      - call:
+          upstream: main
+          tool: slow
+          input:
+            delayMs: "\${input.delayMs}"
 limits:
   maxToolOutputBytes: 60000
   timeoutMs: 30000

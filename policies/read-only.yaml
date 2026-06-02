@@ -14,75 +14,46 @@ workspace:
     - "dist/**"
     - "build/**"
 
-upstreams:
-  fs:
-    transport: stdio
-    command: npx
-    args:
-      - -y
-      - "@modelcontextprotocol/server-filesystem"
-      - "${workspaceRoot}"
+upstreams: {}
 
 tools:
-  - name: relay.info
+  - name: context.get
     type: builtIn
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: relay.list_upstreams
-    type: builtIn
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: relay.list_tools
-    type: builtIn
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: env.inspect
-    type: builtIn
-    description: Inspect the current local environment with sanitized ENV/PATH, command availability, project manifests, webvibe tools, and guidance.
-    inputSchema:
+    description: ChatGPT Web coding preflight. Call this first before reading files, inspecting Git, planning changes, applying changes, running tasks, or committing. Returns workspace context, project manifests, task availability, upstream health, current tool surface version, warnings, and recommended workflow.
+    inputSchema: &emptyInputSchema
       type: object
       additionalProperties: false
     outputSchema: &genericObjectOutputSchema
       type: object
       additionalProperties: true
-    annotations:
+    annotations: &readOnlyAnnotations
       readOnlyHint: true
       destructiveHint: false
       openWorldHint: false
 
-  - name: project.inspect
+  - name: read.tree
     type: builtIn
-    description: Inspect project manifests, lockfiles, package managers, languages, and npm scripts.
+    description: Return a bounded workspace file tree while skipping protected paths. Requires context.get first.
     inputSchema:
       type: object
       properties:
-        maxDepth:
+        path:
+          type: string
+        depth:
           type: integer
           minimum: 0
           maximum: 8
-        maxManifests:
+        maxEntries:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 1000
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
-  - name: code.search
+  - name: read.search
     type: builtIn
-    description: Search workspace text files by literal query while skipping protected paths.
+    description: Search workspace text files by literal query while skipping protected paths. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -103,94 +74,42 @@ tools:
       required: [query]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
-  - name: code.file_tree
+  - name: read.files
     type: builtIn
-    description: Return a bounded workspace file tree while skipping protected paths.
+    description: Read one or more workspace text files while enforcing protected paths and output limits. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: read.stat
+    type: builtIn
+    description: Return metadata for one workspace path while enforcing protected paths. Requires context.get first.
     inputSchema:
       type: object
       properties:
         path:
           type: string
-        depth:
-          type: integer
-          minimum: 0
-          maximum: 8
-        maxEntries:
-          type: integer
-          minimum: 1
-          maximum: 1000
+      required: [path]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: fs.read_text_file
-    type: passThrough
-    upstream: fs
-    upstreamTool: read_text_file
-    inputPolicy:
-      pathFields: ["path"]
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: fs.read_multiple_files
-    type: passThrough
-    upstream: fs
-    upstreamTool: read_multiple_files
-    inputPolicy:
-      pathFields: ["paths"]
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: fs.list_directory
-    type: passThrough
-    upstream: fs
-    upstreamTool: list_directory
-    inputPolicy:
-      pathFields: ["path"]
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: fs.search_files
-    type: passThrough
-    upstream: fs
-    upstreamTool: search_files
-    inputPolicy:
-      pathFields: ["path"]
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: fs.get_file_info
-    type: passThrough
-    upstream: fs
-    upstreamTool: get_file_info
-    inputPolicy:
-      pathFields: ["path"]
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
   - name: git.status
     type: builtIn
-    inputSchema: &emptyInputSchema
-      type: object
-      additionalProperties: false
+    description: Show concise Git worktree status. Requires context.get first.
+    inputSchema: *emptyInputSchema
     outputSchema: &gitOutputSchema
       type: object
       properties:
@@ -211,36 +130,26 @@ tools:
           type: string
       required: [status, command, exitCode, stdout, stderr, durationMs]
       additionalProperties: false
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
-  - name: git.diff_unstaged
+  - name: git.diff
     type: builtIn
-    inputSchema: &gitPathInputSchema
+    description: Show staged or unstaged Git diff for the workspace or one path. Requires context.get first.
+    inputSchema:
       type: object
       properties:
+        scope:
+          type: string
+          enum: [unstaged, staged]
         path:
           type: string
       additionalProperties: false
     outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
-  - name: git.diff_staged
+  - name: git.history
     type: builtIn
-    inputSchema: *gitPathInputSchema
-    outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: git.log
-    type: builtIn
+    description: Show recent Git history. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -250,13 +159,11 @@ tools:
           maximum: 200
       additionalProperties: false
     outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
   - name: git.show
     type: builtIn
+    description: Show one Git revision with stat and patch, optionally scoped to a path. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -268,49 +175,14 @@ tools:
           type: string
       additionalProperties: false
     outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    annotations: *readOnlyAnnotations
 
-  - name: git.branch
+  - name: diagnostics.health
     type: builtIn
-    inputSchema:
-      type: object
-      properties:
-        all:
-          type: boolean
-      additionalProperties: false
-    outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: git.ls_files
-    type: builtIn
-    inputSchema: *gitPathInputSchema
-    outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
-
-  - name: git.rev_parse
-    type: builtIn
-    inputSchema:
-      type: object
-      properties:
-        revision:
-          type: string
-          minLength: 1
-          maxLength: 200
-      additionalProperties: false
-    outputSchema: *gitOutputSchema
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    description: Return webvibe relay diagnostics, tool surface version, hashes, and upstream health. This is for connector diagnostics, not the ChatGPT Web coding preflight.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
 
 limits:
   maxToolOutputBytes: 60000

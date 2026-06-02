@@ -11,6 +11,11 @@ import { assertToolAllowed } from "./namespace.js";
 import { prepareToolOutput } from "./output.js";
 import { RateLimiter } from "./rate-limit.js";
 import { toolTimeoutMs, withToolTimeout } from "./timeout.js";
+import {
+  buildPreflightFingerprint,
+  fingerprintsEqual,
+  type PreflightFingerprint,
+} from "./tool-surface.js";
 import { executeWorkflow } from "./workflow.js";
 
 export type CallerIdentity = {
@@ -29,6 +34,10 @@ export type ToolCallOptions = {
 
 export class ToolRouter {
   private readonly rateLimiter = new RateLimiter();
+  private readonly preflight = new Map<
+    string,
+    { inspectedAt: string; fingerprint: PreflightFingerprint }
+  >();
 
   constructor(private readonly options: ToolCallOptions) {}
 
@@ -42,13 +51,37 @@ export class ToolRouter {
     try {
       assertToolAllowed(name, this.options.registry);
       entry = this.options.registry.get(name)!;
-      args = assertToolInput(entry.policy, rawArgs);
       this.rateLimiter.assertAllowed(caller, this.options.policy.limits.maxCallsPerMinute);
+      const contextBlock = this.contextBlock(name, caller);
+      if (contextBlock) {
+        await this.options.audit.write(
+          buildAuditRecord({
+            clientId: caller.clientId,
+            subject: caller.subject,
+            tool: name,
+            type: entry.policy.type,
+            upstream: entry.policy.type === "passThrough" ? entry.policy.upstream : undefined,
+            status: "blocked",
+            startedAt,
+            input: args,
+            output: contextBlock,
+            errorCode: contextBlock.code,
+          }),
+        );
+        return contextBlock;
+      }
+      args = assertToolInput(entry.policy, rawArgs);
       const output = await withToolTimeout(
         this.execute(entry.policy, args, caller),
         toolTimeoutMs(entry.policy, args, this.options.policy.limits.timeoutMs),
         name,
       );
+      if (name === "context.get") {
+        this.preflight.set(this.callerKey(caller), {
+          inspectedAt: new Date().toISOString(),
+          fingerprint: this.currentFingerprint(),
+        });
+      }
       const finalOutput = prepareToolOutput(output, this.options.policy.limits.maxToolOutputBytes);
       await this.options.audit.write(
         buildAuditRecord({
@@ -78,10 +111,35 @@ export class ToolRouter {
           input: args,
           output: null,
           error: err.message,
+          errorCode: "code" in err && typeof (err as any).code === "string" ? (err as any).code : undefined,
         }),
       );
       throw err;
     }
+  }
+
+  private contextBlock(
+    name: string,
+    caller: CallerIdentity,
+  ): { status: "blocked"; code: "CONTEXT_REQUIRED"; message: string; nextTool: "context.get"; reason: string } | undefined {
+    if (name === "context.get" || name === "diagnostics.health") return undefined;
+    const state = this.preflight.get(this.callerKey(caller));
+    if (!state) return contextRequired("missing");
+    if (!fingerprintsEqual(state.fingerprint, this.currentFingerprint())) return contextRequired("stale");
+    return undefined;
+  }
+
+  private callerKey(caller: CallerIdentity): string {
+    return caller.subject ?? caller.clientId ?? "anonymous";
+  }
+
+  private currentFingerprint(): PreflightFingerprint {
+    return buildPreflightFingerprint({
+      workspaceRoot: this.options.workspaceRoot,
+      policy: this.options.policy,
+      registry: this.options.registry,
+      upstreams: this.options.upstreams,
+    });
   }
 
   private async execute(
@@ -153,4 +211,20 @@ export class ToolRouter {
       },
     });
   }
+}
+
+function contextRequired(reason: string): {
+  status: "blocked";
+  code: "CONTEXT_REQUIRED";
+  message: string;
+  nextTool: "context.get";
+  reason: string;
+} {
+  return {
+    status: "blocked",
+    code: "CONTEXT_REQUIRED",
+    message: "Call context.get before using workspace tools.",
+    nextTool: "context.get",
+    reason,
+  };
 }

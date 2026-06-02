@@ -67,6 +67,12 @@ auth:
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
 
+      const context = await mcp(firstBase, token.access_token, "tools/call", {
+        name: "context.get",
+        arguments: {},
+      });
+      expect(context.result.content[0].text).toContain("toolSurface");
+
       const call = await mcp(firstBase, token.access_token, "tools/call", {
         name: "x.read",
         arguments: { path: "README.md" },
@@ -82,7 +88,7 @@ auth:
       const secondBase = baseUrl(second.http.server.address());
       try {
         const info = await mcp(secondBase, token.access_token, "tools/call", {
-          name: "relay.info",
+          name: "diagnostics.health",
           arguments: {},
         });
         expect(info.result.content[0].text).toContain("webvibe");

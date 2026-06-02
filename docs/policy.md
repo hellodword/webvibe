@@ -21,140 +21,87 @@ Important fields:
   `workflow`.
 - `workspace.protected`: generic path deny patterns.
 - `limits`: output byte limit, tool-call timeout, per-client call rate, and
-  changeset size limits.
+  batch change size limits.
 - `audit`: JSONL audit logging switch and rotation size.
 
-## Tool Types
+## Default Tool Surface
 
-Built-in tools are implemented by the relay:
+The built-in ChatGPT Web tool surface is intentionally compact:
 
-- `relay.info`
-- `relay.list_upstreams`
-- `relay.list_tools`
-- `env.inspect`
-- `project.inspect`
-- `code.search`
-- `code.file_tree`
+- `context.get`
+- `read.tree`
+- `read.search`
+- `read.files`
+- `read.stat`
+- `change.plan` in dev mode
+- `change.apply` in dev mode
+- `task.run` in dev mode
 - `git.status`
-- `git.diff_unstaged`
-- `git.diff_staged`
-- `git.log`
+- `git.diff`
+- `git.history`
 - `git.show`
-- `git.branch`
-- `git.ls_files`
-- `git.rev_parse`
-- `git.commit_paths` in dev mode
-- `repo.file_manifest`
-- `repo.preview_changeset`
-- `repo.apply_changeset`
+- `git.commit` in dev mode
+- `diagnostics.health`
 
-Pass-through tools map one public tool name to one upstream tool:
+`context.get` is the first tool for coding work. It returns project manifests,
+task availability, upstream health, tool surface version, warnings, and the
+recommended workflow. All workspace tools except `diagnostics.health` require a
+successful `context.get` call for the same caller and current tool surface.
 
-```yaml
-- name: fs.read_text_file
-  type: passThrough
-  upstream: fs
-  upstreamTool: read_text_file
-```
+If a workspace tool is called too early, webvibe returns a normal blocked tool
+result with `code: "CONTEXT_REQUIRED"` and `nextTool: "context.get"`.
 
-Tools may define `outputSchema` to describe their structured result payload for
-ChatGPT and MCP clients. If a pass-through upstream already provides one,
-webvibe forwards it unless the policy overrides it.
+## Reading
 
-Workflow tools expose narrow stable actions while delegating execution to a
-configured upstream:
+`read.*` tools are relay built-ins. The default policies do not expose raw
+filesystem pass-through tools. This keeps path protection, output truncation,
+and result shape under webvibe control.
 
-```yaml
-upstreams:
-  tasks:
-    transport: local-task-runner
-    tasks:
-      npm_test:
-        executable: npm
-        args: ["test"]
+## Batch Changes
 
-tools:
-  - name: task.npm_test
-    type: workflow
-    inputSchema:
-      type: object
-      additionalProperties: false
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_test
-```
+Default dev mode exposes one read-only planning tool and one write tool:
 
-## Input Policy
-
-Input policy supports fixed required values, denied values, and protected path
-checks.
-
-```yaml
-inputPolicy:
-  require:
-    dryRun: true
-  pathFields: ["path"]
-```
-
-By default, path fields must stay inside `workspace.root` and must not match
-`workspace.protected`. A tool can opt out with `protectedPathPolicy: allow`.
-
-## Default Modes
-
-`read-only` exposes relay info, `env.inspect`, `project.inspect`,
-`code.search`, `code.file_tree`, read-only filesystem tools, and stable
-read-only Git tools. `env.inspect` should be the first call when the model needs
-to know whether the workspace has npm, Go, Rust, Python, `make`, CI,
-devcontainer, or editor signals available.
-
-Default dev mode exposes batch workspace editing through built-in `repo.*`
-tools instead of raw per-file write tools:
-
-- `repo.file_manifest`: read current file hashes before editing.
-- `repo.preview_changeset`: validate and preview a multi-file changeset without
-  writing.
-- `repo.apply_changeset`: apply a complete reviewed changeset in one write
-  operation.
+- `change.plan`: validate a complete batch change, detect conflicts, and return
+  a diff without writing.
+- `change.apply`: apply the complete user-requested file change in one write
+  call.
 
 This matches ChatGPT Web's confirmation model. File operations require user
-confirmation and cannot be set to run without asking like Codex, so the default
-policy puts confirmation at the reviewed changeset boundary. Raw filesystem
-write/edit/directory tools are not exposed by the default dev policy, but a
-custom policy can still add them explicitly.
+confirmation, so the default policy puts confirmation at one batch change
+boundary instead of repeated per-file writes.
 
-Changeset limits default to 80 paths, 5 MiB per changeset, and 1 MiB per file.
+Batch change limits default to 80 paths, 5 MiB per change, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
 overwrite newer workspace edits.
 
-Default dev task tools run policy-defined npm, Go, Rust, and Python commands
-through `local-task-runner`. They do not expose arbitrary command strings or
-stdin, which are common triggers for ChatGPT Web safety review.
+## Tasks
 
-Default dev also exposes dependency and fix/verification task tools for npm, Go,
-Rust, and Python only: `task.npm_install`, `task.npm_ci`,
-`task.npm_add_package`, `task.npm_remove_package`, `task.go_mod_download`,
-`task.go_mod_tidy`, `task.go_get`, `task.cargo_fetch`, `task.cargo_update`,
-`task.cargo_add`, `task.uv_sync`, `task.uv_add`,
-`task.pip_install_requirements`, `task.npm_format`, `task.npm_lint_fix`,
-`task.cargo_fmt`, `task.go_fmt`, and `task.uv_run_pytest`. The default policy
-does not include pnpm, bun, yarn, Poetry, JVM, .NET, Ruby, or PHP tasks.
+`task.run` runs one policy-defined task by `taskId`. It does not accept
+arbitrary shell commands or stdin. Available task IDs, timeout defaults, extra
+argument rules, and unavailable reasons are returned by `context.get`.
 
-Task tools remain listed even when a manifest, command, or package script is
-missing. Calls return `status: "unavailable"` plus `unavailableReason`, so
-ChatGPT Web does not need a manual refresh to reconcile dynamically hidden
-tools.
+The default dev policy configures npm, Go, Rust, and Python tasks through
+`local-task-runner`. Task availability changes do not change the public tool
+list, so ChatGPT Web does not need a manual tool refresh when a manifest,
+command, or package script is missing.
 
-`git.commit_paths` is the only default Git mutation tool. It requires explicit
-`paths` and `message`, rejects protected paths, refuses empty commits, and
-commits only the named pathspecs so unrelated dirty files are not included.
+## Git
+
+Read-only Git tools are `git.status`, `git.diff`, `git.history`, and
+`git.show`. `git.commit` is the only default Git mutation tool. It requires
+explicit `paths` and `message`, rejects protected paths, refuses empty commits,
+and commits only the named pathspecs so unrelated dirty files are not included.
+
+## Diagnostics
+
+`diagnostics.health` is for connector diagnostics, not coding preflight. It
+returns relay mode, tool surface version, policy/tool hashes, and upstream
+health.
 
 ## Stable Tool Registration
 
 Default policies avoid environment-dependent hiding for the public tool list.
 ChatGPT Web refreshes MCP tools manually, so dynamic registration can leave the
-model reasoning over stale tools. webvibe instead keeps the list stable and uses
-structured `unavailable` results for missing commands, manifests, scripts, or
-unsupported workspaces.
+model reasoning over stale tools. webvibe keeps the list stable and uses
+structured `unavailable` and `CONTEXT_REQUIRED` results instead. Tool surface
+renames are hard cuts; users must refresh connector tools in ChatGPT Web.

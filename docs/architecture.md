@@ -63,11 +63,11 @@ upstreams fail startup.
 
 ## Environment Awareness
 
-`env.inspect` is a relay built-in, not an upstream command surface. It collects
-the environment facts a coding model usually needs: OS/architecture,
-container/devcontainer/editor/CI signals, PATH categories, command availability,
-project manifests, lockfiles, npm scripts, current webvibe tools, missing task
-reasons, and guidance.
+`context.get` is the ChatGPT Web coding preflight. It collects the facts a
+coding model usually needs: OS/architecture, container/devcontainer/editor/CI
+signals, PATH categories, command availability, project manifests, lockfiles,
+npm scripts, current webvibe tools, upstream health, missing task reasons, and
+guidance.
 
 The module deliberately returns categorized and bounded data. ENV values are
 redacted except a small safe allowlist, PATH entries are categories rather than
@@ -81,7 +81,8 @@ to manually refresh tools. Dynamic hiding based on local command availability ca
 leave the model reasoning over stale descriptors. Default webvibe policies keep
 the public tool list stable and gate execution inside tools. If `cargo`, `make`,
 `pip`, a manifest, or a package script is missing, the named task returns
-`status: "unavailable"` with `unavailableReason`.
+`status: "unavailable"` with `unavailableReason`. Task IDs and availability are
+reported by `context.get`; the public task tool remains `task.run`.
 
 ## Why Local Task Runner
 
@@ -103,11 +104,11 @@ a shell command.
 
 ## Why Batch Workspace Apply
 
-Default dev mode uses `repo.file_manifest`, `repo.preview_changeset`, and
-`repo.apply_changeset` instead of raw filesystem write/edit tools. ChatGPT Web
-asks for confirmation on file operations and cannot be configured like Codex to
-skip those prompts. A complete changeset gives the user one reviewed write
-boundary instead of many small per-file confirmations.
+Default dev mode uses `change.plan` and `change.apply` instead of raw
+filesystem write/edit tools. ChatGPT Web asks for confirmation on file
+operations and cannot be configured like Codex to skip those prompts. A complete
+batch change gives the user one reviewed write boundary instead of many small
+per-file confirmations.
 
-Batch changesets also give the relay one place to enforce hash guards,
-protected paths, symlink guards, UTF-8 checks, size limits, and rollback.
+Batch changes also give the relay one place to enforce hash guards, protected
+paths, symlink guards, UTF-8 checks, size limits, and rollback.

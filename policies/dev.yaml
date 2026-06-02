@@ -1,7 +1,18 @@
 version: 1
 mode: dev
 
-extends: ./read-only.yaml
+workspace:
+  root: "${workspaceRoot}"
+  protected:
+    - ".git/**"
+    - ".env"
+    - "**/.env"
+    - "**/*.pem"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
 
 upstreams:
   tasks:
@@ -226,38 +237,99 @@ upstreams:
         maxTimeoutSeconds: 36000
 
 tools:
-  - name: repo.file_manifest
+  - name: context.get
     type: builtIn
-    description: Use this before editing to get current workspace file hashes for one or more paths.
+    description: ChatGPT Web coding preflight. Call this first before reading files, inspecting Git, planning changes, applying changes, running tasks, or committing. Returns workspace context, project manifests, task availability, upstream health, current tool surface version, warnings, and recommended workflow.
+    inputSchema: &emptyInputSchema
+      type: object
+      additionalProperties: false
+    outputSchema: &genericObjectOutputSchema
+      type: object
+      additionalProperties: true
+    annotations: &readOnlyAnnotations
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+
+  - name: read.tree
+    type: builtIn
+    description: Return a bounded workspace file tree while skipping protected paths. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        path:
+          type: string
+        depth:
+          type: integer
+          minimum: 0
+          maximum: 8
+        maxEntries:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: read.search
+    type: builtIn
+    description: Search workspace text files by literal query while skipping protected paths. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 500
+        path:
+          type: string
+        glob:
+          type: string
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 200
+        caseSensitive:
+          type: boolean
+      required: [query]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: read.files
+    type: builtIn
+    description: Read one or more workspace text files while enforcing protected paths and output limits. Requires context.get first.
     inputSchema:
       type: object
       properties:
         paths:
           type: array
           minItems: 1
+          maxItems: 50
           items:
             type: string
       required: [paths]
       additionalProperties: false
-    outputSchema:
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: read.stat
+    type: builtIn
+    description: Return metadata for one workspace path while enforcing protected paths. Requires context.get first.
+    inputSchema:
       type: object
       properties:
-        files:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-      required: [files]
+        path:
+          type: string
+      required: [path]
       additionalProperties: false
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
 
-  - name: repo.preview_changeset
+  - name: change.plan
     type: builtIn
-    description: Use this to validate and preview a complete multi-file workspace changeset before applying it.
-    inputSchema: &changesetInputSchema
+    description: Read-only planning tool for one complete batch workspace change. Validates proposed create/edit/replace/delete/mkdir operations, detects conflicts, and returns a diff. Requires context.get first.
+    inputSchema: &changeInputSchema
       type: object
       properties:
         baseRevision:
@@ -295,91 +367,57 @@ tools:
             additionalProperties: false
       required: [changes]
       additionalProperties: false
-    outputSchema:
-      type: object
-      properties:
-        valid:
-          type: boolean
-        baseRevision:
-          type: string
-        summary:
-          type: object
-          additionalProperties: true
-        files:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        diff:
-          type: string
-        conflicts:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-      required: [valid, summary, files, diff, conflicts]
-      additionalProperties: false
-    annotations:
-      readOnlyHint: true
-      destructiveHint: false
-      openWorldHint: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
     _meta:
-      "openai/toolInvocation/invoking": "Previewing changes"
-      "openai/toolInvocation/invoked": "Changes previewed"
+      "openai/toolInvocation/invoking": "Planning change"
+      "openai/toolInvocation/invoked": "Change planned"
 
-  - name: repo.apply_changeset
+  - name: change.apply
     type: builtIn
-    description: Use this to apply a complete reviewed multi-file workspace changeset in one write operation.
-    inputSchema: *changesetInputSchema
-    outputSchema:
-      type: object
-      properties:
-        applied:
-          type: boolean
-        baseRevision:
-          type: string
-        summary:
-          type: object
-          additionalProperties: true
-        files:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        conflicts:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-      required: [applied, summary, files, conflicts]
-      additionalProperties: false
+    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Requires context.get first.
+    inputSchema: *changeInputSchema
+    outputSchema: *genericObjectOutputSchema
     annotations:
       readOnlyHint: false
       destructiveHint: true
       openWorldHint: false
     _meta:
-      "openai/toolInvocation/invoking": "Applying changes"
-      "openai/toolInvocation/invoked": "Changes applied"
+      "openai/toolInvocation/invoking": "Applying change"
+      "openai/toolInvocation/invoked": "Change applied"
 
-  - name: git.commit_paths
+  - name: task.run
     type: builtIn
-    description: Commit only explicit workspace-relative paths with the provided message; protected paths are rejected and unrelated dirty files are not included.
+    description: Run one preconfigured local task by taskId. Does not accept arbitrary shell commands. Available taskIds, argument rules, and availability are returned by context.get. Requires context.get first.
     inputSchema:
       type: object
       properties:
-        paths:
-          type: array
-          minItems: 1
-          maxItems: 80
-          items:
-            type: string
-        message:
+        taskId:
           type: string
           minLength: 1
-          maxLength: 500
-      required: [paths, message]
+          maxLength: 100
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 36000
+        extraArgs:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+      required: [taskId]
       additionalProperties: false
-    outputSchema:
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      openWorldHint: false
+
+  - name: git.status
+    type: builtIn
+    description: Show concise Git worktree status. Requires context.get first.
+    inputSchema: *emptyInputSchema
+    outputSchema: &gitOutputSchema
       type: object
       properties:
         status:
@@ -399,628 +437,87 @@ tools:
           type: string
       required: [status, command, exitCode, stdout, stderr, durationMs]
       additionalProperties: false
+    annotations: *readOnlyAnnotations
+
+  - name: git.diff
+    type: builtIn
+    description: Show staged or unstaged Git diff for the workspace or one path. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [unstaged, staged]
+        path:
+          type: string
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.history
+    type: builtIn
+    description: Show recent Git history. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        maxCount:
+          type: integer
+          minimum: 1
+          maximum: 200
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.show
+    type: builtIn
+    description: Show one Git revision with stat and patch, optionally scoped to a path. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        revision:
+          type: string
+          minLength: 1
+          maxLength: 200
+        path:
+          type: string
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.commit
+    type: builtIn
+    description: Commit only explicit workspace-relative paths with the provided message; protected paths are rejected and unrelated dirty files are not included. Requires context.get first.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 80
+          items:
+            type: string
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required: [paths, message]
+      additionalProperties: false
+    outputSchema: *gitOutputSchema
     annotations:
       readOnlyHint: false
       destructiveHint: true
       openWorldHint: false
 
-  - name: task.npm_test
-    type: workflow
-    description: Run the npm test script in the configured workspace.
-    inputSchema: &taskInputSchema
-      type: object
-      properties:
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 36000
-      additionalProperties: false
-    outputSchema: &taskOutputSchema
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [ok, failed, timeout, unavailable]
-        taskId:
-          type: string
-        exitCode:
-          type: ["integer", "null"]
-        stdout:
-          type: string
-        stderr:
-          type: string
-        durationMs:
-          type: integer
-        timeoutSeconds:
-          type: integer
-        unavailableReason:
-          type: string
-      required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
-      additionalProperties: false
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: &taskAnnotations
-      readOnlyHint: false
-      destructiveHint: false
-      openWorldHint: false
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_test
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_build
-    type: workflow
-    description: Run the npm build script in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_build
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_lint
-    type: workflow
-    description: Run the npm lint script in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 1800
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_lint
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
-
-  - name: task.npm_typecheck
-    type: workflow
-    description: Run the npm typecheck script in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 1800
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_typecheck
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
-
-  - name: task.npm_start
-    type: workflow
-    description: Run the npm start script in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 300
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_start
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 300)}"
-
-  - name: task.npm_install
-    type: workflow
-    description: Run npm install in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_install
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_ci
-    type: workflow
-    description: Run npm ci in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_ci
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_add_package
-    type: workflow
-    description: Add one or more npm packages in the configured workspace.
-    inputSchema: &npmPackageTaskInputSchema
-      type: object
-      properties:
-        packages:
-          type: array
-          minItems: 1
-          maxItems: 20
-          items:
-            type: string
-            minLength: 1
-            maxLength: 200
-        dev:
-          type: boolean
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 36000
-      required: [packages]
-      additionalProperties: false
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_add_package
-            extraArgs: "${input.dev ? ['--save-dev', ...input.packages] : input.packages}"
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_remove_package
-    type: workflow
-    description: Remove one or more npm packages in the configured workspace.
-    inputSchema: *npmPackageTaskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_remove_package
-            extraArgs: "${input.packages}"
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.npm_format
-    type: workflow
-    description: Run the npm format script in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 1800
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_format
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
-
-  - name: task.npm_lint_fix
-    type: workflow
-    description: Run npm lint with --fix in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 1800
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: npm_lint_fix
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
-
-  - name: task.cargo_test
-    type: workflow
-    description: Run cargo test in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 6000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_test
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 6000)}"
-
-  - name: task.cargo_check
-    type: workflow
-    description: Run cargo check in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_check
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_build
-    type: workflow
-    description: Run cargo build in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_build
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_clippy
-    type: workflow
-    description: Run cargo clippy for all targets and features.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_clippy
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_fmt_check
-    type: workflow
-    description: Check Rust formatting with cargo fmt.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 600
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_fmt_check
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
-
-  - name: task.cargo_fetch
-    type: workflow
-    description: Run cargo fetch in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_fetch
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_update
-    type: workflow
-    description: Run cargo update in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_update
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_add
-    type: workflow
-    description: Add one or more Cargo packages in the configured workspace.
-    inputSchema: &packageTaskInputSchema
-      type: object
-      properties:
-        packages:
-          type: array
-          minItems: 1
-          maxItems: 20
-          items:
-            type: string
-            minLength: 1
-            maxLength: 200
-        timeoutSeconds:
-          type: integer
-          minimum: 1
-          maximum: 36000
-      required: [packages]
-      additionalProperties: false
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_add
-            extraArgs: "${input.packages}"
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.cargo_fmt
-    type: workflow
-    description: Run cargo fmt in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 600
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: cargo_fmt
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
-
-  - name: task.go_test
-    type: workflow
-    description: Run Go tests for all packages.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_test
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.go_build
-    type: workflow
-    description: Build all Go packages.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_build
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.go_vet
-    type: workflow
-    description: Run go vet for all packages.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 1800
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_vet
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 1800)}"
-
-  - name: task.go_fmt_check
-    type: workflow
-    description: Check Go formatting with gofmt.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 600
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_fmt_check
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
-
-  - name: task.go_mod_download
-    type: workflow
-    description: Run go mod download in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_mod_download
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.go_mod_tidy
-    type: workflow
-    description: Run go mod tidy in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_mod_tidy
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.go_get
-    type: workflow
-    description: Run go get for one or more modules in the configured workspace.
-    inputSchema: *packageTaskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_get
-            extraArgs: "${input.packages}"
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.go_fmt
-    type: workflow
-    description: Run go fmt for all packages.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 600
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: go_fmt
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 600)}"
-
-  - name: task.uv_sync
-    type: workflow
-    description: Run uv sync in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: uv_sync
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.uv_add
-    type: workflow
-    description: Add one or more uv packages in the configured workspace.
-    inputSchema: *packageTaskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: uv_add
-            extraArgs: "${input.packages}"
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.pip_install_requirements
-    type: workflow
-    description: Run pip install -r requirements.txt in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: pip_install_requirements
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
-
-  - name: task.uv_run_pytest
-    type: workflow
-    description: Run pytest through uv in the configured workspace.
-    inputSchema: *taskInputSchema
-    outputSchema: *taskOutputSchema
-    timeoutSeconds:
-      default: 3000
-      maximum: 36000
-    annotations: *taskAnnotations
-    steps:
-      - call:
-          upstream: tasks
-          tool: run_task
-          input:
-            taskId: uv_run_pytest
-            timeoutSeconds: "${coalesce(input.timeoutSeconds, 3000)}"
+  - name: diagnostics.health
+    type: builtIn
+    description: Return webvibe relay diagnostics, tool surface version, hashes, and upstream health. This is for connector diagnostics, not the ChatGPT Web coding preflight.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
 
 limits:
   maxToolOutputBytes: 60000
-  timeoutMs: 120000
+  timeoutMs: 30000
 
 audit:
   enabled: true

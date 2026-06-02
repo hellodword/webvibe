@@ -267,7 +267,7 @@ function buildGuidance(
   missingTasks: Array<{ taskId: string; executable: string; reason: string }>,
 ): string[] {
   const guidance = [
-    "No raw shell/exec tool is exposed by default; use named task tools and repo.apply_changeset.",
+    "No raw shell/exec tool is exposed by default; use task.run and change.apply.",
     "Tool lists are stable. If a fixed task cannot run, call result status will be unavailable with a reason.",
   ];
   if (!commands.find((command) => command.command === "make" && command.status === "available")) {

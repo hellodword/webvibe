@@ -24,49 +24,34 @@ describe("default policies", () => {
     const readOnlyTools = readOnly.tools.map((tool) => tool.name);
     const devTools = dev.tools.map((tool) => tool.name);
 
-    expect(readOnlyTools).toContain("fs.read_text_file");
-    expect(readOnlyTools).toEqual(
-      expect.arrayContaining([
-        "env.inspect",
-        "project.inspect",
-        "code.search",
-        "code.file_tree",
-        "git.show",
-        "git.branch",
-        "git.ls_files",
-        "git.rev_parse",
-      ]),
-    );
-    expect(devTools).toEqual(
-      expect.arrayContaining([
-        "repo.file_manifest",
-        "repo.preview_changeset",
-        "repo.apply_changeset",
-        "git.commit_paths",
-        "task.npm_test",
-        "task.npm_build",
-        "task.npm_install",
-        "task.npm_ci",
-        "task.npm_add_package",
-        "task.npm_remove_package",
-        "task.go_mod_download",
-        "task.go_mod_tidy",
-        "task.go_get",
-        "task.cargo_fetch",
-        "task.cargo_update",
-        "task.cargo_add",
-        "task.uv_sync",
-        "task.uv_add",
-        "task.pip_install_requirements",
-        "task.npm_format",
-        "task.npm_lint_fix",
-        "task.cargo_fmt",
-        "task.go_fmt",
-        "task.uv_run_pytest",
-        "task.cargo_clippy",
-        "task.go_fmt_check",
-      ]),
-    );
+    expect(readOnlyTools).toEqual([
+      "context.get",
+      "read.tree",
+      "read.search",
+      "read.files",
+      "read.stat",
+      "git.status",
+      "git.diff",
+      "git.history",
+      "git.show",
+      "diagnostics.health",
+    ]);
+    expect(devTools).toEqual([
+      "context.get",
+      "read.tree",
+      "read.search",
+      "read.files",
+      "read.stat",
+      "change.plan",
+      "change.apply",
+      "task.run",
+      "git.status",
+      "git.diff",
+      "git.history",
+      "git.show",
+      "git.commit",
+      "diagnostics.health",
+    ]);
     expect(devTools.filter((name) => name.startsWith("fs.") && /write|edit|create/.test(name))).toEqual(
       [],
     );
@@ -84,27 +69,23 @@ describe("default policies", () => {
         .filter((tool) => tool.name.startsWith("task."))
         .every((tool) => tool.outputSchema),
     ).toBe(true);
+    expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(1);
     expect(dev.limits.maxChangesetFiles).toBe(80);
   });
 
-  it("adds output schemas to built-in relay descriptors", () => {
-    expect(normalizeDescriptor({ name: "relay.info", type: "builtIn" })).toMatchObject({
-      outputSchema: {
-        type: "object",
-        required: ["name", "tools"],
-      },
+  it("keeps context.get first and strongly described", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-context-"));
+    const dev = await loadPolicy("policies/dev.yaml", {
+      workspaceRoot: root,
+      stateDir: path.join(root, "state"),
     });
-    expect(normalizeDescriptor({ name: "relay.list_upstreams", type: "builtIn" })).toMatchObject({
-      outputSchema: {
-        type: "object",
-        required: ["upstreams"],
-      },
-    });
-    expect(normalizeDescriptor({ name: "relay.list_tools", type: "builtIn" })).toMatchObject({
-      outputSchema: {
-        type: "object",
-        required: ["tools"],
-      },
+    const descriptor = normalizeDescriptor(dev.tools[0]);
+    expect(descriptor.name).toBe("context.get");
+    expect(descriptor.description).toContain("Call this first");
+    expect(descriptor.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
     });
   });
 
@@ -114,7 +95,7 @@ describe("default policies", () => {
       workspaceRoot: root,
       stateDir: path.join(root, "state"),
     });
-    const preview = dev.tools.find((tool) => tool.name === "repo.preview_changeset");
+    const preview = dev.tools.find((tool) => tool.name === "change.plan");
     expect(preview).toBeTruthy();
     const descriptor = normalizeDescriptor(preview!);
     const schema = descriptor.inputSchema as any;

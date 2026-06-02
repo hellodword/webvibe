@@ -13,7 +13,7 @@ describe("state", () => {
     const audit = new AuditLog(logPath, true, 1);
 
     const record = buildAuditRecord({
-      tool: "relay.info",
+      tool: "diagnostics.health",
       type: "builtIn",
       status: "ok",
       startedAt: Date.now(),

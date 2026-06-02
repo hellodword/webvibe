@@ -25,6 +25,8 @@ const DEFAULT_MAX_RESULTS = 50;
 const MAX_RESULTS = 200;
 const MAX_TREE_ENTRIES = 1000;
 const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
+const MAX_READ_FILES = 50;
+const MAX_READ_FILE_BYTES = 1024 * 1024;
 
 export async function searchCode(
   args: Record<string, unknown>,
@@ -150,6 +152,104 @@ export async function fileTree(
 
   await visit(root.absolutePath, root.relativePath, 0);
   return { status: "ok", root: root.relativePath, entries, skipped, truncated };
+}
+
+export async function readFiles(
+  args: Record<string, unknown>,
+  context: InspectWorkspaceContext,
+): Promise<{
+  status: "ok";
+  files: Array<{
+    path: string;
+    exists: boolean;
+    type?: "file" | "directory" | "symlink" | "other";
+    size?: number;
+    content?: string;
+    truncated?: boolean;
+    error?: string;
+  }>;
+}> {
+  const rawPaths = Array.isArray(args.paths) ? args.paths : undefined;
+  if (!rawPaths || rawPaths.length === 0) throw new BadRequestError("paths must be a non-empty array");
+  if (rawPaths.length > MAX_READ_FILES) throw new BadRequestError("paths has too many items");
+  const files: Array<{
+    path: string;
+    exists: boolean;
+    type?: "file" | "directory" | "symlink" | "other";
+    size?: number;
+    content?: string;
+    truncated?: boolean;
+    error?: string;
+  }> = [];
+  for (const rawPath of rawPaths) {
+    const resolved = normalizeWorkspacePath(rawPath, context, { allowRoot: false });
+    const stat = await safeLstat(resolved.absolutePath);
+    if (!stat) {
+      files.push({ path: resolved.relativePath, exists: false });
+      continue;
+    }
+    const type = stat.isDirectory()
+      ? "directory"
+      : stat.isFile()
+        ? "file"
+        : stat.isSymbolicLink()
+          ? "symlink"
+          : "other";
+    if (!stat.isFile()) {
+      files.push({
+        path: resolved.relativePath,
+        exists: true,
+        type,
+        size: stat.size,
+        error: "Path is not a file",
+      });
+      continue;
+    }
+    const buffer = await readFile(resolved.absolutePath);
+    const truncated = buffer.length > MAX_READ_FILE_BYTES;
+    files.push({
+      path: resolved.relativePath,
+      exists: true,
+      type,
+      size: stat.size,
+      content: buffer.subarray(0, MAX_READ_FILE_BYTES).toString("utf8"),
+      truncated,
+    });
+  }
+  return { status: "ok", files };
+}
+
+export async function fileStat(
+  args: Record<string, unknown>,
+  context: InspectWorkspaceContext,
+): Promise<{
+  status: "ok";
+  path: string;
+  exists: boolean;
+  type?: "file" | "directory" | "symlink" | "other";
+  size?: number;
+  modifiedAt?: string;
+  createdAt?: string;
+}> {
+  const resolved = normalizeWorkspacePath(args.path, context, { allowRoot: true });
+  const stat = await safeLstat(resolved.absolutePath);
+  if (!stat) return { status: "ok", path: resolved.relativePath, exists: false };
+  const type = stat.isDirectory()
+    ? "directory"
+    : stat.isFile()
+      ? "file"
+      : stat.isSymbolicLink()
+        ? "symlink"
+        : "other";
+  return {
+    status: "ok",
+    path: resolved.relativePath,
+    exists: true,
+    type,
+    size: stat.size,
+    modifiedAt: stat.mtime.toISOString(),
+    createdAt: stat.birthtime.toISOString(),
+  };
 }
 
 async function walkFiles(

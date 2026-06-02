@@ -22,9 +22,9 @@ describe("workspace inspection built-ins", () => {
     await writeFile(path.join(root, ".env"), "SECRET_TARGET=hidden\n");
     const policy = policyFor(root);
     const registry = new Map([
-      ["env.inspect", {} as any],
-      ["code.search", {} as any],
-      ["task.npm_test", {} as any],
+      ["context.get", {} as any],
+      ["read.search", {} as any],
+      ["task.run", {} as any],
     ]);
     const previousToken = process.env.WEBVIBE_TEST_TOKEN;
     process.env.WEBVIBE_TEST_TOKEN = "super-secret";
@@ -48,7 +48,7 @@ describe("workspace inspection built-ins", () => {
       expect(serialized).not.toContain("super-secret");
       expect(env.environment.sensitive.present).toBe(true);
       expect(env.path.commands.find((command) => command.command === "make")).toBeTruthy();
-      expect(env.webvibe.tools).toEqual(["code.search", "env.inspect", "task.npm_test"]);
+      expect(env.webvibe.tools).toEqual(["context.get", "read.search", "task.run"]);
     } finally {
       if (previousToken === undefined) delete process.env.WEBVIBE_TEST_TOKEN;
       else process.env.WEBVIBE_TEST_TOKEN = previousToken;
@@ -90,4 +90,3 @@ function policyFor(root: string): RelayPolicy {
     audit: { enabled: true, maxLogBytes: 10 * 1024 * 1024 },
   };
 }
-
