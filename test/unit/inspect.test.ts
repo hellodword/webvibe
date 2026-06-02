@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { RelayPolicy } from "../../src/policy/policy.js";
+import { getContext } from "../../src/router/context.js";
 import { fileTree, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
@@ -54,6 +55,47 @@ describe("workspace inspection built-ins", () => {
       else process.env.WEBVIBE_TEST_TOKEN = previousToken;
     }
   });
+
+  it("reports nested manifests without marking tasks unavailable for missing root manifests", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-monorepo-"));
+    await mkdir(path.join(root, "backend"));
+    await writeFile(path.join(root, "backend", "go.mod"), "module example.test/backend\n");
+    const policy = policyFor(root);
+    policy.upstreams.tasks.tasks = {
+      go_test: {
+        executable: process.execPath,
+        args: ["-e", ""],
+      },
+    };
+    const registry = new Map([
+      ["context.get", {} as any],
+      ["task.run", {} as any],
+    ]);
+
+    const env = await inspectEnvironment({ registry, policy, workspaceRoot: root });
+
+    expect(env.project.manifests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "backend/go.mod",
+          type: "go",
+          name: "example.test/backend",
+        }),
+      ]),
+    );
+    expect(env.webvibe.missingTasks).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: "go_test" })]),
+    );
+    const context = await getContext({
+      registry,
+      policy,
+      upstreams: { listHealth: () => [] } as any,
+      workspaceRoot: root,
+    });
+    expect((context.tasks as any).available).toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: "go_test", acceptsCwd: true })]),
+    );
+  });
 });
 
 function policyFor(root: string): RelayPolicy {
@@ -72,8 +114,6 @@ function policyFor(root: string): RelayPolicy {
           npm_test: {
             executable: "npm",
             args: ["test"],
-            requiredFiles: ["package.json"],
-            requiredPackageScript: "test",
           },
         },
       },

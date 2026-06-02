@@ -18,7 +18,9 @@ write actions and cannot skip those prompts like Codex.
 
 `task.run` runs only preconfigured task IDs. It does not accept arbitrary shell
 commands. `context.get` returns available task IDs, unavailable reasons, timeout
-defaults, and extra argument rules.
+defaults, cwd support, and extra argument rules. For monorepos, choose the
+manifest directory from `context.get.project.manifests` and pass it as
+`task.run.cwd`.
 
 `diagnostics.health` is for connector diagnostics. It reports relay mode, tool
 surface version, hashes, and upstream health. It is not the coding preflight.

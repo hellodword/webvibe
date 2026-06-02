@@ -22,54 +22,41 @@ upstreams:
       npm_test:
         executable: npm
         args: ["test"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: test
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       npm_build:
         executable: npm
         args: ["run", "build", "--if-present"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: build
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       npm_lint:
         executable: npm
         args: ["run", "lint", "--if-present"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: lint
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       npm_typecheck:
         executable: npm
         args: ["run", "typecheck", "--if-present"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: typecheck
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       npm_start:
         executable: npm
         args: ["start"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: start
         defaultTimeoutSeconds: 300
         maxTimeoutSeconds: 36000
       npm_install:
         executable: npm
         args: ["install"]
-        requiredFiles: ["package.json"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       npm_ci:
         executable: npm
         args: ["ci"]
-        requiredFiles: ["package.json", "package-lock.json"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       npm_add_package:
         executable: npm
         args: ["install"]
-        requiredFiles: ["package.json"]
         allowExtraArgs: true
         maxExtraArgs: 21
         allowedExtraArgs: ["--save-dev"]
@@ -79,7 +66,6 @@ upstreams:
       npm_remove_package:
         executable: npm
         args: ["uninstall"]
-        requiredFiles: ["package.json"]
         allowExtraArgs: true
         maxExtraArgs: 20
         extraArgPattern: '^(?:@[-A-Za-z0-9_.]+/)?[-A-Za-z0-9_.]+$'
@@ -88,63 +74,51 @@ upstreams:
       npm_format:
         executable: npm
         args: ["run", "format"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: format
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       npm_lint_fix:
         executable: npm
         args: ["run", "lint", "--", "--fix"]
-        requiredFiles: ["package.json"]
-        requiredPackageScript: lint
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       cargo_test:
         executable: cargo
         args: ["test"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 6000
         maxTimeoutSeconds: 36000
       cargo_check:
         executable: cargo
         args: ["check"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       cargo_build:
         executable: cargo
         args: ["build"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       cargo_clippy:
         executable: cargo
         args: ["clippy", "--all-targets", "--all-features"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       cargo_fmt_check:
         executable: cargo
         args: ["fmt", "--check"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
       cargo_fetch:
         executable: cargo
         args: ["fetch"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       cargo_update:
         executable: cargo
         args: ["update"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       cargo_add:
         executable: cargo
         args: ["add"]
-        requiredFiles: ["Cargo.toml"]
         allowExtraArgs: true
         maxExtraArgs: 20
         extraArgPattern: '^[A-Za-z0-9_-]+(?:@[A-Za-z0-9_.+~-]+)?$'
@@ -153,50 +127,42 @@ upstreams:
       cargo_fmt:
         executable: cargo
         args: ["fmt"]
-        requiredFiles: ["Cargo.toml"]
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
       go_test:
         executable: go
         args: ["test", "./..."]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       go_build:
         executable: go
         args: ["build", "./..."]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       go_vet:
         executable: go
         args: ["vet", "./..."]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       go_fmt_check:
         executable: gofmt
         args: ["-l", "."]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
         failOnStdout: true
       go_mod_download:
         executable: go
         args: ["mod", "download"]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       go_mod_tidy:
         executable: go
         args: ["mod", "tidy"]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       go_get:
         executable: go
         args: ["get"]
-        requiredFiles: ["go.mod"]
         allowExtraArgs: true
         maxExtraArgs: 20
         extraArgPattern: '^[A-Za-z0-9_.~+:/@-]+(?:/[A-Za-z0-9_.~+:/@-]+)*$'
@@ -205,19 +171,16 @@ upstreams:
       go_fmt:
         executable: go
         args: ["fmt", "./..."]
-        requiredFiles: ["go.mod"]
         defaultTimeoutSeconds: 600
         maxTimeoutSeconds: 36000
       uv_sync:
         executable: uv
         args: ["sync"]
-        requiredFiles: ["pyproject.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       uv_add:
         executable: uv
         args: ["add"]
-        requiredFiles: ["pyproject.toml"]
         allowExtraArgs: true
         maxExtraArgs: 20
         extraArgPattern: '^[A-Za-z0-9_.@/+~!<>=\[\],:-]+$'
@@ -226,13 +189,11 @@ upstreams:
       uv_run_pytest:
         executable: uv
         args: ["run", "pytest"]
-        requiredFiles: ["pyproject.toml"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
       pip_install_requirements:
         executable: pip
         args: ["install", "-r", "requirements.txt"]
-        requiredFiles: ["requirements.txt"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
 
@@ -388,7 +349,7 @@ tools:
 
   - name: task.run
     type: builtIn
-    description: Run one preconfigured local task by taskId. Does not accept arbitrary shell commands. Available taskIds, argument rules, and availability are returned by context.get. Requires context.get first.
+    description: Run one preconfigured local task by taskId, optionally from a workspace-relative cwd. Does not accept arbitrary shell commands. Available taskIds, cwd support, argument rules, and availability are returned by context.get. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -405,6 +366,10 @@ tools:
           maxItems: 20
           items:
             type: string
+        cwd:
+          type: string
+          minLength: 1
+          maxLength: 500
       required: [taskId]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema

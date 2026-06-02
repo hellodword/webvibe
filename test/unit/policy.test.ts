@@ -70,6 +70,15 @@ describe("default policies", () => {
         .every((tool) => tool.outputSchema),
     ).toBe(true);
     expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(1);
+    const defaultTasks = Object.values(dev.upstreams.tasks.tasks ?? {}) as Array<Record<string, unknown>>;
+    expect(defaultTasks.every((task) => !("requiredFiles" in task))).toBe(true);
+    expect(defaultTasks.every((task) => !("requiredPackageScript" in task))).toBe(true);
+    const taskRun = normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!);
+    expect((taskRun.inputSchema as any).properties.cwd).toEqual({
+      type: "string",
+      minLength: 1,
+      maxLength: 500,
+    });
     expect(dev.limits.maxChangesetFiles).toBe(80);
   });
 

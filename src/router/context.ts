@@ -35,7 +35,7 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     "Use read.tree, read.search, and read.files to inspect only relevant files.",
     "Use change.plan to validate one complete batch workspace change.",
     "Use one change.apply call for the full requested file change.",
-    "Use task.run only with taskIds reported by context.get.",
+    "Use task.run only with taskIds reported by context.get; pass cwd from project.manifests for monorepos.",
     "Use git.status and git.diff after changes; use git.commit only with explicit paths.",
   ];
   return {
@@ -116,6 +116,7 @@ function taskInfo(taskId: string, task: TaskPolicy): Record<string, unknown> {
     executable: displayExecutable(task.executable),
     defaultTimeoutSeconds: task.defaultTimeoutSeconds,
     maxTimeoutSeconds: task.maxTimeoutSeconds,
+    acceptsCwd: true,
     acceptsExtraArgs: task.allowExtraArgs === true,
     maxExtraArgs: task.maxExtraArgs,
     allowedExtraArgs: task.allowedExtraArgs,
@@ -127,4 +128,3 @@ function displayExecutable(executable: string): string {
   const parts = executable.split(/[\\/]/);
   return parts[parts.length - 1] || executable;
 }
-

@@ -52,8 +52,10 @@ control MCP server. This avoids broad capabilities commonly present in
 desktop-commander style servers, including arbitrary command strings, process
 control, wide file mutation, and session state. It also gives ChatGPT Web a
 narrow named task call instead of a raw shell request. Policy must define each
-task ID, executable, arguments, cwd, required files, script requirements, and
-timeout. `context.get` reports available task IDs and argument rules.
+task ID, executable, arguments, cwd, and timeout. A task call may pass a
+workspace-relative cwd, which is checked against workspace and protected-path
+rules before spawning. `context.get` reports available task IDs and argument
+rules.
 
 Some dependency tasks accept package/module names. Those are still not command
 strings: policy must enable `allowExtraArgs`, set a maximum argument count, and

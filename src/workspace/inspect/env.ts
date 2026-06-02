@@ -117,7 +117,6 @@ async function taskAvailability(
   const missing: Array<{ taskId: string; executable: string; reason: string; executableCategory?: string }> = [];
   for (const upstream of Object.values(policy.upstreams)) {
     if (upstream.transport !== "local-task-runner") continue;
-    const cwd = resolveTaskCwd(upstream.cwd, workspaceRoot);
     for (const [taskId, task] of Object.entries(upstream.tasks ?? {})) {
       const resolution = await findExecutable(task.executable, { ...process.env, ...upstream.env, ...task.env }, workspaceRoot);
       if (resolution.status === "missing") {
@@ -128,42 +127,6 @@ async function taskAvailability(
           executableCategory: resolution.pathCategory,
         });
         continue;
-      }
-      let missingRequiredFile = false;
-      for (const file of task.requiredFiles ?? []) {
-        try {
-          await access(path.resolve(cwd, file));
-        } catch {
-          missingRequiredFile = true;
-          missing.push({
-            taskId,
-            executable: displayExecutable(task.executable),
-            reason: `missing required file: ${file}`,
-            executableCategory: resolution.pathCategory,
-          });
-          break;
-        }
-      }
-      if (missingRequiredFile) continue;
-      if (task.requiredPackageScript) {
-        try {
-          const packageJson = JSON.parse(await readFile(path.resolve(cwd, "package.json"), "utf8")) as any;
-          if (!packageJson.scripts || typeof packageJson.scripts[task.requiredPackageScript] !== "string") {
-            missing.push({
-              taskId,
-              executable: displayExecutable(task.executable),
-              reason: `missing npm script: ${task.requiredPackageScript}`,
-              executableCategory: resolution.pathCategory,
-            });
-          }
-        } catch {
-          missing.push({
-            taskId,
-            executable: displayExecutable(task.executable),
-            reason: `missing npm script: ${task.requiredPackageScript}`,
-            executableCategory: resolution.pathCategory,
-          });
-        }
       }
     }
   }
@@ -276,6 +239,9 @@ function buildGuidance(
   if (project.npmScripts.length > 0) {
     guidance.push(`Available npm scripts include: ${project.npmScripts.slice(0, 12).map((script) => script.name).join(", ")}.`);
   }
+  if (project.manifests.some((manifest) => manifest.path.includes("/"))) {
+    guidance.push("For monorepos, choose the manifest directory from project.manifests and pass it as task.run cwd.");
+  }
   if (missingTasks.length > 0) {
     guidance.push(`Some task tools are currently unavailable: ${missingTasks.slice(0, 8).map((task) => task.taskId).join(", ")}.`);
   }
@@ -284,11 +250,6 @@ function buildGuidance(
 
 function displayExecutable(executable: string): string {
   return executable.includes("/") || executable.includes("\\") ? path.basename(executable) : executable;
-}
-
-function resolveTaskCwd(raw: string | undefined, workspaceRoot: string): string {
-  if (!raw) return workspaceRoot;
-  return path.isAbsolute(raw) ? raw : path.resolve(workspaceRoot, raw);
 }
 
 async function exists(filePath: string): Promise<boolean> {

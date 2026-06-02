@@ -1,12 +1,13 @@
-import { access, readFile } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
 import type { McpToolDescriptor } from "../descriptor/normalize.js";
-import type { TaskPolicy, UpstreamPolicy } from "../policy/policy.js";
+import type { TaskPolicy, UpstreamPolicy, WorkspacePolicy } from "../policy/policy.js";
 import { BadRequestError } from "../util/errors.js";
 import { isInside } from "../util/paths.js";
 import { findExecutable } from "../workspace/inspect/command.js";
+import { normalizeWorkspacePath } from "../workspace/inspect/path.js";
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
 
 type TaskResult = {
@@ -28,6 +29,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     readonly id: string,
     private readonly policy: UpstreamPolicy,
     private readonly workspaceRoot: string,
+    private readonly workspace: WorkspacePolicy,
   ) {}
 
   get optional(): boolean {
@@ -46,7 +48,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     return [
       {
         name: "run_task",
-        description: "Run a configured local task by id.",
+        description: "Run a configured local task by id, optionally from a workspace-relative cwd.",
         inputSchema: {
           type: "object",
           properties: {
@@ -60,6 +62,12 @@ export class LocalTaskRunnerClient implements UpstreamClient {
               type: "array",
               items: { type: "string" },
               maxItems: 20,
+            },
+            cwd: {
+              type: "string",
+              minLength: 1,
+              maxLength: 500,
+              description: "Workspace-relative task working directory.",
             },
           },
           required: ["taskId"],
@@ -115,8 +123,8 @@ export class LocalTaskRunnerClient implements UpstreamClient {
   ): Promise<TaskResult> {
     const startedAt = Date.now();
     const timeoutSeconds = this.effectiveTimeoutSeconds(taskId, args.timeoutSeconds);
-    const cwd = this.resolveTaskCwd(task);
-    const unavailable = await this.checkAvailability(taskId, task, cwd, timeoutSeconds, startedAt);
+    const cwd = await this.resolveTaskCwd(task, args.cwd);
+    const unavailable = await this.checkAvailability(taskId, task, timeoutSeconds, startedAt);
     if (unavailable) return unavailable;
 
     const env = { ...process.env, ...this.policy.env, ...task.env };
@@ -190,7 +198,6 @@ export class LocalTaskRunnerClient implements UpstreamClient {
   private async checkAvailability(
     taskId: string,
     task: TaskPolicy,
-    cwd: string,
     timeoutSeconds: number,
     startedAt: number,
   ): Promise<TaskResult | undefined> {
@@ -204,35 +211,26 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         `Missing executable: ${displayExecutable(task.executable)}`,
       );
     }
-    for (const file of task.requiredFiles ?? []) {
-      const target = path.resolve(cwd, file);
-      if (!isInside(cwd, target)) return unavailable(taskId, timeoutSeconds, startedAt, file);
-      try {
-        await access(target);
-      } catch {
-        return unavailable(taskId, timeoutSeconds, startedAt, file);
-      }
-    }
-    if (task.requiredPackageScript) {
-      try {
-        const packageJson = JSON.parse(await readFile(path.resolve(cwd, "package.json"), "utf8"));
-        if (
-          typeof packageJson !== "object" ||
-          packageJson === null ||
-          typeof packageJson.scripts !== "object" ||
-          packageJson.scripts === null ||
-          typeof packageJson.scripts[task.requiredPackageScript] !== "string"
-        ) {
-          return unavailable(taskId, timeoutSeconds, startedAt, task.requiredPackageScript);
-        }
-      } catch {
-        return unavailable(taskId, timeoutSeconds, startedAt, task.requiredPackageScript);
-      }
-    }
     return undefined;
   }
 
-  private resolveTaskCwd(task: TaskPolicy): string {
+  private async resolveTaskCwd(task: TaskPolicy, rawCwd: unknown): Promise<string> {
+    if (rawCwd === undefined || rawCwd === null) return this.resolveDefaultTaskCwd(task);
+    if (typeof rawCwd !== "string") throw new BadRequestError("cwd must be string");
+    if (rawCwd.length === 0) throw new BadRequestError("cwd must not be empty");
+    const resolved = normalizeWorkspacePath(rawCwd, {
+      workspaceRoot: this.workspaceRoot,
+      workspace: this.workspace,
+    });
+    const stat = await safeLstat(resolved.absolutePath);
+    if (!stat) throw new BadRequestError(`Task cwd does not exist: ${resolved.relativePath}`);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new BadRequestError(`Task cwd is not a directory: ${resolved.relativePath}`);
+    }
+    return resolved.absolutePath;
+  }
+
+  private resolveDefaultTaskCwd(task: TaskPolicy): string {
     const raw = task.cwd ?? this.policy.cwd ?? this.workspaceRoot;
     const cwd = path.isAbsolute(raw) ? raw : path.resolve(this.workspaceRoot, raw);
     if (!isInside(this.workspaceRoot, cwd)) {
@@ -279,6 +277,15 @@ export class LocalTaskRunnerClient implements UpstreamClient {
 
 function displayExecutable(executable: string): string {
   return executable.includes("/") || executable.includes("\\") ? path.basename(executable) : executable;
+}
+
+async function safeLstat(filePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  try {
+    return await lstat(filePath);
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 function unavailable(

@@ -79,10 +79,11 @@ instead of hostnames, user paths, container IDs, or pod names.
 ChatGPT Web does not continuously reconcile MCP tool changes; users often need
 to manually refresh tools. Dynamic hiding based on local command availability can
 leave the model reasoning over stale descriptors. Default webvibe policies keep
-the public tool list stable and gate execution inside tools. If `cargo`, `make`,
-`pip`, a manifest, or a package script is missing, the named task returns
-`status: "unavailable"` with `unavailableReason`. Task IDs and availability are
-reported by `context.get`; the public task tool remains `task.run`.
+the public tool list stable and gate execution inside tools. If a task
+executable such as `cargo`, `make`, or `pip` is missing, the named task returns
+`status: "unavailable"` with `unavailableReason`. Project manifests and package
+scripts are reported by `context.get`; they do not hide or disable task IDs. The
+public task tool remains `task.run`.
 
 ## Why Local Task Runner
 
@@ -92,10 +93,9 @@ style of upstream exposes command/process surfaces that are likely to be blocked
 or repeatedly challenged by ChatGPT Web's safety and confirmation layer.
 
 `local-task-runner` exposes one narrow tool, `run_task`, and only executes task
-IDs defined by policy. Each task has fixed executable/arguments, optional
-required files, optional required npm package script, bounded timeout, and a
-workspace-contained cwd. The model asks for a named task instead of sending raw
-shell.
+IDs defined by policy. Each task has fixed executable/arguments, bounded
+timeout, and a workspace-contained cwd. The caller may pass a workspace-relative
+cwd for monorepos. The model asks for a named task instead of sending raw shell.
 
 For package/module installation tasks, policy may allow bounded `extraArgs`.
 Those arguments are validated by count and allowlist or regex before spawning;

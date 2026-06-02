@@ -77,13 +77,16 @@ overwrite newer workspace edits.
 ## Tasks
 
 `task.run` runs one policy-defined task by `taskId`. It does not accept
-arbitrary shell commands or stdin. Available task IDs, timeout defaults, extra
-argument rules, and unavailable reasons are returned by `context.get`.
+arbitrary shell commands or stdin. Callers may pass a workspace-relative `cwd`
+to run a fixed task in a nested package or module. Available task IDs, timeout
+defaults, cwd support, extra argument rules, and unavailable reasons are
+returned by `context.get`.
 
 The default dev policy configures npm, Go, Rust, and Python tasks through
 `local-task-runner`. Task availability changes do not change the public tool
-list, so ChatGPT Web does not need a manual tool refresh when a manifest,
-command, or package script is missing.
+list, so ChatGPT Web does not need a manual tool refresh when a command is
+missing. Project manifests and package scripts are environment facts reported by
+`context.get`; they do not gate task availability.
 
 ## Git
 
