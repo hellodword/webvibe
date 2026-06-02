@@ -12,13 +12,41 @@ npm run build
 npm test
 ```
 
-Development server:
+Run a local server:
 
 ```bash
 npm run dev -- --config config.yaml
 ```
 
-For ChatGPT Web vibecoding, use dev mode and let the model read/search first,
-then call `repo.file_manifest`, `repo.preview_changeset`, and finally
-`repo.apply_changeset`. Default dev mode applies a whole multi-file changeset in
-one write tool call instead of exposing per-file write tools.
+`config.yaml` contains the local listen address, public base URL, workspace root,
+state directory, mode or custom policy path, and pairing code.
+
+## Default Modes
+
+- `read-only`: relay info, read-only filesystem tools, and optional read-only Git
+  tools.
+- `dev`: everything in `read-only`, plus batch workspace changeset tools and
+  fixed npm, Cargo, and Go task tools.
+
+For ChatGPT Web coding work, use `dev` mode. Let the model read/search first,
+then use `repo.file_manifest`, `repo.preview_changeset`, and
+`repo.apply_changeset`. Default dev mode applies a reviewed multi-file changeset
+in one write tool call instead of exposing raw per-file write tools.
+
+## Documents
+
+- [Architecture](docs/architecture.md): relay boundary, modules, upstreams, and
+  why this project does not fork Codex.
+- [Policy](docs/policy.md): policy file shape, tool types, limits, and custom
+  policies.
+- [Security](docs/security.md): default-deny model, OAuth/pairing, path guards,
+  narrow tasks, batch writes, redaction, and audit logging.
+
+## Development
+
+```bash
+npm install
+npm run build
+npm test
+npm run lint
+```

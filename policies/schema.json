@@ -3,12 +3,14 @@
   "title": "webvibe policy",
   "type": "object",
   "required": ["version", "tools"],
+  "additionalProperties": true,
   "properties": {
     "version": { "const": 1 },
     "mode": { "enum": ["read-only", "dev"] },
     "extends": { "type": "string" },
     "workspace": {
       "type": "object",
+      "additionalProperties": true,
       "properties": {
         "root": { "type": "string" },
         "protected": { "type": "array", "items": { "type": "string" } }
@@ -16,34 +18,21 @@
     },
     "upstreams": {
       "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "transport": { "enum": ["stdio", "streamable-http", "local-task-runner"] },
-          "tasks": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "object",
-              "required": ["executable"],
-              "properties": {
-                "executable": { "type": "string" },
-                "args": { "type": "array", "items": { "type": "string" } },
-                "cwd": { "type": "string" },
-                "env": { "type": "object" },
-                "requiredFiles": { "type": "array", "items": { "type": "string" } },
-                "requiredPackageScript": { "type": "string" },
-                "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
-                "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
-                "failOnStdout": { "type": "boolean" }
-              }
-            }
-          }
-        }
+      "additionalProperties": { "$ref": "#/$defs/upstream" }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/builtInTool" },
+          { "$ref": "#/$defs/passThroughTool" },
+          { "$ref": "#/$defs/workflowTool" }
+        ]
       }
     },
-    "tools": { "type": "array" },
     "limits": {
       "type": "object",
+      "additionalProperties": true,
       "properties": {
         "maxToolOutputBytes": { "type": "integer", "minimum": 1 },
         "timeoutMs": { "type": "integer", "minimum": 1 },
@@ -55,9 +44,156 @@
     },
     "audit": {
       "type": "object",
+      "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
         "maxLogBytes": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "jsonSchema": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "annotations": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "title": { "type": "string" },
+        "readOnlyHint": { "type": "boolean" },
+        "destructiveHint": { "type": "boolean" },
+        "idempotentHint": { "type": "boolean" },
+        "openWorldHint": { "type": "boolean" }
+      }
+    },
+    "toolMeta": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "inputPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "require": { "type": "object", "additionalProperties": true },
+        "deny": { "type": "object", "additionalProperties": true },
+        "pathFields": { "type": "array", "items": { "type": "string" } },
+        "protectedPathPolicy": { "enum": ["deny", "allow"] }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["executable"],
+      "additionalProperties": true,
+      "properties": {
+        "executable": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "cwd": { "type": "string" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "requiredFiles": { "type": "array", "items": { "type": "string" } },
+        "requiredPackageScript": { "type": "string" },
+        "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "failOnStdout": { "type": "boolean" },
+        "description": { "type": "string" }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "required": ["transport"],
+      "additionalProperties": true,
+      "properties": {
+        "transport": { "enum": ["stdio", "streamable-http", "local-task-runner"] },
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "url": { "type": "string" },
+        "cwd": { "type": "string" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "optional": { "type": "boolean" },
+        "timeoutMs": { "type": "integer", "minimum": 1 },
+        "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/task" } }
+      }
+    },
+    "builtInTool": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "const": "builtIn" },
+        "description": { "type": "string" },
+        "inputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "outputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "annotations": { "$ref": "#/$defs/annotations" },
+        "_meta": { "$ref": "#/$defs/toolMeta" }
+      }
+    },
+    "passThroughTool": {
+      "type": "object",
+      "required": ["name", "type", "upstream", "upstreamTool"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "const": "passThrough" },
+        "upstream": { "type": "string" },
+        "upstreamTool": { "type": "string" },
+        "optional": { "type": "boolean" },
+        "description": { "type": "string" },
+        "inputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "outputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "annotations": { "$ref": "#/$defs/annotations" },
+        "_meta": { "$ref": "#/$defs/toolMeta" },
+        "inputPolicy": { "$ref": "#/$defs/inputPolicy" },
+        "mapInput": true,
+        "mapOutput": true
+      }
+    },
+    "workflowTool": {
+      "type": "object",
+      "required": ["name", "type", "description", "inputSchema", "steps"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "const": "workflow" },
+        "optional": { "type": "boolean" },
+        "description": { "type": "string" },
+        "inputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "outputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "annotations": { "$ref": "#/$defs/annotations" },
+        "_meta": { "$ref": "#/$defs/toolMeta" },
+        "timeoutSeconds": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["default", "maximum"],
+          "properties": {
+            "default": { "type": "integer", "minimum": 1 },
+            "maximum": { "type": "integer", "minimum": 1 },
+            "bufferSeconds": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["call"],
+            "additionalProperties": true,
+            "properties": {
+              "call": {
+                "type": "object",
+                "required": ["upstream", "tool", "input"],
+                "properties": {
+                  "upstream": { "type": "string" },
+                  "tool": { "type": "string" },
+                  "input": true
+                }
+              },
+              "saveAs": { "type": "string" },
+              "optional": { "type": "boolean" }
+            }
+          }
+        }
       }
     }
   }

@@ -1,2 +1,0 @@
-export const DEFAULT_DESCRIPTION_LIMIT = 2000;
-export const DEFAULT_SCHEMA_DEPTH_LIMIT = 8;

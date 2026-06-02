@@ -23,4 +23,46 @@ Security model:
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
 stdin, kill process, Git mutation tools, or raw filesystem write tools in
-default policies.
+default policies. These defaults match ChatGPT Web's host-side safety model:
+raw shell and patch-like surfaces are often blocked before local MCP code runs,
+and file writes require confirmation that cannot be disabled like Codex.
+
+## OAuth And Pairing
+
+`webvibe` exposes:
+
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/oauth-protected-resource`
+- `/oauth/register`
+- `/oauth/authorize`
+- `/oauth/token`
+- `/mcp`
+
+`auth.pairingCode` is required in the config file, loaded into memory at startup,
+and not persisted to `stateDir`. OAuth clients and tokens persist in
+`stateDir/oauth-store.json`. Authorization codes are short-lived and in-memory.
+Default access token TTL is 30 days.
+
+## Narrow Local Tasks
+
+Default dev task tools go through `local-task-runner`, not a general process
+control MCP server. This avoids broad capabilities commonly present in
+desktop-commander style servers, including arbitrary command strings, process
+control, wide file mutation, and session state. It also gives ChatGPT Web a
+narrow named task call instead of a raw shell request. Policy must define each
+task ID, executable, arguments, cwd, required files, script requirements, and
+timeout.
+
+## Batch Changesets
+
+Default dev workspace edits go through:
+
+- `repo.file_manifest`: read file existence, type, size, hash, and mtime.
+- `repo.preview_changeset`: validate and diff a proposed changeset without
+  writing.
+- `repo.apply_changeset`: apply the complete changeset in one operation.
+
+`replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
+without partial writes. If an apply operation fails after writing starts, prior
+paths are rolled back from snapshots. The confirmation point is the reviewed
+changeset, not each individual file edit.

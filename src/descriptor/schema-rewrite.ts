@@ -1,4 +1,4 @@
-import { DEFAULT_SCHEMA_DEPTH_LIMIT } from "../policy/defaults.js";
+const DEFAULT_SCHEMA_DEPTH_LIMIT = 8;
 
 export function capSchemaDepth(value: unknown, depth = DEFAULT_SCHEMA_DEPTH_LIMIT): unknown {
   if (Array.isArray(value)) return value.map((item) => capSchemaDepth(item, depth));

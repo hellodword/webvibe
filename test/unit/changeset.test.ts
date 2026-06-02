@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { applyChangeset, fileManifest, previewChangeset } from "../../src/workspace/changeset.js";
+import { applyPlan } from "../../src/workspace/changeset/apply.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../../src/policy/policy.js";
 
 describe("workspace changesets", () => {
@@ -132,6 +133,113 @@ describe("workspace changesets", () => {
       { path: "missing.txt", exists: false, type: "missing" },
       { path: "link.txt", exists: true, type: "symlink" },
     ]);
+  });
+
+  it("rejects ambiguous plans before writing", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-plan-guards-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "a.txt"), "same\nsame\n");
+    await mkdir(path.join(root, "real-dir"));
+    await symlink(path.join(root, "real-dir"), path.join(root, "linked-dir"));
+
+    await expect(
+      previewChangeset(
+        {
+          changes: [
+            { op: "create", path: "one.txt", content: "one\n" },
+            { op: "create", path: "one.txt", content: "two\n" },
+          ],
+        },
+        context,
+      ),
+    ).rejects.toThrow("Duplicate changeset path");
+
+    const ambiguous = await previewChangeset(
+      {
+        changes: [
+          {
+            op: "edit",
+            path: "a.txt",
+            expectedSha256: sha256("same\nsame\n"),
+            edits: [{ oldText: "same", newText: "once" }],
+          },
+        ],
+      },
+      context,
+    );
+    expect(ambiguous).toMatchObject({
+      valid: false,
+      conflicts: [{ path: "a.txt", reason: "Edit text matched more than once" }],
+    });
+    expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("same\nsame\n");
+
+    await expect(
+      previewChangeset(
+        {
+          changes: [{ op: "create", path: "linked-dir/new.txt", content: "new\n" }],
+        },
+        context,
+      ),
+    ).rejects.toThrow("parent is a symlink");
+
+    await expect(
+      previewChangeset(
+        {
+          changes: [{ op: "create", path: "large.txt", content: "123456" }],
+        },
+        {
+          ...context,
+          limits: { ...context.limits, maxChangesetFileBytes: 5 },
+        },
+      ),
+    ).rejects.toThrow("maximum is 5");
+  });
+
+  it("rolls back earlier writes when a later apply action fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-rollback-"));
+    await writeFile(path.join(root, "a.txt"), "old\n");
+    await mkdir(path.join(root, "target-dir"));
+
+    await expect(
+      applyPlan({
+        summary: {
+          total: 2,
+          creates: 0,
+          edits: 0,
+          replaces: 2,
+          deletes: 0,
+          mkdirs: 0,
+        },
+        files: [],
+        diff: "",
+        conflicts: [],
+        actions: [
+          {
+            op: "replace",
+            path: "a.txt",
+            absolutePath: path.join(root, "a.txt"),
+            before: {
+              content: "old\n",
+              sha256: sha256("old\n"),
+              sizeBytes: 4,
+              mode: 0o666,
+              mtimeMs: 0,
+            },
+            afterContent: "new\n",
+            afterSha256: sha256("new\n"),
+          },
+          {
+            op: "replace",
+            path: "target-dir",
+            absolutePath: path.join(root, "target-dir"),
+            afterContent: "not a directory\n",
+            afterSha256: sha256("not a directory\n"),
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("old\n");
   });
 });
 

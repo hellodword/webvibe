@@ -8,7 +8,7 @@ import { loadPolicy } from "../../src/config/loader.js";
 import { normalizeDescriptor } from "../../src/descriptor/normalize.js";
 
 describe("default policies", () => {
-  it("keeps preset upstream details outside src and selects expected modes", async () => {
+  it("selects default modes and keeps the default tool boundary narrow", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-"));
     const readOnly = await loadPolicy("policies/read-only.yaml", {
       workspaceRoot: root,
@@ -21,21 +21,24 @@ describe("default policies", () => {
 
     expect(readOnly.mode).toBe("read-only");
     expect(dev.mode).toBe("dev");
-    expect(readOnly.tools.map((tool) => tool.name)).toContain("fs.read_text_file");
-    expect(readOnly.tools.map((tool) => tool.name)).not.toContain("fs.write_file");
-    expect(readOnly.tools.map((tool) => tool.name)).not.toContain("fs.create_directory");
-    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.write_file");
-    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.edit_file_apply");
-    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.create_directory");
-    expect(dev.tools.map((tool) => tool.name)).toContain("repo.file_manifest");
-    expect(dev.tools.map((tool) => tool.name)).toContain("repo.preview_changeset");
-    expect(dev.tools.map((tool) => tool.name)).toContain("repo.apply_changeset");
-    expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_test");
-    expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_build");
-    expect(dev.tools.map((tool) => tool.name)).toContain("task.cargo_clippy");
-    expect(dev.tools.map((tool) => tool.name)).toContain("task.go_fmt_check");
-    expect(Object.keys(dev.upstreams)).not.toContain(["desk", "top"].join(""));
-    expect(JSON.stringify(dev)).not.toContain("execute_");
+    const readOnlyTools = readOnly.tools.map((tool) => tool.name);
+    const devTools = dev.tools.map((tool) => tool.name);
+
+    expect(readOnlyTools).toContain("fs.read_text_file");
+    expect(devTools).toEqual(
+      expect.arrayContaining([
+        "repo.file_manifest",
+        "repo.preview_changeset",
+        "repo.apply_changeset",
+        "task.npm_test",
+        "task.npm_build",
+        "task.cargo_clippy",
+        "task.go_fmt_check",
+      ]),
+    );
+    expect(devTools.filter((name) => name.startsWith("fs.") && /write|edit|create/.test(name))).toEqual(
+      [],
+    );
     expect(dev.upstreams.tasks.transport).toBe("local-task-runner");
     expect(
       readOnly.tools

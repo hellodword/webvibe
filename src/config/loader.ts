@@ -6,7 +6,8 @@ import { parse as parseYaml } from "yaml";
 
 import { defaultPolicyPaths, defaultPublicBaseUrl } from "./defaults.js";
 import { interpolateValue } from "./interpolation.js";
-import { appConfigSchema, policySchema, type AppConfig } from "./schema.js";
+import { appConfigSchema, type AppConfig } from "./schema.js";
+import { policySchema } from "../policy/schema.js";
 import type { Mode, RelayPolicy } from "../policy/policy.js";
 import { BadRequestError } from "../util/errors.js";
 import { resolvePath } from "../util/paths.js";

@@ -1,16 +1,16 @@
-import stableStringify from "fast-json-stable-stringify";
-
 import { interpolateValue } from "../config/interpolation.js";
 import { assertToolInput } from "../policy/engine.js";
 import { assertInputPolicy } from "../policy/matcher.js";
 import type { RelayPolicy, ToolPolicy } from "../policy/policy.js";
 import { AuditLog, buildAuditRecord } from "../state/audit.js";
-import { redactJson } from "../state/redaction.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
-import { ForbiddenError, TimeoutError, toError } from "../util/errors.js";
-import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
+import { toError } from "../util/errors.js";
+import { callBuiltIn } from "./built-ins.js";
 import { assertToolAllowed } from "./namespace.js";
+import { prepareToolOutput } from "./output.js";
+import { RateLimiter } from "./rate-limit.js";
+import { toolTimeoutMs, withToolTimeout } from "./timeout.js";
 import { executeWorkflow } from "./workflow.js";
 
 export type CallerIdentity = {
@@ -28,7 +28,7 @@ export type ToolCallOptions = {
 };
 
 export class ToolRouter {
-  private rateWindows = new Map<string, number[]>();
+  private readonly rateLimiter = new RateLimiter();
 
   constructor(private readonly options: ToolCallOptions) {}
 
@@ -43,13 +43,13 @@ export class ToolRouter {
       assertToolAllowed(name, this.options.registry);
       entry = this.options.registry.get(name)!;
       args = assertToolInput(entry.policy, rawArgs);
-      this.assertRateLimit(caller);
-      const output = await this.withTimeout(
+      this.rateLimiter.assertAllowed(caller, this.options.policy.limits.maxCallsPerMinute);
+      const output = await withToolTimeout(
         this.execute(entry.policy, args, caller),
-        this.toolTimeoutMs(entry.policy, args),
+        toolTimeoutMs(entry.policy, args, this.options.policy.limits.timeoutMs),
         name,
       );
-      const finalOutput = this.prepareOutput(output);
+      const finalOutput = prepareToolOutput(output, this.options.policy.limits.maxToolOutputBytes);
       await this.options.audit.write(
         buildAuditRecord({
           clientId: caller.clientId,
@@ -89,7 +89,14 @@ export class ToolRouter {
     args: Record<string, unknown>,
     caller: CallerIdentity,
   ): Promise<unknown> {
-    if (tool.type === "builtIn") return this.callBuiltIn(tool.name, args);
+    if (tool.type === "builtIn") {
+      return callBuiltIn(tool.name, args, {
+        registry: this.options.registry,
+        policy: this.options.policy,
+        upstreams: this.options.upstreams,
+        workspaceRoot: this.options.workspaceRoot,
+      });
+    }
     if (tool.type === "passThrough") {
       assertInputPolicy({
         policy: tool.inputPolicy,
@@ -145,98 +152,5 @@ export class ToolRouter {
         );
       },
     });
-  }
-
-  private callBuiltIn(name: string, args: Record<string, unknown>): unknown | Promise<unknown> {
-    if (name === "relay.info") {
-      return {
-        name: "webvibe",
-        mode: this.options.policy.mode,
-        tools: Array.from(this.options.registry.keys()),
-      };
-    }
-    if (name === "relay.list_upstreams") {
-      return { upstreams: this.options.upstreams.listHealth() };
-    }
-    if (name === "relay.list_tools") {
-      return { tools: Array.from(this.options.registry.values()).map((entry) => entry.descriptor) };
-    }
-    if (name === "repo.file_manifest") {
-      return fileManifest(args, {
-        workspaceRoot: this.options.workspaceRoot,
-        workspace: this.options.policy.workspace,
-        limits: this.options.policy.limits,
-      });
-    }
-    if (name === "repo.preview_changeset") {
-      return previewChangeset(args, {
-        workspaceRoot: this.options.workspaceRoot,
-        workspace: this.options.policy.workspace,
-        limits: this.options.policy.limits,
-      });
-    }
-    if (name === "repo.apply_changeset") {
-      return applyChangeset(args, {
-        workspaceRoot: this.options.workspaceRoot,
-        workspace: this.options.policy.workspace,
-        limits: this.options.policy.limits,
-      });
-    }
-    throw new ForbiddenError(`Unknown built-in tool: ${name}`);
-  }
-
-  private prepareOutput(output: unknown): unknown {
-    const redacted = redactJson(output);
-    const maxBytes = this.options.policy.limits.maxToolOutputBytes;
-    const text = stableStringify(redacted);
-    if (Buffer.byteLength(text) <= maxBytes) return redacted;
-    return {
-      truncated: true,
-      text: Buffer.from(text).subarray(0, maxBytes).toString("utf8"),
-    };
-  }
-
-  private assertRateLimit(caller: CallerIdentity): void {
-    const limit = this.options.policy.limits.maxCallsPerMinute;
-    const key = caller.clientId ?? caller.subject ?? "anonymous";
-    const now = Date.now();
-    const windowStart = now - 60_000;
-    const current = (this.rateWindows.get(key) ?? []).filter(
-      (timestamp) => timestamp > windowStart,
-    );
-    if (current.length >= limit) throw new ForbiddenError("Rate limit exceeded");
-    current.push(now);
-    this.rateWindows.set(key, current);
-  }
-
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    toolName: string,
-  ): Promise<T> {
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(
-        () => reject(new TimeoutError(`Tool '${toolName}' timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-    });
-    try {
-      return await Promise.race([promise, timeout]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
-  private toolTimeoutMs(tool: ToolPolicy, args: Record<string, unknown>): number {
-    if (tool.type !== "workflow" || !tool.timeoutSeconds)
-      return this.options.policy.limits.timeoutMs;
-    const raw = args.timeoutSeconds;
-    const requested = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : undefined;
-    const seconds = Math.min(
-      Math.max(requested ?? tool.timeoutSeconds.default, 1),
-      tool.timeoutSeconds.maximum,
-    );
-    return (seconds + (tool.timeoutSeconds.bufferSeconds ?? 5)) * 1000;
   }
 }
