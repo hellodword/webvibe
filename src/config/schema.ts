@@ -12,6 +12,8 @@ const annotationsSchema = z
   })
   .passthrough();
 
+const metaSchema = z.record(z.string(), z.unknown());
+
 const inputPolicySchema = z
   .object({
     require: z.record(z.string(), z.unknown()).optional(),
@@ -29,6 +31,7 @@ const builtInToolSchema = z
     inputSchema: z.record(z.string(), z.unknown()).optional(),
     outputSchema: z.record(z.string(), z.unknown()).optional(),
     annotations: annotationsSchema.optional(),
+    _meta: metaSchema.optional(),
   })
   .passthrough();
 
@@ -43,6 +46,7 @@ const passThroughToolSchema = z
     inputSchema: z.record(z.string(), z.unknown()).optional(),
     outputSchema: z.record(z.string(), z.unknown()).optional(),
     annotations: annotationsSchema.optional(),
+    _meta: metaSchema.optional(),
     inputPolicy: inputPolicySchema.optional(),
     mapInput: z.unknown().optional(),
     mapOutput: z.unknown().optional(),
@@ -70,6 +74,7 @@ const workflowToolSchema = z
     inputSchema: z.record(z.string(), z.unknown()),
     outputSchema: z.record(z.string(), z.unknown()).optional(),
     annotations: annotationsSchema.optional(),
+    _meta: metaSchema.optional(),
     timeoutSeconds: z
       .object({
         default: z.number().int().positive(),
@@ -134,8 +139,26 @@ export const policySchema = z
         maxToolOutputBytes: z.number().int().positive().default(60000),
         timeoutMs: z.number().int().positive().default(30000),
         maxCallsPerMinute: z.number().int().positive().default(120),
+        maxChangesetFiles: z.number().int().positive().default(80),
+        maxChangesetBytes: z
+          .number()
+          .int()
+          .positive()
+          .default(5 * 1024 * 1024),
+        maxChangesetFileBytes: z
+          .number()
+          .int()
+          .positive()
+          .default(1024 * 1024),
       })
-      .default({ maxToolOutputBytes: 60000, timeoutMs: 30000, maxCallsPerMinute: 120 }),
+      .default({
+        maxToolOutputBytes: 60000,
+        timeoutMs: 30000,
+        maxCallsPerMinute: 120,
+        maxChangesetFiles: 80,
+        maxChangesetBytes: 5 * 1024 * 1024,
+        maxChangesetFileBytes: 1024 * 1024,
+      }),
     audit: z
       .object({
         enabled: z.boolean().default(true),

@@ -23,7 +23,13 @@ describe("default policies", () => {
     expect(dev.mode).toBe("dev");
     expect(readOnly.tools.map((tool) => tool.name)).toContain("fs.read_text_file");
     expect(readOnly.tools.map((tool) => tool.name)).not.toContain("fs.write_file");
-    expect(dev.tools.map((tool) => tool.name)).toContain("fs.write_file");
+    expect(readOnly.tools.map((tool) => tool.name)).not.toContain("fs.create_directory");
+    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.write_file");
+    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.edit_file_apply");
+    expect(dev.tools.map((tool) => tool.name)).not.toContain("fs.create_directory");
+    expect(dev.tools.map((tool) => tool.name)).toContain("repo.file_manifest");
+    expect(dev.tools.map((tool) => tool.name)).toContain("repo.preview_changeset");
+    expect(dev.tools.map((tool) => tool.name)).toContain("repo.apply_changeset");
     expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_test");
     expect(dev.tools.map((tool) => tool.name)).toContain("task.npm_build");
     expect(dev.tools.map((tool) => tool.name)).toContain("task.cargo_clippy");
@@ -41,6 +47,7 @@ describe("default policies", () => {
         .filter((tool) => tool.name.startsWith("task."))
         .every((tool) => tool.outputSchema),
     ).toBe(true);
+    expect(dev.limits.maxChangesetFiles).toBe(80);
   });
 
   it("adds output schemas to built-in relay descriptors", () => {
@@ -62,5 +69,23 @@ describe("default policies", () => {
         required: ["tools"],
       },
     });
+  });
+
+  it("keeps nested JSON schema required and primitive fields valid when capping depth", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-schema-"));
+    const dev = await loadPolicy("policies/dev.yaml", {
+      workspaceRoot: root,
+      stateDir: path.join(root, "state"),
+    });
+    const preview = dev.tools.find((tool) => tool.name === "repo.preview_changeset");
+    expect(preview).toBeTruthy();
+    const descriptor = normalizeDescriptor(preview!);
+    const schema = descriptor.inputSchema as any;
+    const editItem =
+      schema.properties.changes.items.properties.edits.items;
+
+    expect(editItem.properties.oldText).toEqual({ type: "string" });
+    expect(editItem.properties.newText).toEqual({ type: "string" });
+    expect(editItem.required).toEqual(["oldText", "newText"]);
   });
 });

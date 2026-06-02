@@ -8,6 +8,11 @@ Security model:
   glob patterns.
 - Narrow tasks: default dev tasks run only policy-defined executable/argument
   pairs through `local-task-runner`.
+- Batch changesets: default dev mode applies workspace edits through one
+  `repo.apply_changeset` call instead of exposing raw per-file write tools.
+- Hash guards: update/delete changes require `expectedSha256`, and stale hashes
+  fail without writing any file.
+- Symlink guard: changeset writes reject symlink targets and symlink parents.
 - Output limit: over-limit results are truncated and marked.
 - Timeout: every public tool call is bounded by `limits.timeoutMs`.
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
@@ -17,4 +22,5 @@ Security model:
   Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
-stdin, kill process, or Git mutation tools in default policies.
+stdin, kill process, Git mutation tools, or raw filesystem write tools in
+default policies.

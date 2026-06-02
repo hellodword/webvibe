@@ -100,42 +100,140 @@ upstreams:
         failOnStdout: true
 
 tools:
-  - name: fs.edit_file_preview
-    type: passThrough
-    upstream: fs
-    upstreamTool: edit_file
-    inputPolicy:
-      require:
-        dryRun: true
-      pathFields: ["path"]
+  - name: repo.file_manifest
+    type: builtIn
+    description: Use this before editing to get current workspace file hashes for one or more paths.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [files]
+      additionalProperties: false
     annotations:
-      readOnlyHint: false
+      readOnlyHint: true
       destructiveHint: false
       openWorldHint: false
 
-  - name: fs.edit_file_apply
-    type: passThrough
-    upstream: fs
-    upstreamTool: edit_file
-    inputPolicy:
-      require:
-        dryRun: false
-      pathFields: ["path"]
+  - name: repo.preview_changeset
+    type: builtIn
+    description: Use this to validate and preview a complete multi-file workspace changeset before applying it.
+    inputSchema: &changesetInputSchema
+      type: object
+      properties:
+        baseRevision:
+          type: string
+        changes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              op:
+                type: string
+                enum: [create, replace, edit, delete, mkdir]
+              path:
+                type: string
+              expectedSha256:
+                type: string
+              content:
+                type: string
+              edits:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  properties:
+                    oldText:
+                      type: string
+                    newText:
+                      type: string
+                    replaceAll:
+                      type: boolean
+                  required: [oldText, newText]
+                  additionalProperties: false
+            required: [op, path]
+            additionalProperties: false
+      required: [changes]
+      additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        baseRevision:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        diff:
+          type: string
+        conflicts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [valid, summary, files, diff, conflicts]
+      additionalProperties: false
     annotations:
-      readOnlyHint: false
-      destructiveHint: true
+      readOnlyHint: true
+      destructiveHint: false
       openWorldHint: false
+    _meta:
+      "openai/toolInvocation/invoking": "Previewing changes"
+      "openai/toolInvocation/invoked": "Changes previewed"
 
-  - name: fs.write_file
-    type: passThrough
-    upstream: fs
-    upstreamTool: write_file
-    inputPolicy:
-      pathFields: ["path"]
+  - name: repo.apply_changeset
+    type: builtIn
+    description: Use this to apply a complete reviewed multi-file workspace changeset in one write operation.
+    inputSchema: *changesetInputSchema
+    outputSchema:
+      type: object
+      properties:
+        applied:
+          type: boolean
+        baseRevision:
+          type: string
+        summary:
+          type: object
+          additionalProperties: true
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        conflicts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required: [applied, summary, files, conflicts]
+      additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: true
       openWorldHint: false
+    _meta:
+      "openai/toolInvocation/invoking": "Applying changes"
+      "openai/toolInvocation/invoked": "Changes applied"
 
   - name: task.npm_test
     type: workflow

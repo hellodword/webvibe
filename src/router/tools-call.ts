@@ -9,6 +9,7 @@ import { redactJson } from "../state/redaction.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import { ForbiddenError, TimeoutError, toError } from "../util/errors.js";
+import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
 import { assertToolAllowed } from "./namespace.js";
 import { executeWorkflow } from "./workflow.js";
 
@@ -88,7 +89,7 @@ export class ToolRouter {
     args: Record<string, unknown>,
     caller: CallerIdentity,
   ): Promise<unknown> {
-    if (tool.type === "builtIn") return this.callBuiltIn(tool.name);
+    if (tool.type === "builtIn") return this.callBuiltIn(tool.name, args);
     if (tool.type === "passThrough") {
       assertInputPolicy({
         policy: tool.inputPolicy,
@@ -146,7 +147,7 @@ export class ToolRouter {
     });
   }
 
-  private callBuiltIn(name: string): unknown {
+  private callBuiltIn(name: string, args: Record<string, unknown>): unknown | Promise<unknown> {
     if (name === "relay.info") {
       return {
         name: "webvibe",
@@ -159,6 +160,27 @@ export class ToolRouter {
     }
     if (name === "relay.list_tools") {
       return { tools: Array.from(this.options.registry.values()).map((entry) => entry.descriptor) };
+    }
+    if (name === "repo.file_manifest") {
+      return fileManifest(args, {
+        workspaceRoot: this.options.workspaceRoot,
+        workspace: this.options.policy.workspace,
+        limits: this.options.policy.limits,
+      });
+    }
+    if (name === "repo.preview_changeset") {
+      return previewChangeset(args, {
+        workspaceRoot: this.options.workspaceRoot,
+        workspace: this.options.policy.workspace,
+        limits: this.options.policy.limits,
+      });
+    }
+    if (name === "repo.apply_changeset") {
+      return applyChangeset(args, {
+        workspaceRoot: this.options.workspaceRoot,
+        workspace: this.options.policy.workspace,
+        limits: this.options.policy.limits,
+      });
     }
     throw new ForbiddenError(`Unknown built-in tool: ${name}`);
   }

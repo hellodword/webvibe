@@ -10,6 +10,8 @@ export type ToolAnnotations = {
   openWorldHint?: boolean;
 };
 
+export type ToolMeta = Record<string, unknown>;
+
 export type UpstreamPolicy = {
   transport: "stdio" | "streamable-http" | "local-task-runner";
   command?: string;
@@ -50,6 +52,7 @@ export type BuiltInToolPolicy = {
   inputSchema?: JsonSchema;
   outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
+  _meta?: ToolMeta;
 };
 
 export type PassThroughToolPolicy = {
@@ -62,6 +65,7 @@ export type PassThroughToolPolicy = {
   inputSchema?: JsonSchema;
   outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
+  _meta?: ToolMeta;
   inputPolicy?: InputPolicy;
   mapInput?: unknown;
   mapOutput?: unknown;
@@ -85,6 +89,7 @@ export type WorkflowToolPolicy = {
   inputSchema: JsonSchema;
   outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
+  _meta?: ToolMeta;
   timeoutSeconds?: ToolTimeoutPolicy;
   steps: WorkflowStep[];
 };
@@ -106,6 +111,9 @@ export type LimitsPolicy = {
   maxToolOutputBytes: number;
   timeoutMs: number;
   maxCallsPerMinute: number;
+  maxChangesetFiles: number;
+  maxChangesetBytes: number;
+  maxChangesetFileBytes: number;
 };
 
 export type AuditPolicy = {
@@ -124,7 +132,14 @@ export type RelayPolicy = {
   audit: AuditPolicy;
 };
 
-export const BUILT_IN_TOOLS = ["relay.info", "relay.list_upstreams", "relay.list_tools"] as const;
+export const BUILT_IN_TOOLS = [
+  "relay.info",
+  "relay.list_upstreams",
+  "relay.list_tools",
+  "repo.file_manifest",
+  "repo.preview_changeset",
+  "repo.apply_changeset",
+] as const;
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOLS)[number];
 

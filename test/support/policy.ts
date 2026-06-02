@@ -29,6 +29,18 @@ tools:
     type: builtIn
   - name: relay.list_tools
     type: builtIn
+  - name: repo.file_manifest
+    type: builtIn
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      openWorldHint: false
+  - name: repo.apply_changeset
+    type: builtIn
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      openWorldHint: false
   - name: x.read
     type: passThrough
     upstream: main

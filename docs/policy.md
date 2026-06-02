@@ -9,7 +9,8 @@ Important fields:
 - `tools`: ChatGPT-facing tools. Types are `builtIn`, `passThrough`, and
   `workflow`.
 - `workspace.protected`: generic path deny patterns.
-- `limits`: output byte limit, tool-call timeout, and per-client call rate.
+- `limits`: output byte limit, tool-call timeout, per-client call rate, and
+  changeset size limits.
 - `audit`: JSONL audit logging switch and rotation size.
 
 Pass-through tools map one public tool name to one upstream tool:
@@ -53,6 +54,23 @@ tools:
 
 Input policy supports fixed required values, denied values, and protected path
 checks.
+
+Default dev mode exposes batch workspace editing through built-in `repo.*`
+tools instead of raw per-file write tools:
+
+- `repo.file_manifest`: read current file hashes before editing.
+- `repo.preview_changeset`: validate and preview a multi-file changeset without
+  writing.
+- `repo.apply_changeset`: apply a complete reviewed changeset in one write
+  operation.
+
+This keeps ChatGPT Web confirmation frequency at the changeset boundary. Raw
+filesystem write/edit/directory tools are not exposed by the default dev policy,
+but a custom policy can still add them explicitly.
+
+Changeset limits default to 80 paths, 5 MiB per changeset, and 1 MiB per file.
+Update/delete operations require `expectedSha256` so stale model plans do not
+overwrite newer workspace edits.
 
 Configuration priority is:
 

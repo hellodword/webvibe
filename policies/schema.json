@@ -47,7 +47,10 @@
       "properties": {
         "maxToolOutputBytes": { "type": "integer", "minimum": 1 },
         "timeoutMs": { "type": "integer", "minimum": 1 },
-        "maxCallsPerMinute": { "type": "integer", "minimum": 1 }
+        "maxCallsPerMinute": { "type": "integer", "minimum": 1 },
+        "maxChangesetFiles": { "type": "integer", "minimum": 1 },
+        "maxChangesetBytes": { "type": "integer", "minimum": 1 },
+        "maxChangesetFileBytes": { "type": "integer", "minimum": 1 }
       }
     },
     "audit": {

@@ -39,6 +39,7 @@ export function normalizeDescriptor(
     annotations,
     _meta: {
       ...upstreamDescriptor?._meta,
+      ...policyTool._meta,
       securitySchemes: [{ type: "oauth2", scopes: [] }],
     },
   };

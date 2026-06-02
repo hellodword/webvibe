@@ -1,4 +1,5 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -42,6 +43,34 @@ describe("tool router", () => {
         { clientId: "c1" },
       );
       expect(applied).toMatchObject({ ok: true, applied: true });
+
+      await writeFile(path.join(root, "code.txt"), "old\n");
+      const manifest = await router.call(
+        "repo.file_manifest",
+        { paths: ["code.txt"] },
+        { clientId: "c1" },
+      );
+      expect(manifest).toMatchObject({
+        files: [{ path: "code.txt", exists: true, type: "file" }],
+      });
+      const changeset = await router.call(
+        "repo.apply_changeset",
+        {
+          changes: [
+            {
+              op: "edit",
+              path: "code.txt",
+              expectedSha256: sha256("old\n"),
+              edits: [{ oldText: "old", newText: "new" }],
+            },
+            { op: "create", path: "new.txt", content: "created\n" },
+          ],
+        },
+        { clientId: "c1" },
+      );
+      expect(changeset).toMatchObject({ applied: true });
+      expect(await readFile(path.join(root, "code.txt"), "utf8")).toBe("new\n");
+      expect(await readFile(path.join(root, "new.txt"), "utf8")).toBe("created\n");
 
       const workflow = await router.call("x.run", { timeoutSeconds: 2 }, { clientId: "c1" });
       expect(workflow).toMatchObject({ ok: true, command: "npm test", timeout: 2000 });
@@ -93,3 +122,7 @@ describe("tool router", () => {
     }
   });
 });
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
