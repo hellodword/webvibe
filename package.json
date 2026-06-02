@@ -9,7 +9,7 @@
   "files": [
     "dist",
     "policies",
-    "examples",
+    "config.yaml",
     "docs",
     "README.md"
   ],

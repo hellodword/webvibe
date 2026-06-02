@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 
 import { OAuthStore } from "./auth/oauth-store.js";
 import { PairingManager } from "./auth/pairing.js";
-import { loadRuntimeConfig, parseCliArgs, type CliOptions } from "./config/loader.js";
+import { helpText, loadRuntimeConfig, parseCliArgs, type CliOptions } from "./config/loader.js";
 import { startHttpServer, type WebvibeServer } from "./server/http.js";
 import { UpstreamManager } from "./upstream/manager.js";
 
@@ -18,9 +18,7 @@ export async function runWebvibe(cli: CliOptions): Promise<RunningWebvibe> {
   const runtime = await loadRuntimeConfig(cli);
   await mkdir(runtime.stateDir, { recursive: true, mode: 0o700 });
   const pairing = new PairingManager({
-    stateDir: runtime.stateDir,
     pairingCode: runtime.config.auth.pairingCode,
-    pairingCodeFile: runtime.config.auth.pairingCodeFile,
   });
   await pairing.load();
   const store = OAuthStore.atStateDir(runtime.stateDir);
@@ -49,7 +47,12 @@ export async function runWebvibe(cli: CliOptions): Promise<RunningWebvibe> {
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
-  const running = await runWebvibe(parseCliArgs(args));
+  const cli = parseCliArgs(args);
+  if (cli.help) {
+    console.log(helpText());
+    return;
+  }
+  const running = await runWebvibe(cli);
   const address = running.http.server.address();
   const printable =
     typeof address === "object" && address

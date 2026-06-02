@@ -2,74 +2,120 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { loadRuntimeConfig, parseCliArgs } from "../../src/config/loader.js";
+import { defaultPolicyPaths } from "../../src/config/defaults.js";
+import { helpText, loadRuntimeConfig, parseCliArgs } from "../../src/config/loader.js";
+import { main } from "../../src/main.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("scaffold", () => {
-  it("parses base CLI flags", () => {
-    expect(
-      parseCliArgs([
-        "--mode",
-        "dev",
-        "--workspace",
-        ".",
-        "--public-base-url=http://127.0.0.1:3000",
-        "--pairing-code",
-        "123456",
-      ]),
-    ).toMatchObject({
-      mode: "dev",
-      workspace: ".",
-      publicBaseUrl: "http://127.0.0.1:3000",
-      pairingCode: "123456",
-    });
+  it("parses config CLI flags and help", () => {
+    expect(parseCliArgs(["--config", "./config.yaml"])).toEqual({ config: "./config.yaml" });
+    expect(parseCliArgs(["--config=./config.yaml"])).toEqual({ config: "./config.yaml" });
+    expect(parseCliArgs(["--help"])).toEqual({ help: true });
+    expect(helpText()).toContain("Usage: webvibe --config <path>");
   });
 
-  it("applies CLI, config file, environment, and defaults in priority order", async () => {
-    const previous = {
-      WEBVIBE_LISTEN: process.env.WEBVIBE_LISTEN,
-      WEBVIBE_WORKSPACE: process.env.WEBVIBE_WORKSPACE,
-      WEBVIBE_POLICY: process.env.WEBVIBE_POLICY,
-    };
+  it("requires a config file", async () => {
+    await expect(loadRuntimeConfig({})).rejects.toThrow("Missing required --config");
+  });
+
+  it("prints help without loading config", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await main(["--help"]);
+      expect(log).toHaveBeenCalledWith(helpText());
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("loads runtime config from the config file", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
     const policyPath = await writeFakePolicy(root);
     const configPath = path.join(root, "config.yaml");
-    const fileWorkspace = path.join(root, "from-file");
-    const cliWorkspace = path.join(root, "from-cli");
+    const workspaceRoot = path.join(root, "workspace");
+    const stateDir = path.join(root, "state");
     await writeFile(
       configPath,
       `version: 1
 server:
   listen: "127.0.0.1:4444"
+  stateDir: "${stateDir}"
+  policy: "./policy.yaml"
 workspace:
-  root: "${fileWorkspace}"
+  root: "${workspaceRoot}"
+auth:
+  pairingCode: "123456"
 `,
     );
 
-    try {
-      process.env.WEBVIBE_LISTEN = "127.0.0.1:3333";
-      process.env.WEBVIBE_WORKSPACE = path.join(root, "from-env");
-      process.env.WEBVIBE_POLICY = policyPath;
+    const runtime = await loadRuntimeConfig({ config: configPath });
+    expect(runtime.listen.port).toBe(4444);
+    expect(runtime.publicBaseUrl).toBe("http://127.0.0.1:4444");
+    expect(runtime.workspaceRoot).toBe(workspaceRoot);
+    expect(runtime.stateDir).toBe(stateDir);
+    expect(runtime.policyPath).toBe(policyPath);
+    expect(runtime.config.auth.accessTokenTtlDays).toBe(30);
+  });
 
-      const fileWins = await loadRuntimeConfig({ config: configPath });
-      expect(fileWins.listen.port).toBe(4444);
-      expect(fileWins.workspaceRoot).toBe(fileWorkspace);
-      expect(fileWins.policyPath).toBe(policyPath);
+  it("uses server mode to select a built-in policy", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
+    const configPath = path.join(root, "config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+server:
+  mode: "dev"
+workspace:
+  root: "."
+auth:
+  pairingCode: "123456"
+`,
+    );
 
-      const cliWins = await loadRuntimeConfig({
-        config: configPath,
-        listen: "127.0.0.1:5555",
-        workspace: cliWorkspace,
-      });
-      expect(cliWins.listen.port).toBe(5555);
-      expect(cliWins.workspaceRoot).toBe(cliWorkspace);
-    } finally {
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
-    }
+    const runtime = await loadRuntimeConfig({ config: configPath });
+    expect(runtime.workspaceRoot).toBe(root);
+    expect(runtime.policyPath).toBe(defaultPolicyPaths.dev);
+  });
+
+  it("rejects configs with server mode and server policy", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
+    const policyPath = await writeFakePolicy(root);
+    const configPath = path.join(root, "config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+server:
+  mode: "dev"
+  policy: "${policyPath}"
+auth:
+  pairingCode: "123456"
+`,
+    );
+
+    await expect(loadRuntimeConfig({ config: configPath })).rejects.toThrow(
+      "server.mode and server.policy are mutually exclusive",
+    );
+  });
+
+  it("rejects top-level policy config", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
+    const policyPath = await writeFakePolicy(root);
+    const configPath = path.join(root, "config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+server:
+  mode: "dev"
+auth:
+  pairingCode: "123456"
+policy:
+  path: "${policyPath}"
+`,
+    );
+
+    await expect(loadRuntimeConfig({ config: configPath })).rejects.toThrow("Unrecognized key");
   });
 });

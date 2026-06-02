@@ -72,13 +72,12 @@ Changeset limits default to 80 paths, 5 MiB per changeset, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
 overwrite newer workspace edits.
 
-Configuration priority is:
+Runtime configuration is loaded from:
 
 ```text
-CLI flags > config file > WEBVIBE_* environment variables > defaults
+--config file > schema defaults
 ```
 
-Useful environment variables include `WEBVIBE_CONFIG`, `WEBVIBE_MODE`,
-`WEBVIBE_POLICY`, `WEBVIBE_WORKSPACE`, `WEBVIBE_PUBLIC_BASE_URL`,
-`WEBVIBE_LISTEN`, `WEBVIBE_STATE_DIR`, `WEBVIBE_PAIRING_CODE`, and
-`WEBVIBE_PAIRING_CODE_FILE`.
+Set `server.mode` to `read-only` or `dev` to use a built-in policy. Set
+`server.policy` to load a specific policy file. These fields are mutually
+exclusive.

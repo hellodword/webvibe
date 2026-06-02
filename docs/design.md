@@ -44,4 +44,5 @@ Only two modes exist:
 - `dev`: extends read-only and adds a policy-defined batch changeset apply
   tool plus fixed npm, cargo, and Go task tools.
 
-Mode chooses a default policy. `--policy` can replace the defaults completely.
+Mode chooses a default policy. `server.policy` in the config file can replace the
+defaults completely.

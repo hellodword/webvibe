@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,19 +8,26 @@ import { runWebvibe } from "../../src/main.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("HTTP OAuth MCP flow", () => {
-  it("persists pairing and token across restart", async () => {
+  it("uses config pairing and persists token across restart", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-http-"));
     const stateDir = path.join(root, "state");
     const policyPath = await writeFakePolicy(root);
-    const first = await runWebvibe({
-      mode: "dev",
-      policy: policyPath,
-      workspace: root,
-      stateDir,
-      publicBaseUrl: "http://127.0.0.1:0",
-      listen: "127.0.0.1:0",
-      pairingCode: "123456",
-    });
+    const configPath = path.join(root, "config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+server:
+  listen: "127.0.0.1:0"
+  publicBaseUrl: "http://127.0.0.1:0"
+  stateDir: "${stateDir}"
+  policy: "${policyPath}"
+workspace:
+  root: "${root}"
+auth:
+  pairingCode: "123456"
+`,
+    );
+    const first = await runWebvibe({ config: configPath });
     const firstBase = baseUrl(first.http.server.address());
     try {
       const register = await fetch(`${firstBase}/oauth/register`, {
@@ -65,21 +72,13 @@ describe("HTTP OAuth MCP flow", () => {
         arguments: { path: "README.md" },
       });
       expect(call.result.content[0].text).toContain("read:README.md");
-      expect(await readFile(path.join(stateDir, "pairing-code"), "utf8")).toContain("123456");
       expect(await readFile(path.join(stateDir, "oauth-store.json"), "utf8")).toContain(
         token.access_token,
       );
 
       await first.close();
 
-      const second = await runWebvibe({
-        mode: "dev",
-        policy: policyPath,
-        workspace: root,
-        stateDir,
-        publicBaseUrl: "http://127.0.0.1:0",
-        listen: "127.0.0.1:0",
-      });
+      const second = await runWebvibe({ config: configPath });
       const secondBase = baseUrl(second.http.server.address());
       try {
         const info = await mcp(secondBase, token.access_token, "tools/call", {

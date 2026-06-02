@@ -12,19 +12,13 @@ npm run lint
 Run:
 
 ```bash
-npm run dev -- --mode read-only --workspace . --public-base-url http://127.0.0.1:3000 --pairing-code 123456
+npm run dev -- --config config.yaml
 ```
 
-Custom policy:
+Custom config:
 
 ```bash
-npm run dev -- --mode dev --policy ./my-policy.yaml --workspace . --pairing-code 123456
-```
-
-Environment overrides:
-
-```bash
-WEBVIBE_POLICY=./my-policy.yaml WEBVIBE_MODE=dev npm run dev
+npm run dev -- --config ./my-config.yaml
 ```
 
 Commit convention:

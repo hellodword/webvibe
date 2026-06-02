@@ -1,12 +1,7 @@
-import path from "node:path";
-
 import { BadRequestError, ForbiddenError } from "../util/errors.js";
-import { readTextIfExists, resolvePath, writeFileAtomic } from "../util/paths.js";
 
 export type PairingOptions = {
-  stateDir: string;
   pairingCode?: string;
-  pairingCodeFile?: string;
 };
 
 export class PairingManager {
@@ -16,28 +11,8 @@ export class PairingManager {
   constructor(private readonly options: PairingOptions) {}
 
   async load(): Promise<string> {
-    if (this.options.pairingCode) {
-      this.pairingCode = this.options.pairingCode;
-      await writeFileAtomic(
-        path.join(this.options.stateDir, "pairing-code"),
-        `${this.pairingCode}\n`,
-      );
-      return this.pairingCode;
-    }
-    if (this.options.pairingCodeFile) {
-      const filePath = resolvePath(this.options.pairingCodeFile);
-      const value = await readTextIfExists(filePath);
-      if (!value?.trim()) throw new BadRequestError(`Pairing code file is empty: ${filePath}`);
-      this.pairingCode = value.trim();
-      return this.pairingCode;
-    }
-    const stateValue = await readTextIfExists(path.join(this.options.stateDir, "pairing-code"));
-    if (!stateValue?.trim()) {
-      throw new BadRequestError(
-        "Missing pairing code. Pass --pairing-code or --pairing-code-file.",
-      );
-    }
-    this.pairingCode = stateValue.trim();
+    if (!this.options.pairingCode?.trim()) throw new BadRequestError("Missing auth.pairingCode");
+    this.pairingCode = this.options.pairingCode.trim();
     return this.pairingCode;
   }
 

@@ -15,7 +15,7 @@ npm test
 Development server:
 
 ```bash
-npm run dev -- --mode read-only --workspace . --public-base-url http://127.0.0.1:3000 --pairing-code 123456
+npm run dev -- --config config.yaml
 ```
 
 For ChatGPT Web vibecoding, use dev mode and let the model read/search first,

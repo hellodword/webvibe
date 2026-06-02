@@ -1,3 +1,0 @@
-version: 1
-mode: dev
-extends: ../policies/dev.yaml

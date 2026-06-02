@@ -11,10 +11,9 @@
 
 Pairing code rules:
 
-- `--pairing-code` writes `stateDir/pairing-code`.
-- `--pairing-code-file` reads an explicit file.
-- With neither flag, startup reads `stateDir/pairing-code`.
-- If no code exists, startup fails.
+- `auth.pairingCode` in the config file is required.
+- The pairing code is loaded into memory at startup.
+- The pairing code is not persisted to `stateDir`.
 
 OAuth clients and tokens persist in `stateDir/oauth-store.json`. Authorization
 codes are short-lived in-memory values. Default access token TTL is 30 days.

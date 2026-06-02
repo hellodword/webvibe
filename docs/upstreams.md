@@ -8,7 +8,7 @@ Upstreams are external MCP servers configured in policy. `webvibe` supports:
   general command tool.
 
 Default policies include filesystem, Git, and built-in dev task upstreams. These
-defaults can be replaced by passing `--policy ./my-policy.yaml`.
+defaults can be replaced by setting `server.policy` in the config file.
 
 Optional upstream behavior:
 
