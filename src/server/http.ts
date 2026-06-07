@@ -2,12 +2,13 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import type { OAuthStore } from "../auth/oauth-store.js";
 import type { PairingManager } from "../auth/pairing.js";
+import { ManualArtifactStore, sanitizeFilename } from "../manual/artifact-store.js";
 import type { RelayPolicy } from "../policy/policy.js";
 import { ToolRouter } from "../router/tools-call.js";
 import { AuditLog } from "../state/audit.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { buildRegistry, type RegisteredTool } from "../upstream/registry.js";
-import { WebvibeError } from "../util/errors.js";
+import { BadRequestError, NotFoundError, WebvibeError } from "../util/errors.js";
 import { OAuthServer, sendJson } from "./oauth.js";
 import { handleMcp } from "./mcp.js";
 
@@ -53,7 +54,7 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Webvi
   });
   const server = createServer(async (request, response) => {
     try {
-      await route(request, response, options, oauth, registry, router);
+      await route(request, response, options, oauth, registry, router, audit);
     } catch (error) {
       sendError(response, error);
     }
@@ -83,6 +84,7 @@ async function route(
   oauth: OAuthServer,
   registry: Map<string, RegisteredTool>,
   router: ToolRouter,
+  audit: AuditLog,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", options.publicBaseUrl);
   if (url.pathname === "/health") {
@@ -99,7 +101,58 @@ async function route(
     });
     return;
   }
+  if (request.method === "GET" && url.pathname.startsWith("/manual-artifacts/")) {
+    await handleManualArtifactDownload(request, response, url, options, audit);
+    return;
+  }
   response.writeHead(404).end("Not found");
+}
+
+async function handleManualArtifactDownload(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  options: HttpServerOptions,
+  audit: AuditLog,
+): Promise<void> {
+  const startedAt = Date.now();
+  const artifactId = decodeURIComponent(url.pathname.slice("/manual-artifacts/".length));
+  try {
+    const store = new ManualArtifactStore(options.stateDir);
+    const { record, data } = await store.openDownload(artifactId, url.searchParams.get("t"));
+    await audit.write({
+      timestamp: new Date().toISOString(),
+      event: "manual.artifact.download",
+      operationId: record.operationId,
+      artifactId: record.artifactId,
+      status: "ok",
+      durationMs: Date.now() - startedAt,
+      rawOutput: {
+        filename: record.filename,
+        mimeType: record.mimeType,
+        sizeBytes: record.sizeBytes,
+        remoteAddress: request.socket.remoteAddress,
+      },
+    });
+    response.writeHead(200, {
+      "content-type": record.mimeType,
+      "content-disposition": `attachment; filename="${sanitizeFilename(record.filename)}"`,
+      "cache-control": "no-store",
+    });
+    response.end(data);
+  } catch (error) {
+    await audit.write({
+      timestamp: new Date().toISOString(),
+      event: "manual.artifact.download",
+      artifactId,
+      status: "error",
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+      rawOutput: { remoteAddress: request.socket.remoteAddress },
+    });
+    if (error instanceof BadRequestError) throw new NotFoundError("Manual artifact not found");
+    throw error;
+  }
 }
 
 function sendError(response: ServerResponse, error: unknown): void {
