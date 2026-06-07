@@ -64,6 +64,12 @@ auth:
       expect(tokenResponse.status).toBe(200);
       const token = (await tokenResponse.json()) as any;
 
+      const initialize = await mcp(firstBase, token.access_token, "initialize", {});
+      expect(initialize.result.capabilities).toMatchObject({ tools: {}, resources: {} });
+      expect(initialize.result.instructions).toContain(
+        "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.",
+      );
+
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
 
