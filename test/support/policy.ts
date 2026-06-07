@@ -125,6 +125,14 @@ limits:
   timeoutMs: 30000
 audit:
   enabled: true
+  maxLogBytes: 10485760
+  payloads: full-redacted
+  includeClientVisibleOutput: true
+  includeRawToolOutput: true
+  includeErrors: true
+  includeErrorStack: true
+  includeManualEvents: true
+  redact: true
 `,
   );
   return policyPath;

@@ -147,8 +147,8 @@ export function buildAuditRecord(input: {
   errorCode?: string;
   errorStack?: string;
 }): AuditRecord {
-  const rawOutput = input.rawOutput ?? input.output;
-  const clientOutput = input.clientOutput ?? input.output;
+  const rawOutput = "rawOutput" in input ? input.rawOutput : input.output;
+  const clientOutput = "clientOutput" in input ? input.clientOutput : input.output;
   const outputText =
     typeof clientOutput === "string" ? clientOutput : JSON.stringify(clientOutput ?? null);
   const rawOutputText = typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput ?? null);
@@ -167,10 +167,10 @@ export function buildAuditRecord(input: {
     inputHash: sha256(input.input),
     inputBytes: Buffer.byteLength(inputText),
     input: input.input,
-    rawOutputHash: sha256(rawOutput),
+    rawOutputHash: sha256(rawOutput ?? null),
     rawOutputBytes: Buffer.byteLength(rawOutputText),
     rawOutput,
-    clientOutputHash: sha256(clientOutput),
+    clientOutputHash: sha256(clientOutput ?? null),
     clientOutputBytes: Buffer.byteLength(outputText),
     clientOutput,
     outputBytes: Buffer.byteLength(outputText),

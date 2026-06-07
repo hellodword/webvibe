@@ -29,7 +29,7 @@ describe("tool router", () => {
         registry,
         policy,
         upstreams,
-        audit: new AuditLog(path.join(stateDir, "audit.log"), true),
+        audit: new AuditLog(path.join(stateDir, "audit.log"), policy.audit),
         workspaceRoot: root,
         stateDir,
         publicBaseUrl: "http://localhost",
@@ -51,7 +51,13 @@ describe("tool router", () => {
       );
       const applied = await router.call(
         "x.edit_apply",
-        { path: "file.txt", edits: [{ oldText: "a", newText: "b" }], dryRun: false },
+        {
+          path: "file.txt",
+          edits: [{ oldText: "a", newText: "b" }],
+          dryRun: false,
+          bearer: "Bearer secret-router-token",
+          apiKey: "OPENAI_API_KEY=sk-router-secret",
+        },
         { clientId: "c1" },
       );
       expect(applied).toMatchObject({ ok: true, applied: true });
@@ -92,7 +98,13 @@ describe("tool router", () => {
       expect(audit).toContain('"status":"blocked"');
       expect(audit).toContain('"tool":"x.edit_apply"');
       expect(audit).toContain('"tool":"x.nope"');
-      expect(audit).not.toContain("oldText");
+      expect(audit).toContain("oldText");
+      expect(audit).toContain("rawOutput");
+      expect(audit).toContain("clientOutput");
+      expect(audit).toContain("read:README.md");
+      expect(audit).not.toContain("secret-router-token");
+      expect(audit).not.toContain("sk-router-secret");
+      expect(audit).not.toContain("confirmToken");
     } finally {
       await upstreams.close();
     }
@@ -111,7 +123,7 @@ describe("tool router", () => {
         registry,
         policy,
         upstreams,
-        audit: new AuditLog(path.join(stateDir, "audit.log"), true),
+        audit: new AuditLog(path.join(stateDir, "audit.log"), policy.audit),
         workspaceRoot: root,
         stateDir,
         publicBaseUrl: "http://localhost",
