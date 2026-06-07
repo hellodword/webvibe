@@ -15,12 +15,13 @@ describe("HTTP OAuth MCP flow", () => {
     const stateDir = path.join(root, "state");
     const policyPath = await writeFakePolicy(root);
     const configPath = path.join(root, "config.yaml");
+    const configuredPublicBaseUrl = "http://127.0.0.1:0";
     await writeFile(
       configPath,
       `version: 1
 server:
   listen: "127.0.0.1:0"
-  publicBaseUrl: "http://127.0.0.1:0"
+  publicBaseUrl: "${configuredPublicBaseUrl}"
   stateDir: "${stateDir}"
   policy: "${policyPath}"
 workspace:
@@ -32,6 +33,25 @@ auth:
     const first = await runWebvibe({ config: configPath });
     const firstBase = baseUrl(first.http.server.address());
     try {
+      const rootResponse = await fetch(`${firstBase}/`);
+      expect(rootResponse.status).toBe(200);
+      await expect(rootResponse.json()).resolves.toMatchObject({ ok: true, name: "webvibe" });
+
+      const authMetadata = await fetch(`${firstBase}/.well-known/oauth-authorization-server`);
+      expect(authMetadata.status).toBe(200);
+      await expect(authMetadata.json()).resolves.toMatchObject({
+        issuer: configuredPublicBaseUrl,
+        authorization_endpoint: `${configuredPublicBaseUrl}/oauth/authorize`,
+        token_endpoint: `${configuredPublicBaseUrl}/oauth/token`,
+      });
+
+      const resourceMetadata = await fetch(`${firstBase}/.well-known/oauth-protected-resource`);
+      expect(resourceMetadata.status).toBe(200);
+      await expect(resourceMetadata.json()).resolves.toMatchObject({
+        resource: `${configuredPublicBaseUrl}/mcp`,
+        authorization_servers: [configuredPublicBaseUrl],
+      });
+
       const register = await fetch(`${firstBase}/oauth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -79,6 +99,10 @@ auth:
         uri: "ui://webvibe/manual-gate.html",
       });
       expect(resource.result.contents[0].mimeType).toBe("text/html;profile=mcp-app");
+      expect(resource.result.contents[0]._meta.ui.domain).toBe(configuredPublicBaseUrl);
+      expect(resource.result.contents[0]._meta["openai/widgetDomain"]).toBe(
+        configuredPublicBaseUrl,
+      );
 
       const context = await mcp(firstBase, token.access_token, "tools/call", {
         name: "context.get",

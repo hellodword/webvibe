@@ -89,6 +89,10 @@ async function route(
   audit: AuditLog,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", options.publicBaseUrl);
+  if (request.method === "GET" && url.pathname === "/") {
+    sendJson(response, 200, { ok: true, name: "webvibe" });
+    return;
+  }
   if (url.pathname === "/health") {
     sendJson(response, 200, { ok: true });
     return;

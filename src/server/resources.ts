@@ -17,7 +17,9 @@ export function readMcpResource(input: {
           connectDomains: string[];
           resourceDomains: string[];
         };
+        domain: string;
       };
+      "openai/widgetDomain": string;
       "openai/widgetDescription": string;
     };
   }>;
@@ -25,6 +27,7 @@ export function readMcpResource(input: {
   if (input.uri !== MANUAL_GATE_RESOURCE_URI) {
     throw new BadRequestError(`Unsupported MCP resource URI: ${input.uri}`);
   }
+  const widgetDomain = new URL(input.publicBaseUrl).origin;
   return {
     contents: [
       {
@@ -34,11 +37,13 @@ export function readMcpResource(input: {
         _meta: {
           ui: {
             prefersBorder: true,
+            domain: widgetDomain,
             csp: {
-              connectDomains: [new URL(input.publicBaseUrl).origin],
+              connectDomains: [widgetDomain],
               resourceDomains: [],
             },
           },
+          "openai/widgetDomain": widgetDomain,
           "openai/widgetDescription": "Generic manual completion card",
         },
       },

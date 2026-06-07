@@ -13,7 +13,20 @@ describe("manual gate widget resource", () => {
       uri: "ui://webvibe/manual-gate.html",
       mimeType: "text/html;profile=mcp-app",
     });
+    expect(resource.contents[0]._meta.ui.domain).toBe("http://127.0.0.1:7777");
+    expect(resource.contents[0]._meta["openai/widgetDomain"]).toBe("http://127.0.0.1:7777");
     expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual(["http://127.0.0.1:7777"]);
+  });
+
+  it("normalizes widget domain metadata from publicBaseUrl origin", () => {
+    const resource = readMcpResource({
+      uri: "ui://webvibe/manual-gate.html",
+      publicBaseUrl: "https://mcp.example.com/some/path/",
+    });
+
+    expect(resource.contents[0]._meta.ui.domain).toBe("https://mcp.example.com");
+    expect(resource.contents[0]._meta["openai/widgetDomain"]).toBe("https://mcp.example.com");
+    expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual(["https://mcp.example.com"]);
   });
 
   it("renders generic completion controls and only calls manual.confirm", () => {
