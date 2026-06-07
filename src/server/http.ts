@@ -34,8 +34,7 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Webvi
   const registry = buildRegistry(options.policy, options.upstreams);
   const audit = new AuditLog(
     `${options.stateDir}/audit.log`,
-    options.policy.audit.enabled,
-    options.policy.audit.maxLogBytes,
+    options.policy.audit,
   );
   const router = new ToolRouter({
     registry,
@@ -44,6 +43,7 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Webvi
     audit,
     workspaceRoot: options.workspaceRoot,
     stateDir: options.stateDir,
+    publicBaseUrl: options.publicBaseUrl,
   });
   const oauth = new OAuthServer({
     publicBaseUrl: options.publicBaseUrl,

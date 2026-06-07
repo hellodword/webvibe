@@ -32,6 +32,7 @@ describe("tool router", () => {
         audit: new AuditLog(path.join(stateDir, "audit.log"), true),
         workspaceRoot: root,
         stateDir,
+        publicBaseUrl: "http://localhost",
       });
 
       await expect(
@@ -113,6 +114,7 @@ describe("tool router", () => {
         audit: new AuditLog(path.join(stateDir, "audit.log"), true),
         workspaceRoot: root,
         stateDir,
+        publicBaseUrl: "http://localhost",
       });
 
       policy.limits.maxCallsPerMinute = 2;

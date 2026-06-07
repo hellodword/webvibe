@@ -30,6 +30,7 @@ export type ToolCallOptions = {
   audit: AuditLog;
   workspaceRoot: string;
   stateDir: string;
+  publicBaseUrl: string;
 };
 
 export class ToolRouter {
@@ -93,7 +94,8 @@ export class ToolRouter {
           status: "ok",
           startedAt,
           input: args,
-          output: finalOutput,
+          rawOutput: output,
+          clientOutput: finalOutput,
         }),
       );
       return finalOutput;
@@ -109,8 +111,10 @@ export class ToolRouter {
           status: "error",
           startedAt,
           input: args,
-          output: null,
+          rawOutput: null,
+          clientOutput: null,
           error: err.message,
+          errorStack: err.stack,
           errorCode: "code" in err && typeof (err as any).code === "string" ? (err as any).code : undefined,
         }),
       );
@@ -153,6 +157,9 @@ export class ToolRouter {
         policy: this.options.policy,
         upstreams: this.options.upstreams,
         workspaceRoot: this.options.workspaceRoot,
+        stateDir: this.options.stateDir,
+        publicBaseUrl: this.options.publicBaseUrl,
+        audit: this.options.audit,
       });
     }
     if (tool.type === "passThrough") {

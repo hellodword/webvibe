@@ -126,7 +126,11 @@ function normalizeToolCallParams(params: unknown): {
 }
 
 function toToolResult(result: unknown): unknown {
-  if (typeof result === "object" && result !== null && Array.isArray((result as any).content)) {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    ("structuredContent" in result || "content" in result || "_meta" in result)
+  ) {
     return result;
   }
   const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);

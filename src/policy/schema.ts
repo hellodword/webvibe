@@ -173,7 +173,24 @@ export const policySchema = z
           .int()
           .positive()
           .default(10 * 1024 * 1024),
+        payloads: z.enum(["hash-only", "full-redacted"]).default("hash-only"),
+        includeClientVisibleOutput: z.boolean().default(false),
+        includeRawToolOutput: z.boolean().default(false),
+        includeErrors: z.boolean().default(true),
+        includeErrorStack: z.boolean().default(false),
+        includeManualEvents: z.boolean().default(true),
+        redact: z.boolean().default(true),
       })
-      .default({ enabled: true, maxLogBytes: 10 * 1024 * 1024 }),
+      .default({
+        enabled: true,
+        maxLogBytes: 10 * 1024 * 1024,
+        payloads: "hash-only",
+        includeClientVisibleOutput: false,
+        includeRawToolOutput: false,
+        includeErrors: true,
+        includeErrorStack: false,
+        includeManualEvents: true,
+        redact: true,
+      }),
   })
   .passthrough();

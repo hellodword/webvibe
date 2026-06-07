@@ -7,15 +7,39 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b(id_rsa|id_ed25519)\b/g,
 ];
 
-export function redactText(input: string): string {
-  return SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, "$1[REDACTED]"), input);
+const MANUAL_TOKEN_PATTERNS: RegExp[] = [
+  /([?&]t=)[A-Za-z0-9._~-]+/g,
+];
+
+export type RedactionOptions = {
+  redactManualTokens?: boolean;
+};
+
+export function redactText(input: string, options: RedactionOptions = {}): string {
+  const withoutSecrets = SECRET_PATTERNS.reduce(
+    (text, pattern) => text.replace(pattern, "$1[REDACTED]"),
+    input,
+  );
+  return options.redactManualTokens
+    ? MANUAL_TOKEN_PATTERNS.reduce(
+        (text, pattern) => text.replace(pattern, "$1[REDACTED]"),
+        withoutSecrets,
+      )
+    : withoutSecrets;
 }
 
-export function redactJson(value: unknown): unknown {
-  if (typeof value === "string") return redactText(value);
-  if (Array.isArray(value)) return value.map((item) => redactJson(item));
+export function redactJson(value: unknown, options: RedactionOptions = {}): unknown {
+  if (typeof value === "string") return redactText(value, options);
+  if (Array.isArray(value)) return value.map((item) => redactJson(item, options));
   if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactJson(item)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        options.redactManualTokens && /confirmToken|downloadToken/i.test(key)
+          ? "[REDACTED]"
+          : redactJson(item, options),
+      ]),
+    );
   }
   return value;
 }

@@ -1,4 +1,7 @@
+import { confirmManualAction } from "../manual/confirm.js";
+import { openManualGate } from "../manual/gate.js";
 import type { RelayPolicy } from "../policy/policy.js";
+import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { ForbiddenError } from "../util/errors.js";
@@ -19,6 +22,9 @@ export type BuiltInContext = {
   policy: RelayPolicy;
   upstreams: UpstreamManager;
   workspaceRoot: string;
+  stateDir: string;
+  publicBaseUrl: string;
+  audit: AuditLog;
 };
 
 export function callBuiltIn(
@@ -110,6 +116,25 @@ export function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+    });
+  }
+  if (name === "manual.gate") {
+    return openManualGate(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+      stateDir: context.stateDir,
+      publicBaseUrl: context.publicBaseUrl,
+      audit: context.audit,
+    });
+  }
+  if (name === "manual.confirm") {
+    return confirmManualAction(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+      stateDir: context.stateDir,
+      audit: context.audit,
     });
   }
   if (name === "task.run") {

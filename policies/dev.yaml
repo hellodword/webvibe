@@ -334,6 +334,85 @@ tools:
       "openai/toolInvocation/invoking": "Planning change"
       "openai/toolInvocation/invoked": "Change planned"
 
+  - name: manual.gate
+    type: builtIn
+    description: Open a generic ChatGPT widget that waits for the user to complete a manual step outside ChatGPT and then confirm completion. This tool does not apply patches, delete files, run commands, or mutate the workspace. It creates an expiring pending manual action and returns a widget-backed tool result. Use this after an OpenAI safety block or whenever the user must manually complete something before the model continues.
+    inputSchema:
+      type: object
+      properties:
+        preparedId:
+          type: string
+        reason:
+          type: string
+          enum:
+            - openai_safety_block
+            - host_confirmation_block
+            - manual_review_requested
+            - external_manual_step
+            - user_requested_manual_step
+        title:
+          type: string
+          maxLength: 200
+        instructions:
+          type: string
+          maxLength: 20000
+        hostObservation:
+          type: object
+          properties:
+            toolName:
+              type: string
+            outputText:
+              type: string
+              maxLength: 4000
+          additionalProperties: false
+      required: [reason]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    _meta:
+      ui:
+        resourceUri: "ui://webvibe/manual-gate.html"
+        visibility: ["model", "app"]
+      "openai/outputTemplate": "ui://webvibe/manual-gate.html"
+      "openai/widgetAccessible": true
+      "openai/toolInvocation/invoking": "Opening manual gate"
+      "openai/toolInvocation/invoked": "Manual gate opened"
+
+  - name: manual.confirm
+    type: builtIn
+    description: Widget-only tool that records whether the user completed or cancelled a pending manual action. It does not apply patches, delete files, run commands, or mutate the workspace. The widget must provide the component-only confirmToken from tool result _meta.
+    inputSchema:
+      type: object
+      properties:
+        pendingId:
+          type: string
+          minLength: 1
+        confirmToken:
+          type: string
+          minLength: 1
+        outcome:
+          type: string
+          enum: [completed, cancelled]
+        evidenceNote:
+          type: string
+          maxLength: 4000
+      required: [pendingId, confirmToken, outcome]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    _meta:
+      ui:
+        visibility: ["app"]
+      "openai/widgetAccessible": true
+      "openai/toolInvocation/invoking": "Confirming manual action"
+      "openai/toolInvocation/invoked": "Manual action confirmed"
+
   - name: change.apply
     type: builtIn
     description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Requires context.get first.
@@ -486,3 +565,11 @@ limits:
 
 audit:
   enabled: true
+  maxLogBytes: 10485760
+  payloads: full-redacted
+  includeClientVisibleOutput: true
+  includeRawToolOutput: true
+  includeErrors: true
+  includeErrorStack: true
+  includeManualEvents: true
+  redact: true
