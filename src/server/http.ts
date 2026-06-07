@@ -98,6 +98,7 @@ async function route(
       registry,
       router,
       publicBaseUrl: options.publicBaseUrl,
+      audit,
     });
     return;
   }

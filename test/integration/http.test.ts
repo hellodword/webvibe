@@ -67,6 +67,11 @@ auth:
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
 
+      const resource = await mcp(firstBase, token.access_token, "resources/read", {
+        uri: "ui://webvibe/manual-gate.html",
+      });
+      expect(resource.result.contents[0].mimeType).toBe("text/html;profile=mcp-app");
+
       const context = await mcp(firstBase, token.access_token, "tools/call", {
         name: "context.get",
         arguments: {},
@@ -80,6 +85,9 @@ auth:
       expect(call.result.content[0].text).toContain("read:README.md");
       expect(await readFile(path.join(stateDir, "oauth-store.json"), "utf8")).toContain(
         token.access_token,
+      );
+      expect(await readFile(path.join(stateDir, "audit.log"), "utf8")).toContain(
+        "mcp.resources.read",
       );
 
       await first.close();

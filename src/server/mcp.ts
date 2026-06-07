@@ -4,6 +4,7 @@ import type { OAuthStore } from "../auth/oauth-store.js";
 import { requireBearerToken } from "../auth/token.js";
 import { toolsList } from "../router/tools-list.js";
 import type { ToolRouter } from "../router/tools-call.js";
+import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import {
   BadRequestError,
@@ -11,6 +12,7 @@ import {
   UnauthorizedError,
   WebvibeError,
 } from "../util/errors.js";
+import { sha256 } from "../util/hash.js";
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
 import { webvibeServerInstructions } from "./instructions.js";
 import { readBody } from "./oauth.js";
@@ -21,6 +23,7 @@ export type McpHandlerOptions = {
   registry: Map<string, RegisteredTool>;
   router: ToolRouter;
   publicBaseUrl: string;
+  audit: AuditLog;
 };
 
 export async function handleMcp(
@@ -84,11 +87,29 @@ async function handleMcpRequest(
       const result = await options.router.call(params.name, params.arguments, caller);
       return toToolResult(result);
     }
-    case "resources/read":
-      return readMcpResource({
-        uri: normalizeResourceReadParams(request.params).uri,
+    case "resources/read": {
+      const startedAt = Date.now();
+      const params = normalizeResourceReadParams(request.params);
+      const result = readMcpResource({
+        uri: params.uri,
         publicBaseUrl: options.publicBaseUrl,
       });
+      await options.audit.write({
+        timestamp: new Date().toISOString(),
+        event: "mcp.resources.read",
+        clientId: caller.clientId,
+        subject: caller.subject,
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+        inputHash: sha256(params),
+        input: params,
+        rawOutput: {
+          uri: params.uri,
+          mimeType: result.contents[0]?.mimeType,
+        },
+      });
+      return result;
+    }
     case "notifications/initialized":
       return {};
     default:
