@@ -43,6 +43,9 @@ describe("default policies", () => {
       "read.files",
       "read.stat",
       "change.plan",
+      "change.prepare",
+      "manual.gate",
+      "manual.confirm",
       "change.apply",
       "task.run",
       "git.status",
@@ -55,6 +58,7 @@ describe("default policies", () => {
     expect(devTools.filter((name) => name.startsWith("fs.") && /write|edit|create/.test(name))).toEqual(
       [],
     );
+    expect(devTools.filter((name) => /applyPrepared|applyById/.test(name))).toEqual([]);
     expect(dev.upstreams.tasks.transport).toBe("local-task-runner");
     expect(devTools.filter((name) => /pnpm|yarn|bun|poetry|maven|gradle|dotnet|ruby|php/.test(name))).toEqual(
       [],
@@ -80,6 +84,22 @@ describe("default policies", () => {
       maxLength: 500,
     });
     expect(dev.limits.maxChangesetFiles).toBe(80);
+    expect(dev.audit.payloads).toBe("full-redacted");
+
+    const manualConfirm = dev.tools.find((tool) => tool.name === "manual.confirm")!;
+    expect((manualConfirm._meta as any).ui.visibility).toEqual(["app"]);
+    const manualGate = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.gate")!);
+    expect((manualGate._meta as any).ui.resourceUri).toBe("ui://webvibe/manual-gate.html");
+    expect((manualGate._meta as any)["openai/outputTemplate"]).toBe(
+      "ui://webvibe/manual-gate.html",
+    );
+    expect((manualGate._meta as any)["openai/widgetAccessible"]).toBe(true);
+    const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
+    expect(applySchema.properties.preparedId).toBeUndefined();
+    const devPolicyText = JSON.stringify(dev);
+    expect(devPolicyText).not.toContain("preparedChangeId");
+    expect(devPolicyText).not.toContain("hiddenPayloadId");
+    expect(devPolicyText).not.toContain("serverSidePayloadId");
   });
 
   it("keeps context.get first and strongly described", async () => {
