@@ -334,6 +334,16 @@ tools:
       "openai/toolInvocation/invoking": "Planning change"
       "openai/toolInvocation/invoked": "Change planned"
 
+  - name: change.prepare
+    type: builtIn
+    description: Prepare one complete batch workspace change for a later write attempt and for a generic manual completion gate if ChatGPT Web blocks the write. It validates the same create/edit/replace/delete/mkdir changeset as change.plan, records an expiring prepared action, may create generic review artifacts, and does not mutate the workspace. Call this before change.apply.
+    inputSchema: *changeInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+    _meta:
+      "openai/toolInvocation/invoking": "Preparing change"
+      "openai/toolInvocation/invoked": "Change prepared"
+
   - name: manual.gate
     type: builtIn
     description: Open a generic ChatGPT widget that waits for the user to complete a manual step outside ChatGPT and then confirm completion. This tool does not apply patches, delete files, run commands, or mutate the workspace. It creates an expiring pending manual action and returns a widget-backed tool result. Use this after an OpenAI safety block or whenever the user must manually complete something before the model continues.
@@ -415,7 +425,7 @@ tools:
 
   - name: change.apply
     type: builtIn
-    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Requires context.get first.
+    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Call change.prepare first so a generic manual completion gate is available if ChatGPT Web blocks this write. If ChatGPT Web asks for confirmation, retry this same tool once with the identical JSON arguments. If ChatGPT Web returns "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", stop using write tools and call manual.gate with the latest preparedId. Do not transform, split, encode, hide, or rewrite the changeset to bypass the block. Requires context.get first.
     inputSchema: *changeInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations:

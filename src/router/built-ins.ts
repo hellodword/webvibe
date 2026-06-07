@@ -5,7 +5,7 @@ import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { ForbiddenError } from "../util/errors.js";
-import { applyChangeset, previewChangeset } from "../workspace/changeset.js";
+import { applyChangeset, prepareChangeset, previewChangeset } from "../workspace/changeset.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
 import {
   gitCommitPaths,
@@ -109,6 +109,16 @@ export function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+    });
+  }
+  if (name === "change.prepare") {
+    return prepareChangeset(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+      stateDir: context.stateDir,
+      publicBaseUrl: context.publicBaseUrl,
+      audit: context.audit,
     });
   }
   if (name === "change.apply") {
