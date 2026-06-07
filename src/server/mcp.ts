@@ -14,6 +14,7 @@ import {
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
 import { webvibeServerInstructions } from "./instructions.js";
 import { readBody } from "./oauth.js";
+import { readMcpResource } from "./resources.js";
 
 export type McpHandlerOptions = {
   store: OAuthStore;
@@ -72,7 +73,7 @@ async function handleMcpRequest(
     case "initialize":
       return {
         protocolVersion: "2025-06-18",
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {} },
         instructions: webvibeServerInstructions,
         serverInfo: { name: "webvibe", version: "0.1.0" },
       };
@@ -83,11 +84,25 @@ async function handleMcpRequest(
       const result = await options.router.call(params.name, params.arguments, caller);
       return toToolResult(result);
     }
+    case "resources/read":
+      return readMcpResource({
+        uri: normalizeResourceReadParams(request.params).uri,
+        publicBaseUrl: options.publicBaseUrl,
+      });
     case "notifications/initialized":
       return {};
     default:
       throw new BadRequestError(`Unsupported MCP method: ${request.method}`);
   }
+}
+
+function normalizeResourceReadParams(params: unknown): { uri: string } {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    throw new BadRequestError("resources/read params must be object");
+  }
+  const record = params as Record<string, unknown>;
+  if (typeof record.uri !== "string") throw new BadRequestError("resources/read uri is required");
+  return { uri: record.uri };
 }
 
 function normalizeToolCallParams(params: unknown): {
