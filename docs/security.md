@@ -20,8 +20,11 @@ Security model:
   removed from output/audit material.
 - Context preflight: `context.get` returns sanitized ENV/PATH categories,
   not raw secret values or raw PATH entries.
-- Audit: every `tools/call` writes JSONL with hashes and sizes, not raw inputs.
-  Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
+- Audit: in dev mode, audit is optimized for reproducibility and records
+  redacted full inputs, raw tool outputs, client-visible outputs, manual gate
+  events, host observations supplied by the model, widget confirmation events,
+  and artifact downloads. Confirm tokens are never logged in plaintext. Audit
+  logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
 stdin, kill process, Git mutation tools, or raw filesystem write tools in
@@ -72,12 +75,59 @@ Default dev workspace edits go through:
 
 - `change.plan`: validate and diff a complete proposed batch change without
   writing.
+- `change.prepare`: validate the same complete batch change, create expiring
+  relay-side prepared state, and optionally create generic review artifacts
+  without writing workspace files.
 - `change.apply`: apply the complete batch change in one write operation.
 
 `replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
 without partial writes. If an apply operation fails after writing starts, prior
 paths are rolled back from snapshots. The confirmation point is the reviewed
 batch change, not each individual file edit.
+
+## Manual Completion Gate
+
+The manual completion gate does not bypass ChatGPT Web safety checks. When
+ChatGPT Web blocks a write action, `webvibe` does not retry the write, split the
+write, encode the payload, or apply a prepared payload by id. Instead, the model
+opens a generic widget that asks the user to complete the required step outside
+ChatGPT and return to confirm. Confirmation records user intent and optional
+post-completion checks; it does not perform the blocked write.
+
+Boundaries:
+
+- `change.prepare` does not write workspace files.
+- `manual.gate` does not write workspace files.
+- `manual.confirm` does not write workspace files.
+- `change.apply` remains the only default workspace write tool.
+- There is no apply-by-id tool.
+- Pending, prepared, and artifact state live in `stateDir` for UI, audit,
+  troubleshooting, and expiry control.
+
+`manual.confirm` is the authoritative transition from a pending manual action to
+confirmed/cancelled/expired. It does not apply patches, delete files, run
+commands, or mutate the workspace. It records that the user clicked the widget
+after completing the manual step outside ChatGPT, optionally verifies configured
+post-completion checks, writes an audit event, and lets the widget ask ChatGPT
+to continue in a new turn.
+
+`manual.confirm` exists because a widget button alone does not tell the local
+relay what happened, `sendFollowUpMessage` alone creates no trusted server audit
+transition, and a chat message saying "done" cannot be reliably correlated to a
+specific `pendingId`, `preparedId`, host block, artifact, or widget session.
+`manual.confirm` supplies correlation id, audit, expiry control, cancellation
+control, and optional verification. It does not bypass ChatGPT Web safety
+because it does not execute the blocked write.
+
+If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
+cannot log that blocked call directly. The model records the observed host
+output by passing it to `manual.gate.hostObservation`.
+
+In dev mode, audit is reproducibility-oriented. It records redacted full tool
+inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,
+artifact downloads, host observations supplied by the model, and widget
+confirmation events. Confirm tokens are never logged in plaintext.
+In dev mode, audit records redacted full tool inputs for troubleshooting.
 
 ## Context Preflight
 

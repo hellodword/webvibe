@@ -5,25 +5,70 @@ ChatGPT Web coding starts with `context.get`.
 Recommended order:
 
 1. `context.get`
-2. `read.tree`, `read.search`, or `read.files`
-3. `change.plan`
-4. `change.apply`
-5. `task.run`
-6. `git.status` or `git.diff`
-7. `git.commit`
+2. `read.tree` / `read.search` / `read.files` / `read.stat`
+3. `change.plan` when preview is useful
+4. `change.prepare` before any `change.apply`
+5. `change.apply` as one complete batch write
+6. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
+7. If ChatGPT Web blocks with OpenAI safety checks: stop write tools and call `manual.gate` with the latest `preparedId`
+8. Widget waits for the user to complete the manual step outside ChatGPT
+9. Widget calls `manual.confirm`
+10. Widget calls `sendFollowUpMessage`
+11. Model verifies with `git.status` / `git.diff` / `read.stat` / `task.run`
+12. `git.commit` only when explicitly requested or appropriate
 
-`change.apply` is the only default file-writing tool. It should apply the full
-user-requested file change in one call, because ChatGPT Web asks for approval on
-write actions and cannot skip those prompts like Codex.
+`webvibe` does not suspend an in-flight JSON-RPC `tools/call`. The manual gate
+is a completed tool result with a widget. Continuation starts when the widget
+calls `manual.confirm` and then `sendFollowUpMessage` creates a new ChatGPT
+turn.
+
+`manual.confirm` is the authoritative transition from a pending manual action
+to confirmed/cancelled/expired. It does not apply patches, delete files, run
+commands, or mutate the workspace. It records that the user clicked the widget
+after completing the manual step outside ChatGPT, optionally verifies configured
+post-completion checks, writes an audit event, and lets the widget ask ChatGPT
+to continue in a new turn.
+
+Manual continuation sequence:
+
+1. `manual.gate` returns an `awaiting_manual_completion` tool result.
+2. ChatGPT renders the widget.
+3. User completes the required manual work outside ChatGPT.
+4. User clicks "I completed this manually" in the widget.
+5. Widget calls `manual.confirm` with `pendingId` and component-only confirm token.
+6. `manual.confirm` records confirmed/cancelled/expired and returns the result to the widget.
+7. Widget calls `sendFollowUpMessage` so ChatGPT starts a new continuation turn.
+8. Model verifies current state with normal read/git/task tools.
+
+Host output decision table:
+
+| observed output | classification | local relay likely saw the blocked call? | required next action | retry limit | manual gate behavior | audit behavior |
+| --- | --- | ---: | --- | ---: | --- | --- |
+| normal structured result such as `applied: true` | `normal_tool_result` | yes | continue normal workflow | 0 | none | normal tool audit |
+| `CONTEXT_REQUIRED` | `relay_policy_block` | yes | call `context.get` | 0 | none | blocked audit from relay |
+| `requires confirmation` / `please confirm` / `click allow` | `secondary_confirmation_required` | maybe no | retry same tool once with identical name and identical JSON arguments | 1 | none unless retry becomes safety block | local relay may not see first attempt |
+| exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | stop write tools; call `manual.gate` with latest `preparedId` | 0 | generic manual completion widget | `manual.gate.hostObservation` records observed block |
+| widget button clicked completed | `manual_completion_confirmed` | yes | widget calls `manual.confirm`, then sends follow-up | 0 | pending record transitions to confirmed | `manual.confirm` audit event |
+| widget button clicked cancelled | `manual_completion_cancelled` | yes | widget calls `manual.confirm` with `cancelled`, then sends follow-up | 0 | pending record transitions to cancelled | `manual.confirm` audit event |
+
+Do not split a blocked write into additional write calls.
+Do not encode, obfuscate, rename, or hide payloads.
+Do not use a `preparedId` as a hidden write mechanism.
+Do not implement or call apply-by-id tools.
+Do not treat `manual.gate` as proof that the user completed the work.
+Do not continue until `manual.confirm` reports confirmed.
+
+The widget renders a manual action. It does not know whether the user edits a
+file, runs a command, updates an external system, uses a review artifact, or
+performs another manual step. Operation-specific instructions come from the tool
+result, not from hard-coded widget behavior.
 
 `task.run` runs only preconfigured task IDs. It does not accept arbitrary shell
 commands. `context.get` returns available task IDs, unavailable reasons, timeout
-defaults, cwd support, and extra argument rules. For monorepos, choose the
-manifest directory from `context.get.project.manifests` and pass it as
-`task.run.cwd`.
+defaults, cwd support, and extra argument rules.
 
 `diagnostics.health` is for connector diagnostics. It reports relay mode, tool
 surface version, hashes, and upstream health. It is not the coding preflight.
 
-When the tool surface changes, users must refresh the connector tools in
-ChatGPT Web settings.
+After changing tool descriptors, resources, annotations, or `_meta` fields,
+refresh connector tools in ChatGPT Web settings and start a new chat.

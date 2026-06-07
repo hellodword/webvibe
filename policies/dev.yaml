@@ -393,7 +393,7 @@ tools:
 
   - name: manual.confirm
     type: builtIn
-    description: Widget-only tool that records whether the user completed or cancelled a pending manual action. It does not apply patches, delete files, run commands, or mutate the workspace. The widget must provide the component-only confirmToken from tool result _meta.
+    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
     inputSchema:
       type: object
       properties:
