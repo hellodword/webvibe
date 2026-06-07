@@ -12,6 +12,7 @@ import {
   WebvibeError,
 } from "../util/errors.js";
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
+import { webvibeServerInstructions } from "./instructions.js";
 import { readBody } from "./oauth.js";
 
 export type McpHandlerOptions = {
@@ -72,6 +73,7 @@ async function handleMcpRequest(
       return {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
+        instructions: webvibeServerInstructions,
         serverInfo: { name: "webvibe", version: "0.1.0" },
       };
     case "tools/list":
