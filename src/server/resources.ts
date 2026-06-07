@@ -2,10 +2,7 @@ import { BadRequestError } from "../util/errors.js";
 
 export const MANUAL_GATE_RESOURCE_URI = "ui://webvibe/manual-gate.html";
 
-export function readMcpResource(input: {
-  uri: string;
-  publicBaseUrl: string;
-}): {
+export function readMcpResource(input: { uri: string; publicBaseUrl: string }): {
   contents: Array<{
     uri: string;
     mimeType: "text/html;profile=mcp-app";
@@ -19,6 +16,7 @@ export function readMcpResource(input: {
         };
         domain: string;
       };
+      "openai/outputTemplate": string;
       "openai/widgetDomain": string;
       "openai/widgetDescription": string;
     };
@@ -43,6 +41,7 @@ export function readMcpResource(input: {
               resourceDomains: [],
             },
           },
+          "openai/outputTemplate": MANUAL_GATE_RESOURCE_URI,
           "openai/widgetDomain": widgetDomain,
           "openai/widgetDescription": "Generic manual completion card",
         },
