@@ -133,6 +133,15 @@ describe("local task runner upstream", () => {
       {
         status: "unavailable",
         unavailableReason: "Missing executable: webvibe-missing-executable",
+        manualRequired: {
+          nextTool: "manual.gate",
+          reason: "external_manual_step",
+          title: "Manual task required: missingExecutable",
+          hostObservation: {
+            toolName: "task.run",
+            outputText: "Task unavailable: Missing executable: webvibe-missing-executable",
+          },
+        },
       },
     );
   });

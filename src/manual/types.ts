@@ -7,6 +7,8 @@ export type ManualActionReason =
 
 export type ManualActionStatus = "pending" | "confirmed" | "cancelled" | "expired";
 
+export type ManualOutputFormat = "text" | "markdown" | "json";
+
 export type ManualArtifactRef = {
   artifactId: string;
   label: string;
@@ -53,6 +55,7 @@ export type ManualActionRecord = {
     classification:
       | "secondary_confirmation_required"
       | "blocked_by_openai_safety"
+      | "manual_required_capability_limit"
       | "normal_tool_result"
       | "unknown";
   };
@@ -69,5 +72,7 @@ export type ManualActionRecord = {
       | "expired"
       | "verification_failed";
     note?: string;
+    manualOutput?: string;
+    manualOutputFormat?: ManualOutputFormat;
   }>;
 };

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  CAPABILITY_LIMIT_FRAGMENTS,
   MANUAL_PENDING_TTL_MS,
   SAFETY_BLOCK_TEXT,
   SECONDARY_CONFIRMATION_FRAGMENTS,
@@ -54,10 +55,8 @@ export async function openManualGate(
     preparedId?: string;
     reason: ManualActionReason;
     title: string;
-    instructions: string;
-    artifacts: ManualArtifactRef[];
-    checks: ManualCheck[];
     expiresAt: string;
+    detailUrl: string;
     confirmTool: "manual.confirm";
   };
   content: Array<{ type: "text"; text: string }>;
@@ -66,15 +65,13 @@ export async function openManualGate(
       operationId: string;
       pendingId: string;
       confirmToken: string;
-      artifacts: ManualArtifactRef[];
-      checks: ManualCheck[];
+      detailUrl: string;
     };
   };
 }> {
   void context.workspaceRoot;
   void context.workspace;
   void context.limits;
-  void context.publicBaseUrl;
 
   const input = gateInputSchema.parse(rawArgs);
   let title = input.title?.trim() ?? "";
@@ -102,6 +99,15 @@ export async function openManualGate(
   const pendingStore = new ManualPendingStore(context.stateDir);
   const pendingId = pendingStore.newPendingId();
   const confirmToken = randomToken(24);
+  const publicDetailUrl = manualGateDetailUrl({
+    publicBaseUrl: context.publicBaseUrl,
+    pendingId,
+  });
+  const privateDetailUrl = manualGateDetailUrl({
+    publicBaseUrl: context.publicBaseUrl,
+    pendingId,
+    confirmToken,
+  });
   const classification = classifyHostOutput(input.hostObservation?.outputText);
   const hostObservation = input.hostObservation
     ? {
@@ -152,6 +158,7 @@ export async function openManualGate(
       hostObservation,
       safetyBlockText: SAFETY_BLOCK_TEXT,
       secondaryConfirmationFragments: SECONDARY_CONFIRMATION_FRAGMENTS,
+      capabilityLimitFragments: CAPABILITY_LIMIT_FRAGMENTS,
     },
     rawOutput: { pendingId, artifactCount: artifacts.length, checks },
     hostObservation,
@@ -165,21 +172,36 @@ export async function openManualGate(
       preparedId: record.preparedId,
       reason: record.reason,
       title: record.title,
-      instructions: record.instructions,
-      artifacts: record.artifacts,
-      checks: record.checks,
       expiresAt: record.expiresAt,
+      detailUrl: publicDetailUrl,
       confirmTool: "manual.confirm",
     },
-    content: [{ type: "text", text: "Manual completion widget opened." }],
+    content: [
+      {
+        type: "text",
+        text: "Manual completion widget opened. Complete the manual step, paste output or logs into the widget, then confirm.",
+      },
+    ],
     _meta: {
       manualAction: {
         operationId: record.operationId,
         pendingId: record.pendingId,
         confirmToken,
-        artifacts: record.artifacts,
-        checks: record.checks,
+        detailUrl: privateDetailUrl,
       },
     },
   };
+}
+
+export function manualGateDetailUrl(input: {
+  publicBaseUrl: string;
+  pendingId: string;
+  confirmToken?: string;
+}): string {
+  const url = new URL(
+    `/manual-gates/${encodeURIComponent(input.pendingId)}`,
+    input.publicBaseUrl,
+  );
+  if (input.confirmToken) url.searchParams.set("t", input.confirmToken);
+  return url.toString();
 }

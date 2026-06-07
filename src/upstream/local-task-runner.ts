@@ -19,6 +19,18 @@ type TaskResult = {
   durationMs: number;
   timeoutSeconds: number;
   unavailableReason?: string;
+  manualRequired?: ManualRequired;
+};
+
+type ManualRequired = {
+  nextTool: "manual.gate";
+  reason: "external_manual_step";
+  title: string;
+  instructions: string;
+  hostObservation: {
+    toolName: "task.run";
+    outputText: string;
+  };
 };
 
 export class LocalTaskRunnerClient implements UpstreamClient {
@@ -84,6 +96,26 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             durationMs: { type: "integer" },
             timeoutSeconds: { type: "integer" },
             unavailableReason: { type: "string" },
+            manualRequired: {
+              type: "object",
+              properties: {
+                nextTool: { type: "string", enum: ["manual.gate"] },
+                reason: { type: "string", enum: ["external_manual_step"] },
+                title: { type: "string" },
+                instructions: { type: "string" },
+                hostObservation: {
+                  type: "object",
+                  properties: {
+                    toolName: { type: "string", enum: ["task.run"] },
+                    outputText: { type: "string" },
+                  },
+                  required: ["toolName", "outputText"],
+                  additionalProperties: false,
+                },
+              },
+              required: ["nextTool", "reason", "title", "instructions", "hostObservation"],
+              additionalProperties: false,
+            },
           },
           required: [
             "status",
@@ -303,5 +335,22 @@ function unavailable(
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
     unavailableReason: reason,
+    manualRequired: manualRequiredForTask(taskId, reason),
+  };
+}
+
+function manualRequiredForTask(taskId: string, reason: string): ManualRequired {
+  const outputText = `Task unavailable: ${reason}`;
+  return {
+    nextTool: "manual.gate",
+    reason: "external_manual_step",
+    title: `Manual task required: ${taskId}`,
+    instructions:
+      `ChatGPT Web could not run task '${taskId}' because ${reason}. ` +
+      "Run the equivalent step outside ChatGPT, paste stdout, stderr, logs, or result details into the manual completion widget, then confirm.",
+    hostObservation: {
+      toolName: "task.run",
+      outputText,
+    },
   };
 }

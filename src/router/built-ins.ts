@@ -149,18 +149,45 @@ export function callBuiltIn(
   }
   if (name === "task.run") {
     if (!context.upstreams.isAvailable("tasks")) {
+      const taskId = typeof args.taskId === "string" ? args.taskId : "";
+      const reason = "Task upstream is unavailable";
       return {
         status: "unavailable",
-        taskId: typeof args.taskId === "string" ? args.taskId : "",
+        taskId,
         exitCode: null,
         stdout: "",
-        stderr: "Task upstream is unavailable",
+        stderr: reason,
         durationMs: 0,
         timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
-        unavailableReason: "Task upstream is unavailable",
+        unavailableReason: reason,
+        manualRequired: manualRequiredForUnavailableTask(taskId, reason),
       };
     }
     return context.upstreams.call("tasks", "run_task", args);
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
+}
+
+function manualRequiredForUnavailableTask(
+  taskId: string,
+  reason: string,
+): {
+  nextTool: "manual.gate";
+  reason: "external_manual_step";
+  title: string;
+  instructions: string;
+  hostObservation: { toolName: "task.run"; outputText: string };
+} {
+  return {
+    nextTool: "manual.gate",
+    reason: "external_manual_step",
+    title: `Manual task required: ${taskId || "task.run"}`,
+    instructions:
+      `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}. ` +
+      "Run the equivalent step outside ChatGPT, paste stdout, stderr, logs, or result details into the manual completion widget, then confirm.",
+    hostObservation: {
+      toolName: "task.run",
+      outputText: reason,
+    },
+  };
 }

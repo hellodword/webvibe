@@ -4,7 +4,9 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { ManualPendingStore } from "../../src/manual/pending-store.js";
 import { runWebvibe } from "../../src/main.js";
+import { sha256 } from "../../src/util/hash.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("HTTP OAuth MCP flow", () => {
@@ -83,6 +85,35 @@ auth:
         arguments: {},
       });
       expect(context.result.content[0].text).toContain("toolSurface");
+
+      const pendingStore = new ManualPendingStore(stateDir);
+      const pendingId = pendingStore.newPendingId();
+      const confirmToken = "manual-detail-token";
+      await pendingStore.create({
+        operationId: "manual-http-op",
+        pendingId,
+        reason: "external_manual_step",
+        status: "pending",
+        title: "Manual HTTP detail",
+        instructions: "Run the external step and paste the resulting logs.",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        createdByTool: "manual.gate",
+        artifacts: [],
+        checks: [],
+        confirmTokenHash: sha256(confirmToken),
+        events: [{ at: new Date().toISOString(), type: "created" }],
+      });
+      const detail = await fetch(`${firstBase}/manual-gates/${pendingId}?t=${confirmToken}`);
+      expect(detail.status).toBe(200);
+      expect(detail.headers.get("cache-control")).toBe("no-store");
+      await expect(detail.json()).resolves.toMatchObject({
+        pendingId,
+        title: "Manual HTTP detail",
+        instructions: "Run the external step and paste the resulting logs.",
+      });
+      const badDetail = await fetch(`${firstBase}/manual-gates/${pendingId}?t=wrong`);
+      expect(badDetail.status).toBe(403);
 
       const call = await mcp(firstBase, token.access_token, "tools/call", {
         name: "x.read",

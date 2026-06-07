@@ -88,12 +88,21 @@ describe("default policies", () => {
 
     const manualConfirm = dev.tools.find((tool) => tool.name === "manual.confirm")!;
     expect((manualConfirm._meta as any).ui.visibility).toEqual(["app"]);
+    expect((manualConfirm.inputSchema as any).properties.manualOutput.maxLength).toBe(20000);
+    expect((manualConfirm.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
+      "string",
+    );
     const manualGate = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.gate")!);
     expect((manualGate._meta as any).ui.resourceUri).toBe("ui://webvibe/manual-gate.html");
     expect((manualGate._meta as any)["openai/outputTemplate"]).toBe(
       "ui://webvibe/manual-gate.html",
     );
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBe(true);
+    expect((manualGate.outputSchema as any).properties.detailUrl.type).toBe("string");
+    expect(
+      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+        .manualRequired.properties.nextTool.enum,
+    ).toEqual(["manual.gate"]);
     const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
     const devPolicyText = JSON.stringify(dev);

@@ -8,6 +8,12 @@ const safetyBlock =
 describe("host output classification", () => {
   it("classifies safety blocks and secondary confirmations", () => {
     expect(classifyHostOutput(safetyBlock)).toBe("blocked_by_openai_safety");
+    expect(classifyHostOutput("受工具限制我无法用任意 shell 直接执行新增 Node 脚本")).toBe(
+      "manual_required_capability_limit",
+    );
+    expect(classifyHostOutput("Task unavailable: Missing executable: npm")).toBe(
+      "manual_required_capability_limit",
+    );
     expect(classifyHostOutput("This action requires confirmation. Please confirm to proceed.")).toBe(
       "secondary_confirmation_required",
     );
@@ -30,5 +36,11 @@ describe("host output classification", () => {
     expect(planHostRetry({ outputText: safetyBlock, secondaryConfirmationAttempts: 0 })).toMatchObject(
       { action: "manual.gate" },
     );
+    expect(
+      planHostRetry({
+        outputText: "Cannot run arbitrary shell in this tool environment.",
+        secondaryConfirmationAttempts: 0,
+      }),
+    ).toMatchObject({ action: "manual.gate" });
   });
 });

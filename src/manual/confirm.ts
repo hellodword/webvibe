@@ -1,7 +1,11 @@
 import { z } from "zod";
 
+import {
+  MANUAL_EVIDENCE_NOTE_MAX_CHARS,
+  MANUAL_OUTPUT_MAX_CHARS,
+} from "./constants.js";
 import { ManualPendingStore } from "./pending-store.js";
-import type { ManualActionReason, ManualCheck } from "./types.js";
+import type { ManualActionReason, ManualCheck, ManualOutputFormat } from "./types.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
 import { sha256 } from "../util/hash.js";
@@ -13,9 +17,17 @@ const confirmInputSchema = z
     pendingId: z.string().min(1),
     confirmToken: z.string().min(1),
     outcome: z.enum(["completed", "cancelled"]),
-    evidenceNote: z.string().max(4000).optional(),
+    manualOutput: z.string().max(MANUAL_OUTPUT_MAX_CHARS).optional(),
+    manualOutputFormat: z.enum(["text", "markdown", "json"]).optional(),
+    evidenceNote: z.string().max(MANUAL_EVIDENCE_NOTE_MAX_CHARS).optional(),
   })
   .strict();
+
+type ManualEvidence = {
+  manualOutput?: string;
+  manualOutputFormat?: ManualOutputFormat;
+  evidenceNote?: string;
+};
 
 type VerificationResult = {
   status: "passed" | "failed" | "not_configured" | "skipped";
@@ -69,7 +81,13 @@ export async function confirmManualAction(
   const outcome: "completed" | "cancelled" =
     input.success && input.data.outcome === "cancelled" ? "cancelled" : "completed";
   const token = input.success ? input.data.confirmToken : "";
-  const evidenceNote = input.success ? input.data.evidenceNote : undefined;
+  const evidence: ManualEvidence = input.success
+    ? {
+        manualOutput: normalizeOptional(input.data.manualOutput),
+        manualOutputFormat: input.data.manualOutputFormat ?? "text",
+        evidenceNote: normalizeOptional(input.data.evidenceNote),
+      }
+    : {};
   const tokenHash = token ? sha256(token) : "";
   const store = new ManualPendingStore(context.stateDir);
   const record = pendingId ? await store.read(pendingId) : undefined;
@@ -77,7 +95,7 @@ export async function confirmManualAction(
     pendingId,
     outcome,
     verification: { status: "skipped", checks: [] } satisfies VerificationResult,
-    next: nextResponse(pendingId, "skipped"),
+    next: nextResponse(pendingId, "skipped", evidence),
   };
 
   if (!input.success || !record) {
@@ -116,7 +134,7 @@ export async function confirmManualAction(
 
   if (Date.now() > Date.parse(record.expiresAt)) {
     record.status = "expired";
-    record.events.push({ at: new Date().toISOString(), type: "expired", note: evidenceNote });
+    record.events.push({ at: new Date().toISOString(), type: "expired", ...eventEvidence(evidence) });
     await store.save(record);
     await writeConfirmAudit(context.audit, startedAt, {
       status: "expired",
@@ -128,13 +146,17 @@ export async function confirmManualAction(
       confirmTokenHash: tokenHash,
       confirmTokenAccepted: true,
       verification: base.verification,
+      evidence,
     });
-    return recordResponse(base, record, "expired");
+    return {
+      ...recordResponse(base, record, "expired"),
+      next: nextResponse(pendingId, "expired", evidence),
+    };
   }
 
   if (outcome === "cancelled") {
     record.status = "cancelled";
-    record.events.push({ at: new Date().toISOString(), type: "cancelled", note: evidenceNote });
+    record.events.push({ at: new Date().toISOString(), type: "cancelled", ...eventEvidence(evidence) });
     await store.save(record);
     await writeConfirmAudit(context.audit, startedAt, {
       status: "cancelled",
@@ -146,8 +168,12 @@ export async function confirmManualAction(
       confirmTokenHash: tokenHash,
       confirmTokenAccepted: true,
       verification: base.verification,
+      evidence,
     });
-    return recordResponse(base, record, "cancelled");
+    return {
+      ...recordResponse(base, record, "cancelled"),
+      next: nextResponse(pendingId, "cancelled", evidence),
+    };
   }
 
   const verification = await verifyChecks(record.checks, context);
@@ -155,7 +181,7 @@ export async function confirmManualAction(
     record.events.push({
       at: new Date().toISOString(),
       type: "verification_failed",
-      note: evidenceNote,
+      ...eventEvidence(evidence),
     });
     await store.save(record);
     await writeConfirmAudit(context.audit, startedAt, {
@@ -168,16 +194,17 @@ export async function confirmManualAction(
       confirmTokenHash: tokenHash,
       confirmTokenAccepted: true,
       verification,
+      evidence,
     });
     return {
       ...recordResponse(base, record, "verification_failed"),
       verification,
-      next: nextResponse(pendingId, "verification_failed"),
+      next: nextResponse(pendingId, "verification_failed", evidence),
     };
   }
 
   record.status = "confirmed";
-  record.events.push({ at: new Date().toISOString(), type: "confirmed", note: evidenceNote });
+  record.events.push({ at: new Date().toISOString(), type: "confirmed", ...eventEvidence(evidence) });
   await store.save(record);
   await writeConfirmAudit(context.audit, startedAt, {
     status: "confirmed",
@@ -189,11 +216,12 @@ export async function confirmManualAction(
     confirmTokenHash: tokenHash,
     confirmTokenAccepted: true,
     verification,
+    evidence,
   });
   return {
     ...recordResponse(base, record, "confirmed"),
     verification,
-    next: nextResponse(pendingId, "confirmed"),
+    next: nextResponse(pendingId, "confirmed", evidence),
   };
 }
 
@@ -250,13 +278,20 @@ function gitChangedPaths(stdout: string): string[] {
     .filter(Boolean);
 }
 
-function nextResponse(pendingId: string, status: string): {
+function nextResponse(pendingId: string, status: string, evidence: ManualEvidence = {}): {
   recommendedTools: string[];
   followUpPrompt: string;
 } {
+  const evidenceText = formatEvidenceForFollowUp(evidence);
   return {
     recommendedTools: ["git.status", "git.diff", "read.stat", "task.run"],
-    followUpPrompt: `Manual action ${pendingId} was confirmed with status ${status}. Continue by verifying current workspace state with appropriate read/git/task tools before making further changes.`,
+    followUpPrompt: [
+      `Manual action ${pendingId} was confirmed with status ${status}.`,
+      evidenceText,
+      "Continue by verifying current workspace state with appropriate read/git/task tools before making further changes.",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
   };
 }
 
@@ -291,6 +326,7 @@ async function writeConfirmAudit(
     confirmTokenHash: string;
     confirmTokenAccepted: boolean;
     verification: VerificationResult;
+    evidence?: ManualEvidence;
   },
 ): Promise<void> {
   await audit?.write({
@@ -307,18 +343,60 @@ async function writeConfirmAudit(
       pendingId: input.pendingId,
       outcome: input.outcome,
       confirmTokenHash: input.confirmTokenHash,
+      manualOutput: input.evidence?.manualOutput,
+      manualOutputFormat: input.evidence?.manualOutputFormat,
+      evidenceNote: input.evidence?.evidenceNote,
     }),
     input: {
       pendingId: input.pendingId,
       outcome: input.outcome,
       confirmTokenHash: input.confirmTokenHash,
       confirmTokenAccepted: input.confirmTokenAccepted,
+      manualOutput: input.evidence?.manualOutput,
+      manualOutputFormat: input.evidence?.manualOutputFormat,
+      evidenceNote: input.evidence?.evidenceNote,
     },
     rawOutput: {
       status: input.status,
       reason: input.reason,
       verification: input.verification,
+      manualOutputBytes: Buffer.byteLength(input.evidence?.manualOutput ?? "", "utf8"),
+      evidenceNoteBytes: Buffer.byteLength(input.evidence?.evidenceNote ?? "", "utf8"),
     },
     verification: input.verification,
   });
+}
+
+function normalizeOptional(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function eventEvidence(evidence: ManualEvidence): {
+  note?: string;
+  manualOutput?: string;
+  manualOutputFormat?: ManualOutputFormat;
+} {
+  return {
+    note: evidence.evidenceNote,
+    manualOutput: evidence.manualOutput,
+    manualOutputFormat: evidence.manualOutput ? (evidence.manualOutputFormat ?? "text") : undefined,
+  };
+}
+
+function formatEvidenceForFollowUp(evidence: ManualEvidence): string {
+  const parts: string[] = [];
+  if (evidence.evidenceNote) {
+    parts.push(`Manual evidence note:\n${evidence.evidenceNote}`);
+  }
+  if (evidence.manualOutput) {
+    const format = evidence.manualOutputFormat ?? "text";
+    parts.push(`Manual output/logs (${format}):\n${fence(format, evidence.manualOutput)}`);
+  }
+  return parts.join("\n\n");
+}
+
+function fence(format: ManualOutputFormat, value: string): string {
+  const info = format === "json" ? "json" : format === "markdown" ? "markdown" : "";
+  return `\`\`\`${info}\n${value}\n\`\`\``;
 }

@@ -338,7 +338,39 @@ tools:
     type: builtIn
     description: Prepare one complete batch workspace change for a later write attempt and for a generic manual completion gate if ChatGPT Web blocks the write. It validates the same create/edit/replace/delete/mkdir changeset as change.plan, records an expiring prepared action, may create generic review artifacts, and does not mutate the workspace. Call this before change.apply.
     inputSchema: *changeInputSchema
-    outputSchema: *genericObjectOutputSchema
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [prepared, conflicted]
+        valid:
+          type: boolean
+        preparedId:
+          type: string
+        operationId:
+          type: string
+        manualGate:
+          type: ["object", "null"]
+          properties:
+            preparedId:
+              type: string
+            reason:
+              type: string
+              enum: [manual_review_requested]
+            title:
+              type: string
+            instructions:
+              type: string
+            expiresAt:
+              type: string
+            nextTool:
+              type: string
+              enum: [manual.gate]
+          required: [preparedId, reason, title, instructions, expiresAt, nextTool]
+          additionalProperties: true
+      required: [status, valid, summary, files, diff, conflicts, manualGate]
+      additionalProperties: true
     annotations: *readOnlyAnnotations
     _meta:
       "openai/toolInvocation/invoking": "Preparing change"
@@ -377,7 +409,37 @@ tools:
           additionalProperties: false
       required: [reason]
       additionalProperties: false
-    outputSchema: *genericObjectOutputSchema
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [awaiting_manual_completion]
+        operationId:
+          type: string
+        pendingId:
+          type: string
+        preparedId:
+          type: string
+        reason:
+          type: string
+          enum:
+            - openai_safety_block
+            - host_confirmation_block
+            - manual_review_requested
+            - external_manual_step
+            - user_requested_manual_step
+        title:
+          type: string
+        expiresAt:
+          type: string
+        detailUrl:
+          type: string
+        confirmTool:
+          type: string
+          enum: [manual.confirm]
+      required: [status, operationId, pendingId, reason, title, expiresAt, detailUrl, confirmTool]
+      additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: false
@@ -393,7 +455,7 @@ tools:
 
   - name: manual.confirm
     type: builtIn
-    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
+    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, accepts manual output/logs/evidence, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
     inputSchema:
       type: object
       properties:
@@ -406,12 +468,50 @@ tools:
         outcome:
           type: string
           enum: [completed, cancelled]
+        manualOutput:
+          type: string
+          maxLength: 20000
+        manualOutputFormat:
+          type: string
+          enum: [text, markdown, json]
         evidenceNote:
           type: string
           maxLength: 4000
       required: [pendingId, confirmToken, outcome]
       additionalProperties: false
-    outputSchema: *genericObjectOutputSchema
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [confirmed, cancelled, verification_failed, expired, not_found, forbidden]
+        operationId:
+          type: string
+        pendingId:
+          type: string
+        preparedId:
+          type: string
+        reason:
+          type: string
+        outcome:
+          type: string
+          enum: [completed, cancelled]
+        verification:
+          type: object
+          additionalProperties: true
+        next:
+          type: object
+          properties:
+            recommendedTools:
+              type: array
+              items:
+                type: string
+            followUpPrompt:
+              type: string
+          required: [recommendedTools, followUpPrompt]
+          additionalProperties: false
+      required: [status, pendingId, outcome, verification, next]
+      additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: false
@@ -438,7 +538,7 @@ tools:
 
   - name: task.run
     type: builtIn
-    description: Run one preconfigured local task by taskId, optionally from a workspace-relative cwd. Does not accept arbitrary shell commands. Available taskIds, cwd support, argument rules, and availability are returned by context.get. Requires context.get first.
+    description: Run one preconfigured local task by taskId, optionally from a workspace-relative cwd. Does not accept arbitrary shell commands. Available taskIds, cwd support, argument rules, and availability are returned by context.get. If the task is unavailable and manualRequired is returned, call manual.gate with those arguments so the user can run the task manually and paste output/logs. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -461,7 +561,52 @@ tools:
           maxLength: 500
       required: [taskId]
       additionalProperties: false
-    outputSchema: *genericObjectOutputSchema
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed, timeout, unavailable]
+        taskId:
+          type: string
+        exitCode:
+          type: ["integer", "null"]
+        stdout:
+          type: string
+        stderr:
+          type: string
+        durationMs:
+          type: integer
+        timeoutSeconds:
+          type: integer
+        unavailableReason:
+          type: string
+        manualRequired:
+          type: object
+          properties:
+            nextTool:
+              type: string
+              enum: [manual.gate]
+            reason:
+              type: string
+              enum: [external_manual_step]
+            title:
+              type: string
+            instructions:
+              type: string
+            hostObservation:
+              type: object
+              properties:
+                toolName:
+                  type: string
+                outputText:
+                  type: string
+              required: [toolName, outputText]
+              additionalProperties: false
+          required: [nextTool, reason, title, instructions, hostObservation]
+          additionalProperties: false
+      required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
+      additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: true

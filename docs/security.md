@@ -91,8 +91,11 @@ The manual completion gate does not bypass ChatGPT Web safety checks. When
 ChatGPT Web blocks a write action, `webvibe` does not retry the write, split the
 write, encode the payload, or apply a prepared payload by id. Instead, the model
 opens a generic widget that asks the user to complete the required step outside
-ChatGPT and return to confirm. Confirmation records user intent and optional
-post-completion checks; it does not perform the blocked write.
+ChatGPT and return to confirm. The same manual path is used when the best next
+step requires unavailable arbitrary shell, an unavailable configured task, or
+another tool capability limit. Confirmation records user intent, optional manual
+output/logs/evidence, and optional post-completion checks; it does not perform
+the blocked write.
 
 Boundaries:
 
@@ -107,7 +110,8 @@ Boundaries:
 `manual.confirm` is the authoritative transition from a pending manual action to
 confirmed/cancelled/expired. It does not apply patches, delete files, run
 commands, or mutate the workspace. It records that the user clicked the widget
-after completing the manual step outside ChatGPT, optionally verifies configured
+after completing the manual step outside ChatGPT, stores optional manual
+output/logs/evidence from the widget, optionally verifies configured
 post-completion checks, writes an audit event, and lets the widget ask ChatGPT
 to continue in a new turn.
 
@@ -122,6 +126,12 @@ because it does not execute the blocked write.
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
 cannot log that blocked call directly. The model records the observed host
 output by passing it to `manual.gate.hostObservation`.
+
+The `manual.gate` tool result is intentionally lightweight. Long instructions,
+artifact lists, and checks stay in private pending state and are loaded by the
+widget through `/manual-gates/:pendingId` with the component-only confirm token.
+This keeps ChatGPT Web widget hydration small and avoids leaking the confirm
+token into model-visible `structuredContent`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,

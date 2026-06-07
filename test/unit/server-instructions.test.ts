@@ -24,6 +24,8 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("normal_tool_result");
     expect(webvibeServerInstructions).toContain("secondary_confirmation_required");
     expect(webvibeServerInstructions).toContain("blocked_by_openai_safety");
+    expect(webvibeServerInstructions).toContain("manual_required_capability_limit");
+    expect(webvibeServerInstructions).toContain("cannot run arbitrary shell");
     expect(webvibeServerInstructions).toContain("requires confirmation");
     expect(webvibeServerInstructions).toContain("click allow");
     expect(webvibeServerInstructions).not.toContain("base64");

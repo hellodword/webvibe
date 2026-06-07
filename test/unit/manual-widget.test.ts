@@ -24,6 +24,10 @@ describe("manual gate widget resource", () => {
 
     expect(html).toContain("I completed this manually");
     expect(html).toContain("Cancel");
+    expect(html).toContain("Manual output or logs");
+    expect(html).toContain("Evidence note");
+    expect(html).toContain("loadDetail");
+    expect(html).toContain("fetch(detailUrl");
     expect(html).toContain("manual.confirm");
     expect(html).toContain("sendFollowUpMessage");
     expect(html).toContain("This manual completion card requires the ChatGPT Apps widget runtime.");

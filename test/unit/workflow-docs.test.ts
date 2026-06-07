@@ -12,6 +12,9 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain(safetyBlock);
     expect(text).toContain("secondary_confirmation_required");
     expect(text).toContain("blocked_by_openai_safety");
+    expect(text).toContain("manual_required_capability_limit");
+    expect(text).toContain("manual output/logs");
+    expect(text).toContain("/manual-gates/:pendingId");
     expect(text).toContain("manual.gate");
     expect(text).toContain("manual.confirm");
     expect(text).toContain("sendFollowUpMessage");

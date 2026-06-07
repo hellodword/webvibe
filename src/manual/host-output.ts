@@ -1,4 +1,8 @@
-import { SAFETY_BLOCK_TEXT, SECONDARY_CONFIRMATION_FRAGMENTS } from "./constants.js";
+import {
+  CAPABILITY_LIMIT_FRAGMENTS,
+  SAFETY_BLOCK_TEXT,
+  SECONDARY_CONFIRMATION_FRAGMENTS,
+} from "./constants.js";
 import type { ManualActionRecord } from "./types.js";
 
 export type HostOutputClassification = NonNullable<
@@ -9,12 +13,22 @@ export type HostRetryDecision =
   | { action: "continue"; classification: HostOutputClassification }
   | { action: "retry_same_tool_once"; classification: "secondary_confirmation_required" }
   | { action: "stop"; classification: "secondary_confirmation_required" }
-  | { action: "manual.gate"; classification: "blocked_by_openai_safety" };
+  | {
+      action: "manual.gate";
+      classification: "blocked_by_openai_safety" | "manual_required_capability_limit";
+    };
 
 export function classifyHostOutput(outputText: string | undefined): HostOutputClassification {
   if (!outputText) return "unknown";
   if (outputText.includes(SAFETY_BLOCK_TEXT)) return "blocked_by_openai_safety";
   const lower = outputText.toLowerCase();
+  if (
+    CAPABILITY_LIMIT_FRAGMENTS.some((fragment) =>
+      lower.includes(fragment.toLowerCase()),
+    )
+  ) {
+    return "manual_required_capability_limit";
+  }
   if (SECONDARY_CONFIRMATION_FRAGMENTS.some((fragment) => lower.includes(fragment))) {
     return "secondary_confirmation_required";
   }
@@ -26,7 +40,10 @@ export function planHostRetry(input: {
   secondaryConfirmationAttempts: number;
 }): HostRetryDecision {
   const classification = classifyHostOutput(input.outputText);
-  if (classification === "blocked_by_openai_safety") {
+  if (
+    classification === "blocked_by_openai_safety" ||
+    classification === "manual_required_capability_limit"
+  ) {
     return { action: "manual.gate", classification };
   }
   if (classification === "secondary_confirmation_required") {

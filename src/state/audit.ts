@@ -12,6 +12,7 @@ export type AuditRecord = {
     | "tool.error"
     | "manual.prepared.created"
     | "manual.gate.created"
+    | "manual.gate.detail"
     | "manual.confirm"
     | "manual.artifact.download"
     | "mcp.resources.read";

@@ -68,6 +68,8 @@ li { margin-block: 4px; }
 button { border: 1px solid color-mix(in srgb, CanvasText 28%, Canvas); border-radius: 6px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
 button.primary { background: Highlight; color: HighlightText; border-color: Highlight; }
 button:disabled { opacity: .6; cursor: default; }
+textarea, select { width: 100%; box-sizing: border-box; border: 1px solid color-mix(in srgb, CanvasText 28%, Canvas); border-radius: 6px; padding: 8px; background: Canvas; color: CanvasText; font: inherit; }
+textarea { resize: vertical; min-height: 84px; }
 .error { color: #b00020; font-weight: 650; }
 </style>
 </head>
@@ -76,6 +78,8 @@ button:disabled { opacity: .6; cursor: default; }
 <script>
 const root = document.getElementById("root");
 const bridge = window.openai;
+let detail = null;
+let detailError = "";
 
 function render() {
   if (!bridge) {
@@ -84,30 +88,56 @@ function render() {
   }
   const output = window.openai?.toolOutput || {};
   const metadata = window.openai?.toolResponseMetadata || {};
-  const manualAction = metadata._meta?.manualAction || metadata.manualAction || {};
+  const manualAction =
+    metadata._meta?.manualAction ||
+    metadata.manualAction ||
+    metadata.mcp_tool_result?._meta?.manualAction ||
+    metadata.call_tool_result?._meta?.manualAction ||
+    {};
   const pendingId = output.pendingId || manualAction.pendingId || "";
   const title = output.title || "Manual action";
   const reason = output.reason || "manual_review_requested";
-  const instructions = output.instructions || "";
-  const artifacts = Array.isArray(output.artifacts) ? output.artifacts : [];
-  const checks = Array.isArray(output.checks) ? output.checks : [];
+  const instructions = detail?.instructions || "";
+  const artifacts = Array.isArray(detail?.artifacts) ? detail.artifacts : [];
+  const checks = Array.isArray(detail?.checks) ? detail.checks : [];
   const expiresAt = output.expiresAt || "";
   const confirmToken = manualAction.confirmToken || "";
+  const detailUrl = manualAction.detailUrl || output.detailUrl || "";
 
   root.innerHTML = "";
-  root.append(heading(title), detail("Reason", reason), detail("Instructions", instructions));
+  root.append(heading(title), detailSection("Reason", reason));
+  if (detailError) root.append(errorBlock(detailError));
+  if (!detail && !detailError) root.append(detailSection("Details", "Loading manual action details..."));
+  if (instructions) root.append(detailSection("Instructions", instructions));
   if (artifacts.length) root.append(list("Artifacts", artifacts.map(formatArtifact)));
   if (checks.length) root.append(list("Checks", checks.map(formatCheck)));
-  if (expiresAt) root.append(detail("Expires at", expiresAt));
+  if (expiresAt) root.append(detailSection("Expires at", expiresAt));
+
+  const manualOutput = textarea("Manual output or logs", "manualOutput", 20000);
+  const evidenceNote = textarea("Evidence note", "evidenceNote", 4000);
+  const format = select("Output format", "manualOutputFormat", ["text", "markdown", "json"]);
+  root.append(manualOutput.section, evidenceNote.section, format.section);
 
   const actions = document.createElement("div");
   actions.className = "actions";
   const done = button("I completed this manually", "primary");
   const cancel = button("Cancel", "");
-  done.addEventListener("click", () => submit("completed", pendingId, confirmToken, done, cancel));
-  cancel.addEventListener("click", () => submit("cancelled", pendingId, confirmToken, done, cancel));
+  done.addEventListener("click", () =>
+    submit("completed", pendingId, confirmToken, done, cancel, {
+      manualOutput: manualOutput.input.value,
+      evidenceNote: evidenceNote.input.value,
+      manualOutputFormat: format.input.value,
+    })
+  );
+  cancel.addEventListener("click", () =>
+    submit("cancelled", pendingId, confirmToken, done, cancel, {
+      evidenceNote: evidenceNote.input.value,
+    })
+  );
   actions.append(done, cancel);
   root.append(actions);
+
+  if (detailUrl && !detail && !detailError) loadDetail(detailUrl);
 }
 
 function heading(text) {
@@ -116,7 +146,7 @@ function heading(text) {
   return h;
 }
 
-function detail(label, value) {
+function detailSection(label, value) {
   const section = document.createElement("section");
   section.className = "section";
   const l = document.createElement("div");
@@ -126,6 +156,13 @@ function detail(label, value) {
   pre.textContent = String(value || "");
   section.append(l, pre);
   return section;
+}
+
+function errorBlock(value) {
+  const p = document.createElement("p");
+  p.className = "error";
+  p.textContent = value;
+  return p;
 }
 
 function list(label, items) {
@@ -170,10 +207,60 @@ function button(label, className) {
   return b;
 }
 
-async function submit(outcome, pendingId, confirmToken, done, cancel) {
+function textarea(label, id, maxLength) {
+  const section = document.createElement("section");
+  section.className = "section";
+  const l = document.createElement("label");
+  l.className = "label";
+  l.htmlFor = id;
+  l.textContent = label;
+  const input = document.createElement("textarea");
+  input.id = id;
+  input.maxLength = maxLength;
+  input.rows = id === "manualOutput" ? 8 : 3;
+  section.append(l, input);
+  return { section, input };
+}
+
+function select(label, id, options) {
+  const section = document.createElement("section");
+  section.className = "section";
+  const l = document.createElement("label");
+  l.className = "label";
+  l.htmlFor = id;
+  l.textContent = label;
+  const input = document.createElement("select");
+  input.id = id;
+  for (const option of options) {
+    const item = document.createElement("option");
+    item.value = option;
+    item.textContent = option;
+    input.append(item);
+  }
+  section.append(l, input);
+  return { section, input };
+}
+
+async function loadDetail(detailUrl) {
+  try {
+    const response = await fetch(detailUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error("Manual action details failed to load: " + response.status);
+    detail = await response.json();
+  } catch (error) {
+    detailError = error instanceof Error ? error.message : String(error);
+  }
+  render();
+}
+
+async function submit(outcome, pendingId, confirmToken, done, cancel, evidence) {
   done.disabled = true;
   cancel.disabled = true;
-  const result = await window.openai.callTool("manual.confirm", { pendingId, confirmToken, outcome });
+  const payload = { pendingId, confirmToken, outcome, ...evidence };
+  if (outcome !== "completed") {
+    delete payload.manualOutput;
+    delete payload.manualOutputFormat;
+  }
+  const result = await window.openai.callTool("manual.confirm", payload);
   const status = result?.structuredContent?.status || result?.status || outcome;
   const prompt = result?.structuredContent?.next?.followUpPrompt ||
     result?.next?.followUpPrompt ||

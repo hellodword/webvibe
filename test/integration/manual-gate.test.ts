@@ -49,6 +49,12 @@ describe("manual gate", () => {
       const confirmToken = gate._meta.manualAction.confirmToken;
       expect(confirmToken).toBeTruthy();
       expect(gate.structuredContent.confirmToken).toBeUndefined();
+      expect(gate.structuredContent.instructions).toBeUndefined();
+      expect(gate.structuredContent.artifacts).toBeUndefined();
+      expect(gate.structuredContent.checks).toBeUndefined();
+      expect(gate._meta.manualAction.artifacts).toBeUndefined();
+      expect(gate._meta.manualAction.checks).toBeUndefined();
+      expect(Buffer.byteLength(JSON.stringify(gate), "utf8")).toBeLessThan(4096);
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
       expect(pending).toMatchObject({ status: "pending", title: "Manual test action" });
@@ -66,6 +72,39 @@ describe("manual gate", () => {
       ).resolves.toMatchObject({
         status: "confirmed",
         verification: { status: "not_configured" },
+      });
+
+      const outputGate = (await router.call(
+        "manual.gate",
+        {
+          reason: "external_manual_step",
+          title: "Manual output action",
+          instructions: "Run external command and paste logs.",
+        },
+        caller,
+      )) as any;
+      const outputPendingId = outputGate.structuredContent.pendingId;
+      const outputToken = outputGate._meta.manualAction.confirmToken;
+      const outputConfirm = (await router.call(
+        "manual.confirm",
+        {
+          pendingId: outputPendingId,
+          confirmToken: outputToken,
+          outcome: "completed",
+          manualOutput: "stdout: done",
+          manualOutputFormat: "text",
+          evidenceNote: "Ran outside ChatGPT.",
+        },
+        caller,
+      )) as any;
+      expect(outputConfirm.next.followUpPrompt).toContain("stdout: done");
+      expect(outputConfirm.next.followUpPrompt).toContain("Ran outside ChatGPT.");
+      const outputRecord = await new ManualPendingStore(stateDir).read(outputPendingId);
+      expect(outputRecord?.events.at(-1)).toMatchObject({
+        type: "confirmed",
+        note: "Ran outside ChatGPT.",
+        manualOutput: "stdout: done",
+        manualOutputFormat: "text",
       });
 
       const confirmed = await new ManualPendingStore(stateDir).read(pendingId);
