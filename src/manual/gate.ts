@@ -27,8 +27,6 @@ const gateInputSchema = z
       "external_manual_step",
       "user_requested_manual_step",
     ]),
-    title: z.string().max(200).optional(),
-    instructions: z.string().max(20000).optional(),
     hostObservation: z
       .object({
         toolName: z.string().optional(),
@@ -57,12 +55,13 @@ export async function openManualGate(
     pendingId: string;
     preparedId?: string;
     reason: ManualActionReason;
-    title: string;
     expiresAt: string;
     resumeTool: "manual.resume";
     continuation: {
       mode: "await_resume_command";
       modelShouldStop: true;
+      mustEndTurn: true;
+      resumeMode: "resume_interrupted_workflow";
     };
   };
   content: Array<{ type: "text"; text: string }>;
@@ -72,8 +71,9 @@ export async function openManualGate(
   void context.limits;
 
   const input = gateInputSchema.parse(rawArgs);
-  let title = input.title?.trim() ?? "";
-  let instructions = input.instructions?.trim() ?? "";
+  let title = "Manual action required";
+  let instructions =
+    "See the preceding ChatGPT message for the manual instructions. After completing the manual step, reply with /resume and an optional workspace-relative log file path.";
   let operationId = randomToken(18);
   let artifacts: ManualArtifactRef[] = [];
   let checks: ManualCheck[] = [];
@@ -88,8 +88,6 @@ export async function openManualGate(
     operationId = prepared.operationId;
     artifacts = prepared.artifacts;
     checks = prepared.checks;
-  } else if (!title || !instructions) {
-    throw new BadRequestError("title and instructions are required without preparedId");
   }
 
   const now = new Date();
@@ -138,15 +136,11 @@ export async function openManualGate(
     inputHash: sha256({
       preparedId: input.preparedId,
       reason: input.reason,
-      title,
-      instructions,
       hostObservation,
     }),
     input: {
       preparedId: input.preparedId,
       reason: input.reason,
-      title,
-      instructions,
       hostObservation,
       safetyBlockText: SAFETY_BLOCK_TEXT,
       secondaryConfirmationFragments: SECONDARY_CONFIRMATION_FRAGMENTS,
@@ -163,18 +157,19 @@ export async function openManualGate(
       pendingId: record.pendingId,
       preparedId: record.preparedId,
       reason: record.reason,
-      title: record.title,
       expiresAt: record.expiresAt,
       resumeTool: "manual.resume",
       continuation: {
         mode: "await_resume_command",
         modelShouldStop: true,
+        mustEndTurn: true,
+        resumeMode: "resume_interrupted_workflow",
       },
     },
     content: [
       {
         type: "text",
-        text: "Manual gate opened. Stop this assistant turn now. Do not summarize, call more tools, or continue the task until the next user message starts with /resume and manual.resume returns confirmed, cancelled, expired, or verification_failed.",
+        text: "Manual gate opened. End this assistant turn now. Do not summarize, call more tools, or continue any remaining work until the next user message starts with /resume and manual.resume returns a result. After resume, verify state and continue the original interrupted workflow.",
       },
     ],
   };

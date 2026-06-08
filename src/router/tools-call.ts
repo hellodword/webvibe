@@ -284,7 +284,6 @@ type ManualPendingBlockedResult = {
   pendingId: string;
   operationId: string;
   preparedId?: string;
-  title: string;
   expiresAt: string;
   resumeTool: "manual.resume";
   nextAction: "reply_with_resume_command";
@@ -308,7 +307,6 @@ function manualPendingRequired(record: ManualActionRecord): ManualPendingBlocked
     pendingId: record.pendingId,
     operationId: record.operationId,
     preparedId: record.preparedId,
-    title: record.title,
     expiresAt: record.expiresAt,
     resumeTool: "manual.resume",
     nextAction: "reply_with_resume_command",

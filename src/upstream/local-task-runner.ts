@@ -25,8 +25,7 @@ type TaskResult = {
 type ManualRequired = {
   nextTool: "manual.gate";
   reason: "external_manual_step";
-  title: string;
-  instructions: string;
+  userInstructions: string;
   hostObservation: {
     toolName: "task.run";
     outputText: string;
@@ -101,8 +100,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
               properties: {
                 nextTool: { type: "string", enum: ["manual.gate"] },
                 reason: { type: "string", enum: ["external_manual_step"] },
-                title: { type: "string" },
-                instructions: { type: "string" },
+                userInstructions: { type: "string" },
                 hostObservation: {
                   type: "object",
                   properties: {
@@ -113,7 +111,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
                   additionalProperties: false,
                 },
               },
-              required: ["nextTool", "reason", "title", "instructions", "hostObservation"],
+              required: ["nextTool", "reason", "userInstructions", "hostObservation"],
               additionalProperties: false,
             },
           },
@@ -375,8 +373,7 @@ function manualRequiredForTask(
   return {
     nextTool: "manual.gate",
     reason: "external_manual_step",
-    title: `Manual task required: ${taskId}`,
-    instructions:
+    userInstructions:
       `ChatGPT Web could not run task '${taskId}' because ${reason}.\n\n` +
       "Run this command outside ChatGPT from the workspace root:\n\n" +
       "```sh\n" +

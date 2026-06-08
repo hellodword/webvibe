@@ -56,6 +56,8 @@ type ResumeManualActionResult = {
   next: {
     recommendedTools: string[];
     followUpPrompt: string;
+    mode: "await_resume_command" | "resume_interrupted_workflow";
+    verifyBeforeContinuing: boolean;
   };
 };
 
@@ -109,6 +111,8 @@ export async function resumeManualAction(
       reason: record?.reason,
       next: {
         recommendedTools: ["manual.resume"],
+        mode: "await_resume_command",
+        verifyBeforeContinuing: false,
         followUpPrompt:
           "A manual action is pending. The next user message must begin with /resume, for example /resume or /resume .webvibe/manual-logs/task.log. Use /resume cancel to cancel it.",
       },
@@ -289,15 +293,25 @@ function nextResponse(
 ): {
   recommendedTools: string[];
   followUpPrompt: string;
+  mode: "await_resume_command" | "resume_interrupted_workflow";
+  verifyBeforeContinuing: boolean;
 } {
   const evidenceText = formatEvidenceForFollowUp(evidence);
   const subject = pendingId ? `Manual action ${pendingId}` : "Manual action";
+  const resumed =
+    status === "confirmed" || status === "not_found" || status === "expired" || status === "cancelled";
+  const followUp =
+    status === "verification_failed"
+      ? "Manual verification failed. Stay on the original interrupted request, report the failed checks, and wait for the user to complete or cancel the manual step before continuing."
+      : "Treat /resume as a control signal, not a new task. Verify current workspace state with context.get and appropriate read/git/task tools, then continue the original interrupted user request.";
   return {
     recommendedTools: ["context.get", "git.status", "git.diff", "read.stat", "read.files", "task.run"],
+    mode: resumed ? "resume_interrupted_workflow" : "await_resume_command",
+    verifyBeforeContinuing: resumed,
     followUpPrompt: [
       `${subject} resumed with status ${status}.`,
       evidenceText,
-      "Continue by verifying current workspace state with context.get and appropriate read/git/task tools before making further changes.",
+      followUp,
     ]
       .filter(Boolean)
       .join("\n\n"),

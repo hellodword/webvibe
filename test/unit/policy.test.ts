@@ -99,18 +99,43 @@ describe("default policies", () => {
     expect((manualResume.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
       "string",
     );
+    expect((manualResume.outputSchema as any).properties.next.properties.mode.enum).toEqual([
+      "await_resume_command",
+      "resume_interrupted_workflow",
+    ]);
+    expect(
+      (manualResume.outputSchema as any).properties.next.properties.verifyBeforeContinuing.type,
+    ).toBe("boolean");
     const manualGate = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.gate")!);
     expect((manualGate._meta as any).ui).toBeUndefined();
     expect((manualGate._meta as any)["openai/outputTemplate"]).toBeUndefined();
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBeUndefined();
+    expect((manualGate.inputSchema as any).properties.title).toBeUndefined();
+    expect((manualGate.inputSchema as any).properties.instructions).toBeUndefined();
+    expect((manualGate.outputSchema as any).properties.title).toBeUndefined();
     expect((manualGate.outputSchema as any).properties.detailUrl).toBeUndefined();
     expect(
       (manualGate.outputSchema as any).properties.continuation.properties.mode.enum,
     ).toEqual(["await_resume_command"]);
     expect(
+      (manualGate.outputSchema as any).properties.continuation.properties.mustEndTurn.type,
+    ).toBe("boolean");
+    expect(
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.nextTool.enum,
     ).toEqual(["manual.gate"]);
+    expect(
+      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+        .manualRequired.properties.title,
+    ).toBeUndefined();
+    expect(
+      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+        .manualRequired.properties.instructions,
+    ).toBeUndefined();
+    expect(
+      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+        .manualRequired.properties.userInstructions.type,
+    ).toBe("string");
     const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
     const devPolicyText = JSON.stringify(dev);

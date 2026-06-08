@@ -29,6 +29,8 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("blocked_by_openai_safety");
     expect(webvibeServerInstructions).toContain("manual_required_capability_limit");
     expect(webvibeServerInstructions).toContain("OpenAI host limitation or bug");
+    expect(webvibeServerInstructions).toContain("do not try another tool");
+    expect(webvibeServerInstructions).toContain("original interrupted user request");
     expect(webvibeServerInstructions).toContain("cannot run arbitrary shell");
     expect(webvibeServerInstructions).toContain("requires confirmation");
     expect(webvibeServerInstructions).toContain("click allow");
@@ -36,6 +38,5 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).not.toContain("split into smaller");
     expect(webvibeServerInstructions).not.toContain("applyById");
     expect(webvibeServerInstructions).not.toContain("applyPrepared");
-    expect(webvibeServerInstructions).not.toContain("try another tool");
   });
 });

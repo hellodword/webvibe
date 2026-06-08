@@ -35,9 +35,10 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     "Use read.tree, read.search, and read.files to inspect only relevant files.",
     "Use change.plan to validate one complete batch workspace change.",
     "Use one change.apply call for the full requested file change.",
-    "If a ChatGPT safety block or unavailable tool capability prevents the best next step, show manual details in chat, call manual.gate, stop the turn, and wait for a next user message that starts with /resume.",
+    "If a ChatGPT safety block or unavailable tool capability prevents the best next step, show manual details in chat, call manual.gate with minimal gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
     "Use task.run only with taskIds reported by context.get; pass cwd from project.manifests for monorepos.",
-    "If task.run returns manualRequired, call manual.gate with those recommended arguments.",
+    "If task.run returns manualRequired, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
+    "After manual.resume returns, verify current state and continue the original interrupted user request.",
     "Use git.status and git.diff after changes; use git.commit only with explicit paths.",
   ];
   return {

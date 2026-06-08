@@ -90,13 +90,13 @@ batch change, not each individual file edit.
 The manual completion gate does not bypass ChatGPT Web safety checks. When
 ChatGPT Web blocks a write action, `webvibe` does not retry the write, split the
 write, encode the payload, or apply a prepared payload by id. Instead, the model
-opens a local manual barrier after showing exact manual instructions in chat.
-The user completes the required step outside ChatGPT and must start the next
-message with `/resume`. The same manual path is used when the best next step
-requires unavailable arbitrary shell, an unavailable configured task, or another
-tool capability limit. `manual.resume` records user intent, an optional
-workspace-relative manual log file path, and optional post-completion checks; it
-does not perform the blocked write.
+shows exact manual instructions in chat and opens a local manual barrier with
+minimal `manual.gate` arguments only. The user completes the required step
+outside ChatGPT and must start the next message with `/resume`. The same manual
+path is used when the best next step requires unavailable arbitrary shell, an
+unavailable configured task, or another tool capability limit. `manual.resume`
+records user intent, an optional workspace-relative manual log file path, and
+optional post-completion checks; it does not perform the blocked write.
 
 UI widget results cannot make the ChatGPT Web page reliably pending; this
 appears to be an OpenAI limitation or bug. `webvibe` does not try to bypass
@@ -117,6 +117,8 @@ While a manual action is pending, the relay blocks follow-up tools with
 `MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`. This
 is a local barrier, not a ChatGPT Web host hard-pending protocol. If the host
 does not call MCP tools, the relay cannot intercept ordinary assistant text.
+The model must stop the assistant turn after `manual.gate`, even if other work
+remains.
 
 `manual.resume` is the authoritative transition from a pending manual action to
 confirmed/cancelled/expired. It applies `trimStart()` to the model-supplied next
@@ -124,7 +126,9 @@ user message, requires exact lowercase `/resume` as the first command token,
 accepts `/resume cancel`, and treats any other `/resume` tail as an optional
 workspace-relative manual log file path. It optionally verifies configured
 post-completion checks, writes an audit event, and clears the pending barrier
-only after confirmation, cancellation, or expiry.
+only after confirmation, cancellation, or expiry. `/resume` is a control signal,
+not a new task; after resume, the model verifies current state and continues the
+original interrupted request.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
 cannot log that blocked call directly. The model records the observed host
@@ -134,7 +138,9 @@ The `manual.gate` tool result is intentionally lightweight. ChatGPT Web shows
 manual details in chat before opening the gate: commands include stdout/stderr
 redirection to a workspace-relative manual log file, small prepared diffs are
 shown inline, and large prepared diffs use the tokenized artifact download URL
-from `change.prepare`.
+from `change.prepare`. Detailed manual instructions are not passed as
+`manual.gate` arguments. If ChatGPT Web blocks `manual.gate` itself, the model
+must stop and wait for human completion followed by `/resume`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,

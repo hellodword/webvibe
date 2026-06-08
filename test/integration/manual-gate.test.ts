@@ -35,8 +35,6 @@ describe("manual gate", () => {
         "manual.gate",
         {
           reason: "manual_review_requested",
-          title: "Manual test action",
-          instructions: "Create the observable condition outside ChatGPT, then return.",
         },
         caller,
       )) as any;
@@ -44,10 +42,16 @@ describe("manual gate", () => {
       expect(gate.structuredContent).toMatchObject({
         status: "awaiting_manual_completion",
         resumeTool: "manual.resume",
-        continuation: { mode: "await_resume_command", modelShouldStop: true },
+        continuation: {
+          mode: "await_resume_command",
+          modelShouldStop: true,
+          mustEndTurn: true,
+          resumeMode: "resume_interrupted_workflow",
+        },
       });
       const pendingId = gate.structuredContent.pendingId;
       expect(gate._meta).toBeUndefined();
+      expect(gate.structuredContent.title).toBeUndefined();
       expect(gate.structuredContent.instructions).toBeUndefined();
       expect(gate.structuredContent.artifacts).toBeUndefined();
       expect(gate.structuredContent.checks).toBeUndefined();
@@ -55,7 +59,7 @@ describe("manual gate", () => {
       expect(Buffer.byteLength(JSON.stringify(gate), "utf8")).toBeLessThan(4096);
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
-      expect(pending).toMatchObject({ status: "pending", title: "Manual test action" });
+      expect(pending).toMatchObject({ status: "pending", title: "Manual action required" });
       expect(pending?.scope.sessionHash).toBeTruthy();
 
       await expect(router.call("read.tree", {}, caller)).resolves.toMatchObject({
@@ -69,8 +73,6 @@ describe("manual gate", () => {
           "manual.gate",
           {
             reason: "manual_review_requested",
-            title: "Second gate should wait",
-            instructions: "Do not open while first gate is pending.",
           },
           caller,
         ),
@@ -106,14 +108,27 @@ describe("manual gate", () => {
       ).resolves.toMatchObject({
         status: "confirmed",
         verification: { status: "not_configured" },
+        next: {
+          mode: "resume_interrupted_workflow",
+          verifyBeforeContinuing: true,
+        },
       });
+
+      await expect(
+        router.call(
+          "manual.gate",
+          {
+            reason: "manual_review_requested",
+            title: "Old title field should be rejected",
+          },
+          caller,
+        ),
+      ).rejects.toThrow("input.title is not allowed");
 
       const outputGate = (await router.call(
         "manual.gate",
         {
           reason: "external_manual_step",
-          title: "Manual log action",
-          instructions: "Run external command and paste logs.",
         },
         caller,
       )) as any;
@@ -138,8 +153,6 @@ describe("manual gate", () => {
         "manual.gate",
         {
           reason: "external_manual_step",
-          title: "Manual cancel action",
-          instructions: "Run external command or cancel.",
         },
         caller,
       )) as any;

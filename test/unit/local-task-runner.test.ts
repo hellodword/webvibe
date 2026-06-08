@@ -136,7 +136,7 @@ describe("local task runner upstream", () => {
         manualRequired: {
           nextTool: "manual.gate",
           reason: "external_manual_step",
-          title: "Manual task required: missingExecutable",
+          userInstructions: expect.stringContaining("webvibe-missing-executable"),
           hostObservation: {
             toolName: "task.run",
             outputText: "Task unavailable: Missing executable: webvibe-missing-executable",

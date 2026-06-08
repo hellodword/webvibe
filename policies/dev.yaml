@@ -358,16 +358,22 @@ tools:
             reason:
               type: string
               enum: [manual_review_requested]
-            title:
-              type: string
-            instructions:
-              type: string
             expiresAt:
               type: string
             nextTool:
               type: string
               enum: [manual.gate]
-          required: [preparedId, reason, title, instructions, expiresAt, nextTool]
+            artifacts:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            checks:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+          required: [preparedId, reason, expiresAt, nextTool]
           additionalProperties: true
       required: [status, valid, summary, files, diff, conflicts, manualGate]
       additionalProperties: true
@@ -389,8 +395,11 @@ tools:
       from change.prepare. Use this after an OpenAI safety block or whenever
       the user must manually complete something before the model continues.
       After this tool returns awaiting_manual_completion, stop the assistant
-      turn immediately and wait for a later user message that starts with
-      /resume. While pending, webvibe blocks other tools with
+      turn immediately even if other tasks remain, and wait for a later user
+      message that starts with /resume. If ChatGPT Web blocks this manual.gate
+      call with OpenAI safety checks, stop immediately and wait for human
+      intervention; do not try another tool or workaround. While pending,
+      webvibe blocks other tools with
       MANUAL_PENDING_REQUIRED.
     inputSchema:
       type: object
@@ -405,12 +414,6 @@ tools:
             - manual_review_requested
             - external_manual_step
             - user_requested_manual_step
-        title:
-          type: string
-          maxLength: 200
-        instructions:
-          type: string
-          maxLength: 20000
         hostObservation:
           type: object
           properties:
@@ -442,8 +445,6 @@ tools:
             - manual_review_requested
             - external_manual_step
             - user_requested_manual_step
-        title:
-          type: string
         expiresAt:
           type: string
         resumeTool:
@@ -457,9 +458,14 @@ tools:
               enum: [await_resume_command]
             modelShouldStop:
               type: boolean
-          required: [mode, modelShouldStop]
+            mustEndTurn:
+              type: boolean
+            resumeMode:
+              type: string
+              enum: [resume_interrupted_workflow]
+          required: [mode, modelShouldStop, mustEndTurn, resumeMode]
           additionalProperties: false
-      required: [status, operationId, pendingId, reason, title, expiresAt, resumeTool, continuation]
+      required: [status, operationId, pendingId, reason, expiresAt, resumeTool, continuation]
       additionalProperties: false
     annotations:
       readOnlyHint: false
@@ -511,9 +517,14 @@ tools:
               type: array
               items:
                 type: string
+            mode:
+              type: string
+              enum: [await_resume_command, resume_interrupted_workflow]
+            verifyBeforeContinuing:
+              type: boolean
             followUpPrompt:
               type: string
-          required: [recommendedTools, followUpPrompt]
+          required: [recommendedTools, mode, verifyBeforeContinuing, followUpPrompt]
           additionalProperties: false
       required: [status, verification, next]
       additionalProperties: false
@@ -545,9 +556,10 @@ tools:
       workspace-relative cwd. Does not accept arbitrary shell commands.
       Available taskIds, cwd support, argument rules, and availability are
       returned by context.get. If the task is unavailable and manualRequired is
-      returned, show its command/log-file instructions in ChatGPT Web, then call
-      manual.gate with those arguments so the user can run the task manually and
-      reply later with /resume and an optional workspace-relative log file path.
+      returned, show its userInstructions in ChatGPT Web, then call manual.gate
+      only with reason and hostObservation gate fields so the user can run the
+      task manually and reply later with /resume and an optional
+      workspace-relative log file path.
       Requires context.get first.
     inputSchema:
       type: object
@@ -600,9 +612,7 @@ tools:
             reason:
               type: string
               enum: [external_manual_step]
-            title:
-              type: string
-            instructions:
+            userInstructions:
               type: string
             hostObservation:
               type: object
@@ -613,7 +623,7 @@ tools:
                   type: string
               required: [toolName, outputText]
               additionalProperties: false
-          required: [nextTool, reason, title, instructions, hostObservation]
+          required: [nextTool, reason, userInstructions, hostObservation]
           additionalProperties: false
       required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
       additionalProperties: false

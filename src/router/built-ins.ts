@@ -178,15 +178,13 @@ function manualRequiredForUnavailableTask(
 ): {
   nextTool: "manual.gate";
   reason: "external_manual_step";
-  title: string;
-  instructions: string;
+  userInstructions: string;
   hostObservation: { toolName: "task.run"; outputText: string };
 } {
   return {
     nextTool: "manual.gate",
     reason: "external_manual_step",
-    title: `Manual task required: ${taskId || "task.run"}`,
-    instructions:
+    userInstructions:
       `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}.\n\n` +
       "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then reply in the next ChatGPT message with /resume followed by that optional workspace-relative log file path.\n\n" +
       `Suggested log path: .webvibe/manual-logs/${safeLogName(taskId || "task.run")}.log`,

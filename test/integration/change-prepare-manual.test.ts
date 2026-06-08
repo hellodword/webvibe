@@ -58,6 +58,8 @@ describe("change.prepare manual fallback", () => {
         valid: true,
         manualGate: { nextTool: "manual.gate" },
       });
+      expect(prepared.manualGate.title).toBeUndefined();
+      expect(prepared.manualGate.instructions).toBeUndefined();
       expect(prepared.preparedId).toBeTruthy();
       expect(prepared.manualGate.checks[0]).toMatchObject({
         kind: "workspace-path-state",

@@ -19,8 +19,6 @@ describe("manual action stores", () => {
     const gate = await openManualGate(
       {
         reason: "manual_review_requested",
-        title: "User title with path src/secret.txt",
-        instructions: "Complete this outside ChatGPT.",
       },
       context,
     );
@@ -72,8 +70,6 @@ describe("manual action stores", () => {
     const gate = await openManualGate(
       {
         reason: "manual_review_requested",
-        title: "Manual expiry",
-        instructions: "Complete this outside ChatGPT.",
       },
       context,
     );

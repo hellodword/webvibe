@@ -37,9 +37,11 @@ or arbitrary shell execution.
 
 When ChatGPT Web blocks a write or a required local capability is unavailable,
 dev mode uses `manual.gate`: the assistant shows exact manual instructions,
-opens a local pending barrier, stops, and waits for the next user message to
-start with `/resume`. `manual.resume` clears the barrier only after confirmation
-or cancellation and does not run commands or write files.
+opens a local pending barrier with minimal gate arguments, stops immediately,
+and waits for the next user message to start with `/resume`. `manual.resume`
+clears the barrier only after confirmation or cancellation, does not run
+commands or write files, and directs the model back to the original interrupted
+request after verification.
 
 The default tool list is stable. If a named task cannot run in the current
 workspace or host environment, the call returns `status: "unavailable"` and an

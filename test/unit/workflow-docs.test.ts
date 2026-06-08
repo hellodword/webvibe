@@ -21,6 +21,9 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("OpenAI limitation or bug");
     expect(text).toContain("not suspend an in-flight JSON-RPC");
     expect(text).toContain("MANUAL_PENDING_REQUIRED");
+    expect(text).toContain("Do not put detailed manual instructions into `manual.gate` arguments.");
+    expect(text).toContain("stop immediately; wait for human completion followed by `/resume`");
+    expect(text).toContain("continues the original interrupted request");
     expect(text).not.toContain("sendFollowUpMessage");
     expect(text).not.toContain("manual.confirm");
     expect(text).not.toContain("applyPrepared");

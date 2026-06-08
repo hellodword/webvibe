@@ -15,6 +15,8 @@ describe("security docs", () => {
     expect(text).toContain("before it reaches `/mcp`");
     expect(text).toContain("workspace-relative manual log file path");
     expect(text).toContain("OpenAI limitation or bug");
+    expect(text).toContain("minimal `manual.gate` arguments");
+    expect(text).toContain("original interrupted request");
     expect(text).not.toContain("widget only collects");
     expect(text).not.toContain("manual.confirm");
     expect(text).toContain("redacted full tool inputs");

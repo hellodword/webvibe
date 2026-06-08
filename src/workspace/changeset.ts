@@ -89,8 +89,6 @@ export async function prepareChangeset(
   manualGate: null | {
     preparedId: string;
     reason: "manual_review_requested";
-    title: string;
-    instructions: string;
     artifacts: ManualArtifactRef[];
     checks: ManualCheck[];
     expiresAt: string;
@@ -178,8 +176,6 @@ export async function prepareChangeset(
     manualGate: {
       preparedId: prepared.preparedId,
       reason: "manual_review_requested",
-      title,
-      instructions,
       artifacts: prepared.artifacts,
       checks: prepared.checks,
       expiresAt: prepared.expiresAt,
