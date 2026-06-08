@@ -112,7 +112,7 @@ export async function prepareChangeset(
   const operationId = randomToken(18);
   const title = "Prepared workspace change";
   const instructions =
-    "If ChatGPT Web cannot complete the write action, show the user the prepared workspace change details in ChatGPT Web before opening manual.gate. " +
+    "If ChatGPT Web cannot complete the write action after the required identical safety-block retry, show the user the prepared workspace change details in ChatGPT Web before opening manual.gate. " +
     "If the diff is at most 12KB and 200 lines, show it in a code block; otherwise link the downloadable review artifact from change.prepare. " +
     "The user should complete the prepared workspace change manually outside ChatGPT, write any command output or logs to a workspace-relative path such as " +
     `.webvibe/manual-logs/${operationId}.log, then reply in the next ChatGPT message with /resume followed by that optional log file path.`;

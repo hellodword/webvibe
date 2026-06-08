@@ -79,14 +79,17 @@ Batch change limits default to 80 paths, 5 MiB per change, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
 overwrite newer workspace edits.
 
-If ChatGPT Web blocks the write after `change.prepare`, the model calls
-`manual.gate` with minimal arguments, stops the assistant turn immediately, and
-waits for a later user message that starts with `/resume`. Detailed manual
-instructions stay in the chat text, not in the `manual.gate` call. While
-pending, webvibe blocks workspace tools except `diagnostics.health` and
-`manual.resume`. `manual.resume` validates the `/resume` command, accepts an
-optional workspace-relative manual log file path, and verifies configured checks
-before the model continues the original interrupted request.
+If ChatGPT Web blocks the write after `change.prepare` with the exact OpenAI
+safety-check text, the model retries the same tool once with unchanged
+arguments. If the identical retry is blocked again, the model shows manual
+instructions in chat, calls `manual.gate` with minimal arguments, stops the
+assistant turn immediately, and waits for a later user message that starts with
+`/resume`. Detailed manual instructions stay in the chat text, not in the
+`manual.gate` call. While pending, webvibe blocks workspace tools except
+`diagnostics.health` and `manual.resume`. `manual.resume` validates the
+`/resume` command, accepts an optional workspace-relative manual log file path,
+and verifies configured checks before the model continues the original
+interrupted request.
 
 ## Tasks
 

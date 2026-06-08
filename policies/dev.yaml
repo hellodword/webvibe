@@ -392,13 +392,15 @@ tools:
       manual instructions in chat: for commands, include the complete command
       and redirect stdout/stderr to a workspace-relative temporary log file; for
       prepared diffs, show small diffs inline or link large review artifacts
-      from change.prepare. Use this after an OpenAI safety block or whenever
-      the user must manually complete something before the model continues.
+      from change.prepare. Use this after an OpenAI safety block has already
+      been retried once with identical arguments, or whenever the user must
+      manually complete something before the model continues.
       After this tool returns awaiting_manual_completion, stop the assistant
       turn immediately even if other tasks remain, and wait for a later user
       message that starts with /resume. If ChatGPT Web blocks this manual.gate
-      call with OpenAI safety checks, stop immediately and wait for human
-      intervention; do not try another tool or workaround. While pending,
+      call with OpenAI safety checks, retry the same manual.gate call once with
+      identical arguments; if it is still blocked, stop immediately and wait for
+      human intervention; do not try another tool or workaround. While pending,
       webvibe blocks other tools with
       MANUAL_PENDING_REQUIRED.
     inputSchema:
@@ -538,7 +540,7 @@ tools:
 
   - name: change.apply
     type: builtIn
-    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Call change.prepare first so a generic manual completion gate is available if ChatGPT Web blocks this write. If ChatGPT Web asks for confirmation, retry this same tool once with the identical JSON arguments. If ChatGPT Web returns "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", stop using write tools and call manual.gate with the latest preparedId. Do not transform, split, encode, hide, or rewrite the changeset to bypass the block. Requires context.get first.
+    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Call change.prepare first so a generic manual completion gate is available if ChatGPT Web blocks this write. If ChatGPT Web asks for confirmation, retry this same tool once with the identical JSON arguments. If ChatGPT Web returns "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", retry this same tool once with the identical JSON arguments and no other changes. If that identical retry returns the same safety block, show the manual instructions in chat, then call manual.gate with the latest preparedId and observed host output. Do not transform, split, encode, hide, or rewrite the changeset to bypass the block. Requires context.get first.
     inputSchema: *changeInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations:

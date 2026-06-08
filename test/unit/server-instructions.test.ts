@@ -15,8 +15,11 @@ describe("server instructions", () => {
     expect(prefix).toContain("manual.gate");
     expect(prefix).toContain(safetyBlock);
     expect(prefix).toContain("retry once");
+    expect(prefix).toContain("retry that same tool call once");
     expect(prefix).toContain("identical tool name");
     expect(prefix).toContain("identical JSON arguments");
+    expect(webvibeServerInstructions).toContain("Before any manual.gate call");
+    expect(webvibeServerInstructions).toContain("must first show the exact manual instructions");
     expect(webvibeServerInstructions).toContain("manual.resume");
     expect(webvibeServerInstructions).toContain("/resume");
     expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
@@ -29,7 +32,7 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("blocked_by_openai_safety");
     expect(webvibeServerInstructions).toContain("manual_required_capability_limit");
     expect(webvibeServerInstructions).toContain("OpenAI host limitation or bug");
-    expect(webvibeServerInstructions).toContain("do not try another tool");
+    expect(webvibeServerInstructions).toContain("retry the same manual.gate call once");
     expect(webvibeServerInstructions).toContain("original interrupted user request");
     expect(webvibeServerInstructions).toContain("cannot run arbitrary shell");
     expect(webvibeServerInstructions).toContain("requires confirmation");

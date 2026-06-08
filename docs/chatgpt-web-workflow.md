@@ -10,14 +10,15 @@ Recommended order:
 4. `change.prepare` before any `change.apply`
 5. `change.apply` as one complete batch write
 6. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
-7. If ChatGPT Web blocks with OpenAI safety checks: stop write tools and call `manual.gate` with the latest `preparedId` and observed host output only
-8. If the best next step requires unavailable arbitrary shell or an unavailable task: show manual instructions, then call `manual.gate` with only `reason` and `hostObservation`
-9. Stop the assistant turn immediately after `manual.gate`, even if other work remains
-10. User completes the manual step outside ChatGPT
-11. The next user message must start with `/resume`
-12. Model calls `manual.resume` with that message
-13. Model treats `/resume` as a control signal, verifies with `context.get` plus `git.status` / `git.diff` / `read.stat` / `task.run`, then continues the original interrupted request
-14. `git.commit` only when explicitly requested or appropriate
+7. If ChatGPT Web blocks with OpenAI safety checks: retry the identical tool call once with unchanged arguments
+8. If the identical retry is blocked again: show manual instructions, then call `manual.gate` with the latest `preparedId` and observed host output only
+9. If the best next step requires unavailable arbitrary shell or an unavailable task: show manual instructions, then call `manual.gate` with only `reason` and `hostObservation`
+10. Stop the assistant turn immediately after `manual.gate`, even if other work remains
+11. User completes the manual step outside ChatGPT
+12. The next user message must start with `/resume`
+13. Model calls `manual.resume` with that message
+14. Model treats `/resume` as a control signal, verifies with `context.get` plus `git.status` / `git.diff` / `read.stat` / `task.run`, then continues the original interrupted request
+15. `git.commit` only when explicitly requested or appropriate
 
 `webvibe` does not suspend an in-flight JSON-RPC `tools/call` or force
 ChatGPT Web to hard-pend the current assistant turn. UI widget results cannot
@@ -60,14 +61,16 @@ Host output decision table:
 | `CONTEXT_REQUIRED` | `relay_policy_block` | yes | call `context.get` | 0 | none | blocked audit from relay |
 | `MANUAL_PENDING_REQUIRED` | `manual_action_pending` | yes | stop and wait for `/resume` | 0 | existing pending barrier | blocked audit from relay |
 | `requires confirmation` / `please confirm` / `click allow` | `secondary_confirmation_required` | maybe no | retry same tool once with identical name and identical JSON arguments | 1 | none unless retry becomes safety block | local relay may not see first attempt |
-| exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | stop write tools; call `manual.gate` with latest `preparedId` and observed host output only | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records observed block |
-| `manual.gate` is blocked by OpenAI safety checks | `blocked_manual_gate` | usually no | stop immediately; wait for human completion followed by `/resume` | 0 | none if call never reached relay | no local audit if host blocked before relay |
+| exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | retry the same tool once with identical name and identical JSON arguments; if the identical retry is blocked again, show manual instructions, then call `manual.gate` with latest `preparedId` and observed host output only | 1 | manual barrier requiring `/resume` only after repeated safety block | `manual.gate.hostObservation` records the repeated observed block |
+| `manual.gate` is blocked by OpenAI safety checks | `blocked_manual_gate` | usually no | retry the same `manual.gate` once with identical arguments; if still blocked, stop immediately and wait for human completion followed by `/resume` | 1 | none if call never reached relay | no local audit if host blocked before relay |
 | `受工具限制` / `cannot run arbitrary shell` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with only `reason` and `hostObservation` | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records observed limit |
 | next user message starts with `/resume` | `manual_completion_resumed` | yes | call `manual.resume`, then verify workspace state and continue the original interrupted request | 0 | pending record transitions if checks pass or cancel requested | `manual.resume` audit event |
 | next user message does not start with `/resume` | `manual_resume_required` | yes if tool called | call `manual.resume` only when the message starts with `/resume` | 0 | pending record remains pending | blocked audit from relay |
 
 Do not split a blocked write into additional write calls.
 Do not encode, obfuscate, rename, or hide payloads.
+Do retry an exact OpenAI safety block once with the same tool name and unchanged
+JSON arguments before entering manual flow.
 Do not put detailed manual instructions into `manual.gate` arguments.
 Do not continue the current assistant turn after `manual.gate`.
 Do not use a `preparedId` as a hidden write mechanism.
@@ -91,13 +94,16 @@ defaults, cwd support, and extra argument rules.
 surface version, hashes, and upstream health. It is not the coding preflight.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, `webvibe` cannot
-directly observe that blocked request. The model must pass the observed host
-text to `manual.gate.hostObservation`; all project instructions and structured
-outputs direct safety blocks and capability limits to `manual.gate`.
+directly observe that blocked request. The model first retries the same tool
+once with unchanged arguments for the exact OpenAI safety block text. If that
+retry is blocked again, the model passes the observed host text to
+`manual.gate.hostObservation`; all project instructions and structured outputs
+direct repeated safety blocks and capability limits to `manual.gate`.
 
-If ChatGPT Web blocks the `manual.gate` call itself, the model must stop the
-assistant turn and wait for the user to complete the manual work. The next user
-message should still start with `/resume`; after `manual.resume`, the model
+If ChatGPT Web blocks `manual.gate` itself, the model retries the same `manual.gate`
+call once with identical arguments. If it is still blocked, the model must stop
+the assistant turn and wait for the user to complete the manual work. The next
+user message should still start with `/resume`; after `manual.resume`, the model
 verifies state and resumes the original interrupted task.
 
 After changing tool descriptors, annotations, or `_meta` fields, refresh

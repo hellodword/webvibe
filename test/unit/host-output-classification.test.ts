@@ -20,26 +20,40 @@ describe("host output classification", () => {
     expect(classifyHostOutput("applied: true")).toBe("normal_tool_result");
   });
 
-  it("plans retry only once and sends safety blocks to manual.gate", () => {
+  it("plans retries before manual gates", () => {
     expect(
       planHostRetry({
         outputText: "This action requires confirmation. Please confirm to proceed.",
         secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 0,
       }),
     ).toMatchObject({ action: "retry_same_tool_once" });
     expect(
       planHostRetry({
         outputText: "This action requires confirmation. Please confirm to proceed.",
         secondaryConfirmationAttempts: 1,
+        safetyBlockAttempts: 0,
       }),
     ).toMatchObject({ action: "stop" });
-    expect(planHostRetry({ outputText: safetyBlock, secondaryConfirmationAttempts: 0 })).toMatchObject(
-      { action: "manual.gate" },
-    );
+    expect(
+      planHostRetry({
+        outputText: safetyBlock,
+        secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 0,
+      }),
+    ).toMatchObject({ action: "retry_same_tool_once" });
+    expect(
+      planHostRetry({
+        outputText: safetyBlock,
+        secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 1,
+      }),
+    ).toMatchObject({ action: "manual.gate" });
     expect(
       planHostRetry({
         outputText: "Cannot run arbitrary shell in this tool environment.",
         secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 0,
       }),
     ).toMatchObject({ action: "manual.gate" });
   });

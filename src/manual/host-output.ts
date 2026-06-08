@@ -11,7 +11,10 @@ export type HostOutputClassification = NonNullable<
 
 export type HostRetryDecision =
   | { action: "continue"; classification: HostOutputClassification }
-  | { action: "retry_same_tool_once"; classification: "secondary_confirmation_required" }
+  | {
+      action: "retry_same_tool_once";
+      classification: "secondary_confirmation_required" | "blocked_by_openai_safety";
+    }
   | { action: "stop"; classification: "secondary_confirmation_required" }
   | {
       action: "manual.gate";
@@ -38,12 +41,15 @@ export function classifyHostOutput(outputText: string | undefined): HostOutputCl
 export function planHostRetry(input: {
   outputText: string | undefined;
   secondaryConfirmationAttempts: number;
+  safetyBlockAttempts: number;
 }): HostRetryDecision {
   const classification = classifyHostOutput(input.outputText);
-  if (
-    classification === "blocked_by_openai_safety" ||
-    classification === "manual_required_capability_limit"
-  ) {
+  if (classification === "blocked_by_openai_safety") {
+    return input.safetyBlockAttempts > 0
+      ? { action: "manual.gate", classification }
+      : { action: "retry_same_tool_once", classification };
+  }
+  if (classification === "manual_required_capability_limit") {
     return { action: "manual.gate", classification };
   }
   if (classification === "secondary_confirmation_required") {

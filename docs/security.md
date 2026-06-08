@@ -88,15 +88,18 @@ batch change, not each individual file edit.
 ## Manual Completion Gate
 
 The manual completion gate does not bypass ChatGPT Web safety checks. When
-ChatGPT Web blocks a write action, `webvibe` does not retry the write, split the
-write, encode the payload, or apply a prepared payload by id. Instead, the model
-shows exact manual instructions in chat and opens a local manual barrier with
-minimal `manual.gate` arguments only. The user completes the required step
-outside ChatGPT and must start the next message with `/resume`. The same manual
-path is used when the best next step requires unavailable arbitrary shell, an
-unavailable configured task, or another tool capability limit. `manual.resume`
-records user intent, an optional workspace-relative manual log file path, and
-optional post-completion checks; it does not perform the blocked write.
+ChatGPT Web blocks a write action with the exact OpenAI safety-check text, the
+model retries the same tool call once with the identical tool name and JSON
+arguments. If that identical retry is blocked again, `webvibe` does not split
+the write, encode the payload, rewrite the payload, or apply a prepared payload
+by id. Instead, the model shows exact manual instructions in chat and opens a
+local manual barrier with minimal `manual.gate` arguments only. The user
+completes the required step outside ChatGPT and must start the next message with
+`/resume`. The same manual path is used when the best next step requires
+unavailable arbitrary shell, an unavailable configured task, or another tool
+capability limit. `manual.resume` records user intent, an optional
+workspace-relative manual log file path, and optional post-completion checks; it
+does not perform the blocked write.
 
 UI widget results cannot make the ChatGPT Web page reliably pending; this
 appears to be an OpenAI limitation or bug. `webvibe` does not try to bypass
@@ -131,8 +134,10 @@ not a new task; after resume, the model verifies current state and continues the
 original interrupted request.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
-cannot log that blocked call directly. The model records the observed host
-output by passing it to `manual.gate.hostObservation`.
+cannot log that blocked call directly. The model first retries the same tool
+once with unchanged arguments for the exact OpenAI safety-check text. If the
+retry is blocked again, the model records the observed host output by passing it
+to `manual.gate.hostObservation`.
 
 The `manual.gate` tool result is intentionally lightweight. ChatGPT Web shows
 manual details in chat before opening the gate: commands include stdout/stderr
@@ -140,7 +145,9 @@ redirection to a workspace-relative manual log file, small prepared diffs are
 shown inline, and large prepared diffs use the tokenized artifact download URL
 from `change.prepare`. Detailed manual instructions are not passed as
 `manual.gate` arguments. If ChatGPT Web blocks `manual.gate` itself, the model
-must stop and wait for human completion followed by `/resume`.
+retries the same `manual.gate` call once with identical arguments. If it is still
+blocked, the model must stop and wait for human completion followed by
+`/resume`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,
