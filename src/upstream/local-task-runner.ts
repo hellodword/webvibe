@@ -388,7 +388,7 @@ function manualRequiredForTask(
       "printf '%s\\n' \"$LOG\"\n" +
       "exit \"$STATUS\"\n" +
       "```\n\n" +
-      `Paste only this workspace-relative log file path into the manual completion widget: ${logPath}`,
+      `Reply in the next ChatGPT message with /resume ${logPath}`,
     hostObservation: {
       toolName: "task.run",
       outputText,

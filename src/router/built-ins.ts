@@ -1,5 +1,5 @@
-import { confirmManualAction } from "../manual/confirm.js";
 import { openManualGate } from "../manual/gate.js";
+import { resumeManualAction } from "../manual/resume.js";
 import type { RelayPolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
@@ -141,12 +141,13 @@ export function callBuiltIn(
       audit: context.audit,
     });
   }
-  if (name === "manual.confirm") {
-    return confirmManualAction(args, {
+  if (name === "manual.resume") {
+    return resumeManualAction(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
       stateDir: context.stateDir,
+      caller: context.caller,
       audit: context.audit,
     });
   }
@@ -187,7 +188,7 @@ function manualRequiredForUnavailableTask(
     title: `Manual task required: ${taskId || "task.run"}`,
     instructions:
       `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}.\n\n` +
-      "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then paste only that log file path into the manual completion widget.\n\n" +
+      "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then reply in the next ChatGPT message with /resume followed by that optional workspace-relative log file path.\n\n" +
       `Suggested log path: .webvibe/manual-logs/${safeLogName(taskId || "task.run")}.log`,
     hostObservation: {
       toolName: "task.run",

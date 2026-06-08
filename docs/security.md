@@ -22,8 +22,8 @@ Security model:
   not raw secret values or raw PATH entries.
 - Audit: in dev mode, audit is optimized for reproducibility and records
   redacted full inputs, raw tool outputs, client-visible outputs, manual gate
-  events, host observations supplied by the model, widget confirmation events,
-  and artifact downloads. Confirm tokens are never logged in plaintext. Audit
+  events, host observations supplied by the model, manual resume events, and
+  artifact downloads. Download tokens are never logged in plaintext. Audit
   logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
@@ -90,61 +90,56 @@ batch change, not each individual file edit.
 The manual completion gate does not bypass ChatGPT Web safety checks. When
 ChatGPT Web blocks a write action, `webvibe` does not retry the write, split the
 write, encode the payload, or apply a prepared payload by id. Instead, the model
-opens a generic widget that asks the user to complete the required step outside
-ChatGPT and return to confirm. The same manual path is used when the best next
-step requires unavailable arbitrary shell, an unavailable configured task, or
-another tool capability limit. Confirmation records user intent, an optional
+opens a local manual barrier after showing exact manual instructions in chat.
+The user completes the required step outside ChatGPT and must start the next
+message with `/resume`. The same manual path is used when the best next step
+requires unavailable arbitrary shell, an unavailable configured task, or another
+tool capability limit. `manual.resume` records user intent, an optional
 workspace-relative manual log file path, and optional post-completion checks; it
 does not perform the blocked write.
+
+UI widget results cannot make the ChatGPT Web page reliably pending; this
+appears to be an OpenAI limitation or bug. `webvibe` does not try to bypass
+OpenAI restrictions. It adapts by blocking local tools while manual work is
+pending and requiring `/resume` through `manual.resume` before tools continue.
 
 Boundaries:
 
 - `change.prepare` does not write workspace files.
 - `manual.gate` does not write workspace files.
-- `manual.confirm` does not write workspace files.
+- `manual.resume` does not write workspace files.
 - `change.apply` remains the only default workspace write tool.
 - There is no apply-by-id tool.
-- Pending, prepared, and artifact state live in `stateDir` for UI, audit,
+- Pending, prepared, and artifact state live in `stateDir` for audit,
   troubleshooting, and expiry control.
 
 While a manual action is pending, the relay blocks follow-up tools with
-`MANUAL_PENDING_REQUIRED` except `context.get`, `diagnostics.health`, and
-`manual.confirm`. This is a local barrier, not a ChatGPT Web host hard-pending
-protocol.
+`MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`. This
+is a local barrier, not a ChatGPT Web host hard-pending protocol. If the host
+does not call MCP tools, the relay cannot intercept ordinary assistant text.
 
-`manual.confirm` is the authoritative transition from a pending manual action to
-confirmed/cancelled/expired. It does not apply patches, delete files, run
-commands, or mutate the workspace. It records that the user clicked the widget
-after completing the manual step outside ChatGPT, stores an optional
-workspace-relative manual log file path from the widget, optionally verifies
-configured post-completion checks, writes an audit event, and lets the widget
-ask ChatGPT to continue in a new turn.
-
-`manual.confirm` exists because a widget button alone does not tell the local
-relay what happened, `sendFollowUpMessage` alone creates no trusted server audit
-transition, and a chat message saying "done" cannot be reliably correlated to a
-specific `pendingId`, `preparedId`, host block, artifact, or widget session.
-`manual.confirm` supplies correlation id, audit, expiry control, cancellation
-control, and optional verification. It does not bypass ChatGPT Web safety
-because it does not execute the blocked write.
+`manual.resume` is the authoritative transition from a pending manual action to
+confirmed/cancelled/expired. It applies `trimStart()` to the model-supplied next
+user message, requires exact lowercase `/resume` as the first command token,
+accepts `/resume cancel`, and treats any other `/resume` tail as an optional
+workspace-relative manual log file path. It optionally verifies configured
+post-completion checks, writes an audit event, and clears the pending barrier
+only after confirmation, cancellation, or expiry.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
 cannot log that blocked call directly. The model records the observed host
 output by passing it to `manual.gate.hostObservation`.
 
-The `manual.gate` tool result is intentionally lightweight. Long instructions,
-artifact lists, and checks are not requested by the widget. ChatGPT Web shows
+The `manual.gate` tool result is intentionally lightweight. ChatGPT Web shows
 manual details in chat before opening the gate: commands include stdout/stderr
-redirection to a workspace-relative log file, small prepared diffs are shown
-inline, and large prepared diffs use the artifact download URL from
-`change.prepare`. The widget only collects an optional workspace-relative log
-file path, keeping ChatGPT Web widget hydration and widget-origin requests small
-and avoiding leaking the confirm token into model-visible `structuredContent`.
+redirection to a workspace-relative manual log file, small prepared diffs are
+shown inline, and large prepared diffs use the tokenized artifact download URL
+from `change.prepare`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,
-artifact downloads, host observations supplied by the model, and widget
-confirmation events. Confirm tokens are never logged in plaintext.
+artifact downloads, host observations supplied by the model, and manual resume
+events. Download tokens are never logged in plaintext.
 In dev mode, audit records redacted full tool inputs for troubleshooting.
 
 ## Context Preflight

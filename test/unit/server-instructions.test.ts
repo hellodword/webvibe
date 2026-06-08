@@ -17,7 +17,8 @@ describe("server instructions", () => {
     expect(prefix).toContain("retry once");
     expect(prefix).toContain("identical tool name");
     expect(prefix).toContain("identical JSON arguments");
-    expect(webvibeServerInstructions).toContain("manual.confirm");
+    expect(webvibeServerInstructions).toContain("manual.resume");
+    expect(webvibeServerInstructions).toContain("/resume");
     expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
     expect(webvibeServerInstructions).toContain("stop the assistant turn immediately");
   });
@@ -27,6 +28,7 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("secondary_confirmation_required");
     expect(webvibeServerInstructions).toContain("blocked_by_openai_safety");
     expect(webvibeServerInstructions).toContain("manual_required_capability_limit");
+    expect(webvibeServerInstructions).toContain("OpenAI host limitation or bug");
     expect(webvibeServerInstructions).toContain("cannot run arbitrary shell");
     expect(webvibeServerInstructions).toContain("requires confirmation");
     expect(webvibeServerInstructions).toContain("click allow");

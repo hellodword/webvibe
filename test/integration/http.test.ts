@@ -4,9 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ManualPendingStore } from "../../src/manual/pending-store.js";
 import { runWebvibe } from "../../src/main.js";
-import { sha256 } from "../../src/util/hash.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("HTTP OAuth MCP flow", () => {
@@ -87,7 +85,8 @@ auth:
       const token = (await tokenResponse.json()) as any;
 
       const initialize = await mcp(firstBase, token.access_token, "initialize", {});
-      expect(initialize.result.capabilities).toMatchObject({ tools: {}, resources: {} });
+      expect(initialize.result.capabilities).toMatchObject({ tools: {} });
+      expect(initialize.result.capabilities.resources).toBeUndefined();
       expect(initialize.result.instructions).toContain(
         "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.",
       );
@@ -95,50 +94,13 @@ auth:
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
 
-      const resource = await mcp(firstBase, token.access_token, "resources/read", {
-        uri: "ui://webvibe/manual-gate.html",
-      });
-      expect(resource.result.contents[0].mimeType).toBe("text/html;profile=mcp-app");
-      expect(resource.result.contents[0]._meta.ui.domain).toBe(configuredPublicBaseUrl);
-      expect(resource.result.contents[0]._meta["openai/widgetDomain"]).toBe(
-        configuredPublicBaseUrl,
-      );
-
       const context = await mcp(firstBase, token.access_token, "tools/call", {
         name: "context.get",
         arguments: {},
       });
       expect(context.result.content[0].text).toContain("toolSurface");
-
-      const pendingStore = new ManualPendingStore(stateDir);
-      const pendingId = pendingStore.newPendingId();
-      const confirmToken = "manual-detail-token";
-      await pendingStore.create({
-        operationId: "manual-http-op",
-        pendingId,
-        reason: "external_manual_step",
-        status: "pending",
-        title: "Manual HTTP detail",
-        instructions: "Run the external step and paste the resulting logs.",
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        createdByTool: "manual.gate",
-        scope: { workspaceRootHash: sha256(root) },
-        artifacts: [],
-        checks: [],
-        confirmTokenHash: sha256(confirmToken),
-        events: [{ at: new Date().toISOString(), type: "created" }],
-      });
-      const detail = await fetch(`${firstBase}/manual-gates/${pendingId}?t=${confirmToken}`);
-      expect(detail.status).toBe(200);
-      expect(detail.headers.get("cache-control")).toBe("no-store");
-      await expect(detail.json()).resolves.toMatchObject({
-        pendingId,
-        title: "Manual HTTP detail",
-        instructions: "Run the external step and paste the resulting logs.",
-      });
-      const badDetail = await fetch(`${firstBase}/manual-gates/${pendingId}?t=wrong`);
-      expect(badDetail.status).toBe(403);
+      const gateDetail = await fetch(`${firstBase}/manual-gates/nope?t=wrong`);
+      expect(gateDetail.status).toBe(404);
 
       const call = await mcp(firstBase, token.access_token, "tools/call", {
         name: "x.read",
@@ -147,9 +109,6 @@ auth:
       expect(call.result.content[0].text).toContain("read:README.md");
       expect(await readFile(path.join(stateDir, "oauth-store.json"), "utf8")).toContain(
         token.access_token,
-      );
-      expect(await readFile(path.join(stateDir, "audit.log"), "utf8")).toContain(
-        "mcp.resources.read",
       );
 
       await first.close();

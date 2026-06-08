@@ -35,7 +35,7 @@ export function redactJson(value: unknown, options: RedactionOptions = {}): unkn
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        options.redactManualTokens && /confirmToken|downloadToken/i.test(key)
+        options.redactManualTokens && /downloadToken/i.test(key)
           ? "[REDACTED]"
           : redactJson(item, options),
       ]),

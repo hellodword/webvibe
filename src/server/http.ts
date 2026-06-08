@@ -3,14 +3,12 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { OAuthStore } from "../auth/oauth-store.js";
 import type { PairingManager } from "../auth/pairing.js";
 import { ManualArtifactStore, sanitizeFilename } from "../manual/artifact-store.js";
-import { ManualPendingStore } from "../manual/pending-store.js";
 import type { RelayPolicy } from "../policy/policy.js";
 import { ToolRouter } from "../router/tools-call.js";
 import { AuditLog } from "../state/audit.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { buildRegistry, type RegisteredTool } from "../upstream/registry.js";
-import { BadRequestError, ForbiddenError, NotFoundError, WebvibeError } from "../util/errors.js";
-import { sha256 } from "../util/hash.js";
+import { BadRequestError, NotFoundError, WebvibeError } from "../util/errors.js";
 import { OAuthServer, sendJson } from "./oauth.js";
 import { handleMcp } from "./mcp.js";
 
@@ -112,75 +110,7 @@ async function route(
     await handleManualArtifactDownload(request, response, url, options, audit);
     return;
   }
-  if (request.method === "GET" && url.pathname.startsWith("/manual-gates/")) {
-    await handleManualGateDetail(response, url, options, audit);
-    return;
-  }
   response.writeHead(404).end("Not found");
-}
-
-async function handleManualGateDetail(
-  response: ServerResponse,
-  url: URL,
-  options: HttpServerOptions,
-  audit: AuditLog,
-): Promise<void> {
-  const startedAt = Date.now();
-  const pendingId = decodeURIComponent(url.pathname.slice("/manual-gates/".length));
-  try {
-    const confirmToken = url.searchParams.get("t") ?? "";
-    if (!pendingId || !confirmToken) throw new ForbiddenError("Manual gate token is required");
-    const store = new ManualPendingStore(options.stateDir);
-    const record = await store.read(pendingId);
-    if (!record) throw new NotFoundError("Manual gate not found");
-    if (record.confirmTokenHash !== sha256(confirmToken)) {
-      throw new ForbiddenError("Manual gate token was rejected");
-    }
-    if (Date.now() > Date.parse(record.expiresAt)) {
-      record.status = "expired";
-      record.events.push({ at: new Date().toISOString(), type: "expired" });
-      await store.save(record);
-      throw new ForbiddenError("Manual gate expired");
-    }
-    record.events.push({ at: new Date().toISOString(), type: "widget_opened" });
-    await store.save(record);
-    await audit.write({
-      timestamp: new Date().toISOString(),
-      event: "manual.gate.detail",
-      operationId: record.operationId,
-      preparedId: record.preparedId,
-      pendingId,
-      status: "ok",
-      durationMs: Date.now() - startedAt,
-      rawOutput: {
-        reason: record.reason,
-        artifactCount: record.artifacts.length,
-        checkCount: record.checks.length,
-      },
-    });
-    sendJsonNoStore(response, 200, {
-      operationId: record.operationId,
-      pendingId: record.pendingId,
-      preparedId: record.preparedId,
-      reason: record.reason,
-      status: record.status,
-      title: record.title,
-      instructions: record.instructions,
-      artifacts: record.artifacts,
-      checks: record.checks,
-      expiresAt: record.expiresAt,
-    });
-  } catch (error) {
-    await audit.write({
-      timestamp: new Date().toISOString(),
-      event: "manual.gate.detail",
-      pendingId,
-      status: "error",
-      durationMs: Date.now() - startedAt,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
 }
 
 async function handleManualArtifactDownload(
@@ -243,12 +173,4 @@ function sendError(response: ServerResponse, error: unknown): void {
     error: "INTERNAL_ERROR",
     message: error instanceof Error ? error.message : String(error),
   });
-}
-
-function sendJsonNoStore(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  response.end(JSON.stringify(body));
 }

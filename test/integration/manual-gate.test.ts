@@ -12,7 +12,7 @@ import { UpstreamManager } from "../../src/upstream/manager.js";
 import { buildRegistry } from "../../src/upstream/registry.js";
 
 describe("manual gate", () => {
-  it("creates a pending action and confirms it with the component token", async () => {
+  it("creates a pending action and resumes it with /resume", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-manual-gate-"));
     const stateDir = path.join(root, "state");
     const policy = await loadPolicy("policies/dev.yaml", { workspaceRoot: root, stateDir });
@@ -43,20 +43,15 @@ describe("manual gate", () => {
 
       expect(gate.structuredContent).toMatchObject({
         status: "awaiting_manual_completion",
-        confirmTool: "manual.confirm",
-        continuation: { mode: "await_manual_confirm", modelShouldStop: true },
+        resumeTool: "manual.resume",
+        continuation: { mode: "await_resume_command", modelShouldStop: true },
       });
       const pendingId = gate.structuredContent.pendingId;
-      const confirmToken = gate._meta.manualAction.confirmToken;
-      expect(confirmToken).toBeTruthy();
-      expect(gate.structuredContent.confirmToken).toBeUndefined();
+      expect(gate._meta).toBeUndefined();
       expect(gate.structuredContent.instructions).toBeUndefined();
       expect(gate.structuredContent.artifacts).toBeUndefined();
       expect(gate.structuredContent.checks).toBeUndefined();
       expect(gate.structuredContent.detailUrl).toBeUndefined();
-      expect(gate._meta.manualAction.artifacts).toBeUndefined();
-      expect(gate._meta.manualAction.checks).toBeUndefined();
-      expect(gate._meta.manualAction.detailUrl).toBeUndefined();
       expect(Buffer.byteLength(JSON.stringify(gate), "utf8")).toBeLessThan(4096);
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
@@ -67,7 +62,7 @@ describe("manual gate", () => {
         status: "blocked",
         code: "MANUAL_PENDING_REQUIRED",
         pendingId,
-        confirmTool: "manual.confirm",
+        resumeTool: "manual.resume",
       });
       await expect(
         router.call(
@@ -84,7 +79,13 @@ describe("manual gate", () => {
         code: "MANUAL_PENDING_REQUIRED",
         pendingId,
       });
-      await expect(router.call("context.get", {}, caller)).resolves.toMatchObject({ status: "ok" });
+      await expect(router.call("context.get", {}, caller)).resolves.toMatchObject({
+        status: "blocked",
+        code: "MANUAL_PENDING_REQUIRED",
+      });
+      await expect(router.call("diagnostics.health", {}, caller)).resolves.toMatchObject({
+        status: "ok",
+      });
 
       const otherCaller = { clientId: "manual-client", openaiSession: "session-b" };
       await router.call("context.get", {}, otherCaller);
@@ -94,14 +95,14 @@ describe("manual gate", () => {
 
       await expect(
         router.call(
-          "manual.confirm",
-          { pendingId, confirmToken: "wrong-token", outcome: "completed" },
+          "manual.resume",
+          { resumeMessage: "done" },
           caller,
         ),
-      ).resolves.toMatchObject({ status: "forbidden" });
+      ).resolves.toMatchObject({ status: "blocked", code: "RESUME_COMMAND_REQUIRED" });
 
       await expect(
-        router.call("manual.confirm", { pendingId, confirmToken, outcome: "completed" }, caller),
+        router.call("manual.resume", { resumeMessage: " /resume" }, caller),
       ).resolves.toMatchObject({
         status: "confirmed",
         verification: { status: "not_configured" },
@@ -117,14 +118,10 @@ describe("manual gate", () => {
         caller,
       )) as any;
       const outputPendingId = outputGate.structuredContent.pendingId;
-      const outputToken = outputGate._meta.manualAction.confirmToken;
       const outputConfirm = (await router.call(
-        "manual.confirm",
+        "manual.resume",
         {
-          pendingId: outputPendingId,
-          confirmToken: outputToken,
-          outcome: "completed",
-          manualLogPath: ".webvibe/manual-logs/manual-output-action.log",
+          resumeMessage: "/resume .webvibe/manual-logs/manual-output-action.log",
         },
         caller,
       )) as any;
@@ -137,6 +134,22 @@ describe("manual gate", () => {
         manualLogPath: ".webvibe/manual-logs/manual-output-action.log",
       });
 
+      const cancelGate = (await router.call(
+        "manual.gate",
+        {
+          reason: "external_manual_step",
+          title: "Manual cancel action",
+          instructions: "Run external command or cancel.",
+        },
+        caller,
+      )) as any;
+      await expect(
+        router.call("manual.resume", { resumeMessage: "/resume cancel" }, caller),
+      ).resolves.toMatchObject({
+        status: "cancelled",
+        pendingId: cancelGate.structuredContent.pendingId,
+      });
+
       const confirmed = await new ManualPendingStore(stateDir).read(pendingId);
       expect(confirmed?.status).toBe("confirmed");
       expect(confirmed?.events.map((event) => event.type)).toContain("confirmed");
@@ -146,8 +159,7 @@ describe("manual gate", () => {
       );
       const audit = await readFile(path.join(stateDir, "audit.log"), "utf8");
       expect(audit).toContain("manual.gate.created");
-      expect(audit).toContain("manual.confirm");
-      expect(audit).not.toContain(confirmToken);
+      expect(audit).toContain("manual.resume");
     } finally {
       await upstreams.close();
     }

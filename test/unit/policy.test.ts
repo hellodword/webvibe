@@ -45,7 +45,7 @@ describe("default policies", () => {
       "change.plan",
       "change.prepare",
       "manual.gate",
-      "manual.confirm",
+      "manual.resume",
       "change.apply",
       "task.run",
       "git.status",
@@ -86,25 +86,27 @@ describe("default policies", () => {
     expect(dev.limits.maxChangesetFiles).toBe(80);
     expect(dev.audit.payloads).toBe("full-redacted");
 
-    const manualConfirm = dev.tools.find((tool) => tool.name === "manual.confirm")!;
-    expect((manualConfirm._meta as any).ui.visibility).toEqual(["app"]);
-    expect((manualConfirm.inputSchema as any).properties.manualLogPath.maxLength).toBe(500);
-    expect((manualConfirm.inputSchema as any).properties.manualOutput).toBeUndefined();
-    expect((manualConfirm.inputSchema as any).properties.manualOutputFormat).toBeUndefined();
-    expect((manualConfirm.inputSchema as any).properties.evidenceNote).toBeUndefined();
-    expect((manualConfirm.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
+    expect(dev.tools.find((tool) => tool.name === "manual.confirm")).toBeUndefined();
+    const manualResume = dev.tools.find((tool) => tool.name === "manual.resume")!;
+    expect((manualResume._meta as any).ui).toBeUndefined();
+    expect((manualResume._meta as any)["openai/widgetAccessible"]).toBeUndefined();
+    expect((manualResume.inputSchema as any).properties.resumeMessage.maxLength).toBe(2000);
+    expect((manualResume.inputSchema as any).properties.manualLogPath).toBeUndefined();
+    expect((manualResume.inputSchema as any).properties.manualOutput).toBeUndefined();
+    expect((manualResume.inputSchema as any).properties.manualOutputFormat).toBeUndefined();
+    expect((manualResume.inputSchema as any).properties.evidenceNote).toBeUndefined();
+    expect((manualResume.outputSchema as any).properties.status.enum).toContain("blocked");
+    expect((manualResume.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
       "string",
     );
     const manualGate = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.gate")!);
-    expect((manualGate._meta as any).ui.resourceUri).toBe("ui://webvibe/manual-gate.html");
-    expect((manualGate._meta as any)["openai/outputTemplate"]).toBe(
-      "ui://webvibe/manual-gate.html",
-    );
-    expect((manualGate._meta as any)["openai/widgetAccessible"]).toBe(true);
+    expect((manualGate._meta as any).ui).toBeUndefined();
+    expect((manualGate._meta as any)["openai/outputTemplate"]).toBeUndefined();
+    expect((manualGate._meta as any)["openai/widgetAccessible"]).toBeUndefined();
     expect((manualGate.outputSchema as any).properties.detailUrl).toBeUndefined();
     expect(
       (manualGate.outputSchema as any).properties.continuation.properties.mode.enum,
-    ).toEqual(["await_manual_confirm"]);
+    ).toEqual(["await_resume_command"]);
     expect(
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.nextTool.enum,

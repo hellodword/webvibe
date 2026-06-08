@@ -5,10 +5,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ManualArtifactStore } from "../../src/manual/artifact-store.js";
-import { confirmManualAction } from "../../src/manual/confirm.js";
 import { openManualGate } from "../../src/manual/gate.js";
 import { ManualPendingStore } from "../../src/manual/pending-store.js";
 import { PreparedManualActionStore } from "../../src/manual/prepared-store.js";
+import { resumeManualAction } from "../../src/manual/resume.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../../src/policy/policy.js";
 
 describe("manual action stores", () => {
@@ -65,7 +65,7 @@ describe("manual action stores", () => {
     await expect(pendingStore.read("../bad")).rejects.toThrow("invalid format");
   });
 
-  it("rejects missing, wrong, and expired manual confirm tokens", async () => {
+  it("requires /resume and handles expired manual actions", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-manual-expiry-"));
     const stateDir = path.join(root, "state");
     const context = testContext(root, stateDir);
@@ -78,20 +78,16 @@ describe("manual action stores", () => {
       context,
     );
     const pendingId = gate.structuredContent.pendingId;
-    const confirmToken = gate._meta.manualAction.confirmToken;
 
     await expect(
-      confirmManualAction({ pendingId, outcome: "completed" }, context),
-    ).resolves.toMatchObject({ status: "forbidden" });
-    await expect(
-      confirmManualAction({ pendingId, confirmToken: "wrong", outcome: "completed" }, context),
-    ).resolves.toMatchObject({ status: "forbidden" });
+      resumeManualAction({ resumeMessage: "completed" }, context),
+    ).resolves.toMatchObject({ status: "blocked", code: "RESUME_COMMAND_REQUIRED" });
 
     const store = new ManualPendingStore(stateDir);
     const record = (await store.read(pendingId))!;
     await store.save({ ...record, expiresAt: new Date(Date.now() - 1000).toISOString() });
     await expect(
-      confirmManualAction({ pendingId, confirmToken, outcome: "completed" }, context),
+      resumeManualAction({ resumeMessage: "/resume" }, context),
     ).resolves.toMatchObject({ status: "expired" });
   });
 
@@ -100,11 +96,11 @@ describe("manual action stores", () => {
     for (const forbidden of ["patchKind", "applyPatch", "deletePaths", "gitApplyCommand", "rmCommand"]) {
       expect(types).not.toContain(forbidden);
     }
-    const confirm = await readFile("src/manual/confirm.ts", "utf8");
+    const resume = await readFile("src/manual/resume.ts", "utf8");
     for (const forbidden of ["applyPlan", "writeFileAtomic", "unlink(", "rm(", "mkdir(", "upstreams.call"]) {
-      expect(confirm).not.toContain(forbidden);
+      expect(resume).not.toContain(forbidden);
     }
-    expect(confirm).not.toContain('call("task.run"');
+    expect(resume).not.toContain('call("task.run"');
   });
 });
 

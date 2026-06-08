@@ -83,11 +83,9 @@ describe("change.prepare manual fallback", () => {
       await writeFile(path.join(root, "code.txt"), "new\n");
       await expect(
         router.call(
-          "manual.confirm",
+          "manual.resume",
           {
-            pendingId: gate.structuredContent.pendingId,
-            confirmToken: gate._meta.manualAction.confirmToken,
-            outcome: "completed",
+            resumeMessage: "/resume",
           },
           caller,
         ),

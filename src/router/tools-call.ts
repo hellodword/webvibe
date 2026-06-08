@@ -150,7 +150,7 @@ export class ToolRouter {
     name: string,
     caller: CallerIdentity,
   ): { status: "blocked"; code: "CONTEXT_REQUIRED"; message: string; nextTool: "context.get"; reason: string } | undefined {
-    if (isManualBarrierAllowedTool(name)) return undefined;
+    if (isContextPreflightAllowedTool(name)) return undefined;
     const state = this.preflight.get(this.callerKey(caller));
     if (!state) return contextRequired("missing");
     if (!fingerprintsEqual(state.fingerprint, this.currentFingerprint())) return contextRequired("stale");
@@ -286,12 +286,16 @@ type ManualPendingBlockedResult = {
   preparedId?: string;
   title: string;
   expiresAt: string;
-  confirmTool: "manual.confirm";
-  nextAction: "complete_or_cancel_widget";
+  resumeTool: "manual.resume";
+  nextAction: "reply_with_resume_command";
 };
 
 function isManualBarrierAllowedTool(name: string): boolean {
-  return name === "context.get" || name === "diagnostics.health" || name === "manual.confirm";
+  return name === "diagnostics.health" || name === "manual.resume";
+}
+
+function isContextPreflightAllowedTool(name: string): boolean {
+  return name === "context.get" || name === "diagnostics.health" || name === "manual.resume";
 }
 
 function manualPendingRequired(record: ManualActionRecord): ManualPendingBlockedResult {
@@ -299,15 +303,15 @@ function manualPendingRequired(record: ManualActionRecord): ManualPendingBlocked
     status: "blocked",
     code: "MANUAL_PENDING_REQUIRED",
     message:
-      "A manual action is still pending for this ChatGPT session. Use the manual completion widget to confirm or cancel it before continuing.",
+      "A manual action is still pending for this ChatGPT session. The next user message must begin with /resume. Call manual.resume with that message to confirm or cancel before continuing.",
     reason: "manual_action_pending",
     pendingId: record.pendingId,
     operationId: record.operationId,
     preparedId: record.preparedId,
     title: record.title,
     expiresAt: record.expiresAt,
-    confirmTool: "manual.confirm",
-    nextAction: "complete_or_cancel_widget",
+    resumeTool: "manual.resume",
+    nextAction: "reply_with_resume_command",
   };
 }
 

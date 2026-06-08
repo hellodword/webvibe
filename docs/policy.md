@@ -34,6 +34,9 @@ The built-in ChatGPT Web tool surface is intentionally compact:
 - `read.files`
 - `read.stat`
 - `change.plan` in dev mode
+- `change.prepare` in dev mode
+- `manual.gate` in dev mode
+- `manual.resume` in dev mode
 - `change.apply` in dev mode
 - `task.run` in dev mode
 - `git.status`
@@ -63,6 +66,8 @@ Default dev mode exposes one read-only planning tool and one write tool:
 
 - `change.plan`: validate a complete batch change, detect conflicts, and return
   a diff without writing.
+- `change.prepare`: validate the same complete batch change, save expiring
+  review state, and create manual fallback material without writing.
 - `change.apply`: apply the complete user-requested file change in one write
   call.
 
@@ -73,6 +78,13 @@ boundary instead of repeated per-file writes.
 Batch change limits default to 80 paths, 5 MiB per change, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
 overwrite newer workspace edits.
+
+If ChatGPT Web blocks the write after `change.prepare`, the model calls
+`manual.gate`, stops the assistant turn, and waits for a later user message that
+starts with `/resume`. While pending, webvibe blocks workspace tools except
+`diagnostics.health` and `manual.resume`. `manual.resume` validates the
+`/resume` command, accepts an optional workspace-relative manual log file path,
+and verifies configured checks before normal tools continue.
 
 ## Tasks
 

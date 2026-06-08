@@ -59,20 +59,13 @@ export async function openManualGate(
     reason: ManualActionReason;
     title: string;
     expiresAt: string;
-    confirmTool: "manual.confirm";
+    resumeTool: "manual.resume";
     continuation: {
-      mode: "await_manual_confirm";
+      mode: "await_resume_command";
       modelShouldStop: true;
     };
   };
   content: Array<{ type: "text"; text: string }>;
-  _meta: {
-    manualAction: {
-      operationId: string;
-      pendingId: string;
-      confirmToken: string;
-    };
-  };
 }> {
   void context.workspaceRoot;
   void context.workspace;
@@ -103,7 +96,6 @@ export async function openManualGate(
   const expiresAt = new Date(now.getTime() + MANUAL_PENDING_TTL_MS).toISOString();
   const pendingStore = new ManualPendingStore(context.stateDir);
   const pendingId = pendingStore.newPendingId();
-  const confirmToken = randomToken(24);
   const scope = buildManualActionScope({
     workspaceRoot: context.workspaceRoot,
     caller: context.caller,
@@ -130,7 +122,6 @@ export async function openManualGate(
     hostObservation,
     artifacts,
     checks,
-    confirmTokenHash: sha256(confirmToken),
     events: [{ at: now.toISOString(), type: "created" }],
   });
 
@@ -174,24 +165,17 @@ export async function openManualGate(
       reason: record.reason,
       title: record.title,
       expiresAt: record.expiresAt,
-      confirmTool: "manual.confirm",
+      resumeTool: "manual.resume",
       continuation: {
-        mode: "await_manual_confirm",
+        mode: "await_resume_command",
         modelShouldStop: true,
       },
     },
     content: [
       {
         type: "text",
-        text: "Manual gate opened and awaiting widget confirmation. Stop this assistant turn now. Do not summarize, call more tools, or continue the task until manual.confirm returns confirmed, cancelled, expired, or verification_failed.",
+        text: "Manual gate opened. Stop this assistant turn now. Do not summarize, call more tools, or continue the task until the next user message starts with /resume and manual.resume returns confirmed, cancelled, expired, or verification_failed.",
       },
     ],
-    _meta: {
-      manualAction: {
-        operationId: record.operationId,
-        pendingId: record.pendingId,
-        confirmToken,
-      },
-    },
   };
 }

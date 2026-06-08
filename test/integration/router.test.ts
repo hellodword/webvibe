@@ -44,7 +44,7 @@ describe("tool router", () => {
       });
       await expect(router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
         status: "ok",
-        toolSurface: { version: "2.0.0" },
+        toolSurface: { version: "3.0.0" },
       });
       await expect(router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
@@ -104,7 +104,6 @@ describe("tool router", () => {
       expect(audit).toContain("read:README.md");
       expect(audit).not.toContain("secret-router-token");
       expect(audit).not.toContain("sk-router-secret");
-      expect(audit).not.toContain("confirmToken");
     } finally {
       await upstreams.close();
     }

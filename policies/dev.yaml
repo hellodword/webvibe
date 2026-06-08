@@ -379,19 +379,18 @@ tools:
   - name: manual.gate
     type: builtIn
     description: >-
-      Open a generic ChatGPT widget that waits for the user to complete a manual
-      step outside ChatGPT and then confirm completion. This tool does not apply
-      patches, delete files, run commands, or mutate the workspace. It creates
-      an expiring pending manual action and returns a small widget-backed tool
-      result. Before calling this tool, ChatGPT Web must show the user the
-      detailed manual instructions in the chat: for commands, include the
-      complete command and redirect stdout/stderr to a workspace-relative
-      temporary log file; for prepared diffs, show small diffs inline or link
-      large review artifacts from change.prepare. Use this after an OpenAI
-      safety block or whenever the user must manually complete something before
-      the model continues. After this tool returns awaiting_manual_completion,
-      stop the assistant turn immediately and wait for the widget to call
-      manual.confirm; while pending, webvibe will block other tools with
+      Open a manual barrier that waits for the user to complete a step outside
+      ChatGPT and then continue in a later message that starts with /resume.
+      This tool does not apply patches, delete files, run commands, or mutate
+      the workspace. Before calling this tool, ChatGPT Web must show detailed
+      manual instructions in chat: for commands, include the complete command
+      and redirect stdout/stderr to a workspace-relative temporary log file; for
+      prepared diffs, show small diffs inline or link large review artifacts
+      from change.prepare. Use this after an OpenAI safety block or whenever
+      the user must manually complete something before the model continues.
+      After this tool returns awaiting_manual_completion, stop the assistant
+      turn immediately and wait for a later user message that starts with
+      /resume. While pending, webvibe blocks other tools with
       MANUAL_PENDING_REQUIRED.
     inputSchema:
       type: object
@@ -447,60 +446,50 @@ tools:
           type: string
         expiresAt:
           type: string
-        confirmTool:
+        resumeTool:
           type: string
-          enum: [manual.confirm]
+          enum: [manual.resume]
         continuation:
           type: object
           properties:
             mode:
               type: string
-              enum: [await_manual_confirm]
+              enum: [await_resume_command]
             modelShouldStop:
               type: boolean
           required: [mode, modelShouldStop]
           additionalProperties: false
-      required: [status, operationId, pendingId, reason, title, expiresAt, confirmTool, continuation]
+      required: [status, operationId, pendingId, reason, title, expiresAt, resumeTool, continuation]
       additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: false
       openWorldHint: false
     _meta:
-      ui:
-        resourceUri: "ui://webvibe/manual-gate.html"
-        visibility: ["model", "app"]
-      "openai/outputTemplate": "ui://webvibe/manual-gate.html"
-      "openai/widgetAccessible": true
       "openai/toolInvocation/invoking": "Opening manual gate"
       "openai/toolInvocation/invoked": "Manual gate opened"
 
-  - name: manual.confirm
+  - name: manual.resume
     type: builtIn
-    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, accepts an optional workspace-relative manual log file path, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
+    description: manual.resume is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. Call it only after a later user message starts with /resume. It validates the resume command with trimStart() and exact lowercase /resume, accepts /resume cancel, treats any other /resume tail as an optional workspace-relative manual log file path, optionally verifies configured post-completion checks, writes an audit event, and lets tools continue only after the pending action is resolved.
     inputSchema:
       type: object
       properties:
-        pendingId:
+        resumeMessage:
           type: string
           minLength: 1
-        confirmToken:
-          type: string
-          minLength: 1
-        outcome:
-          type: string
-          enum: [completed, cancelled]
-        manualLogPath:
-          type: string
-          maxLength: 500
-      required: [pendingId, confirmToken, outcome]
+          maxLength: 2000
+      required: [resumeMessage]
       additionalProperties: false
     outputSchema:
       type: object
       properties:
         status:
           type: string
-          enum: [confirmed, cancelled, verification_failed, expired, not_found, forbidden]
+          enum: [confirmed, cancelled, verification_failed, expired, not_found, blocked]
+        code:
+          type: string
+          enum: [RESUME_COMMAND_REQUIRED]
         operationId:
           type: string
         pendingId:
@@ -526,18 +515,15 @@ tools:
               type: string
           required: [recommendedTools, followUpPrompt]
           additionalProperties: false
-      required: [status, pendingId, outcome, verification, next]
+      required: [status, verification, next]
       additionalProperties: false
     annotations:
       readOnlyHint: false
       destructiveHint: false
       openWorldHint: false
     _meta:
-      ui:
-        visibility: ["app"]
-      "openai/widgetAccessible": true
-      "openai/toolInvocation/invoking": "Confirming manual action"
-      "openai/toolInvocation/invoked": "Manual action confirmed"
+      "openai/toolInvocation/invoking": "Resuming manual action"
+      "openai/toolInvocation/invoked": "Manual action resumed"
 
   - name: change.apply
     type: builtIn
@@ -561,7 +547,8 @@ tools:
       returned by context.get. If the task is unavailable and manualRequired is
       returned, show its command/log-file instructions in ChatGPT Web, then call
       manual.gate with those arguments so the user can run the task manually and
-      paste the workspace-relative log file path. Requires context.get first.
+      reply later with /resume and an optional workspace-relative log file path.
+      Requires context.get first.
     inputSchema:
       type: object
       properties:

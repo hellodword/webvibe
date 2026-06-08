@@ -2,20 +2,20 @@ import { z } from "zod";
 
 import { MANUAL_LOG_PATH_MAX_CHARS } from "./constants.js";
 import { ManualPendingStore } from "./pending-store.js";
+import { buildManualActionScope } from "./scope.js";
 import type { ManualActionReason, ManualCheck } from "./types.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../policy/policy.js";
+import type { CallerIdentity } from "../router/tools-call.js";
 import type { AuditLog } from "../state/audit.js";
+import { BadRequestError } from "../util/errors.js";
 import { sha256 } from "../util/hash.js";
 import { fileManifest } from "../workspace/changeset.js";
 import { gitStatus } from "../workspace/inspect/git.js";
 import { normalizeWorkspacePath } from "../workspace/inspect/path.js";
 
-const confirmInputSchema = z
+const resumeInputSchema = z
   .object({
-    pendingId: z.string().min(1),
-    confirmToken: z.string().min(1),
-    outcome: z.enum(["completed", "cancelled"]),
-    manualLogPath: z.string().max(MANUAL_LOG_PATH_MAX_CHARS).optional(),
+    resumeMessage: z.string().min(1).max(2000),
   })
   .strict();
 
@@ -34,19 +34,24 @@ type VerificationResult = {
   }>;
 };
 
-type ConfirmManualActionResult = {
+type ParsedResumeCommand =
+  | { valid: true; outcome: "completed" | "cancelled"; evidence: ManualEvidence }
+  | { valid: false; message: string };
+
+type ResumeManualActionResult = {
   status:
     | "confirmed"
     | "cancelled"
     | "verification_failed"
     | "expired"
     | "not_found"
-    | "forbidden";
+    | "blocked";
+  code?: "RESUME_COMMAND_REQUIRED";
   operationId?: string;
-  pendingId: string;
+  pendingId?: string;
   preparedId?: string;
   reason?: ManualActionReason;
-  outcome: "completed" | "cancelled";
+  outcome?: "completed" | "cancelled";
   verification: VerificationResult;
   next: {
     recommendedTools: string[];
@@ -54,95 +59,81 @@ type ConfirmManualActionResult = {
   };
 };
 
-export async function confirmManualAction(
+export async function resumeManualAction(
   rawArgs: unknown,
   context: {
     workspaceRoot: string;
     workspace: WorkspacePolicy;
     limits: LimitsPolicy;
     stateDir: string;
+    caller: CallerIdentity;
     audit?: AuditLog;
   },
-): Promise<ConfirmManualActionResult> {
+): Promise<ResumeManualActionResult> {
   const startedAt = Date.now();
-  const input = confirmInputSchema.safeParse(rawArgs);
-  const pendingId: string =
-    input.success && input.data.pendingId
-      ? input.data.pendingId
-      : typeof (rawArgs as any)?.pendingId === "string"
-        ? (rawArgs as any).pendingId
-        : "";
-  const outcome: "completed" | "cancelled" =
-    input.success && input.data.outcome === "cancelled" ? "cancelled" : "completed";
-  const token = input.success ? input.data.confirmToken : "";
-  const evidence: ManualEvidence = input.success
-    ? {
-        manualLogPath: normalizeManualLogPath(input.data.manualLogPath, context),
-      }
-    : {};
-  const tokenHash = token ? sha256(token) : "";
+  const input = resumeInputSchema.safeParse(rawArgs);
+  const parsed = input.success
+    ? parseResumeMessage(input.data.resumeMessage, context)
+    : ({ valid: false, message: "Next user message must start with /resume." } as const);
   const store = new ManualPendingStore(context.stateDir);
-  const record = pendingId ? await store.read(pendingId) : undefined;
-  const base: Pick<ConfirmManualActionResult, "pendingId" | "outcome" | "verification" | "next"> = {
+  const scope = buildManualActionScope({
+    workspaceRoot: context.workspaceRoot,
+    caller: context.caller,
+  });
+  const expired = await store.expirePendingForScope(scope);
+  const record = await store.firstBlockingPending(scope);
+  const expiredRecord = expired.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  const pendingId = record?.pendingId ?? expiredRecord?.pendingId;
+  const base: Pick<ResumeManualActionResult, "pendingId" | "verification" | "next"> = {
     pendingId,
-    outcome,
     verification: { status: "skipped", checks: [] } satisfies VerificationResult,
-    next: nextResponse(pendingId, "skipped", evidence),
+    next: nextResponse(pendingId, "skipped"),
   };
 
-  if (!input.success || !record) {
-    const status = !input.success ? "forbidden" : "not_found";
-    await writeConfirmAudit(context.audit, startedAt, {
-      status,
+  if (!input.success || !parsed.valid) {
+    await writeResumeAudit(context.audit, startedAt, {
+      status: "blocked",
+      operationId: record?.operationId,
+      preparedId: record?.preparedId,
       pendingId,
-      outcome,
-      confirmTokenHash: tokenHash,
-      confirmTokenAccepted: false,
+      reason: record?.reason,
+      outcome: undefined,
+      resumeCommandAccepted: false,
       verification: base.verification,
-    });
-    return { ...base, status };
-  }
-
-  if (record.confirmTokenHash !== tokenHash) {
-    await writeConfirmAudit(context.audit, startedAt, {
-      status: "forbidden",
-      operationId: record.operationId,
-      preparedId: record.preparedId,
-      pendingId,
-      outcome,
-      reason: record.reason,
-      confirmTokenHash: tokenHash,
-      confirmTokenAccepted: false,
-      verification: base.verification,
+      evidence: {},
     });
     return {
       ...base,
-      status: "forbidden",
-      operationId: record.operationId,
-      preparedId: record.preparedId,
-      reason: record.reason,
+      status: "blocked",
+      code: "RESUME_COMMAND_REQUIRED",
+      reason: record?.reason,
+      next: {
+        recommendedTools: ["manual.resume"],
+        followUpPrompt:
+          "A manual action is pending. The next user message must begin with /resume, for example /resume or /resume .webvibe/manual-logs/task.log. Use /resume cancel to cancel it.",
+      },
     };
   }
 
-  if (Date.now() > Date.parse(record.expiresAt)) {
-    record.status = "expired";
-    record.events.push({ at: new Date().toISOString(), type: "expired", ...eventEvidence(evidence) });
-    await store.save(record);
-    await writeConfirmAudit(context.audit, startedAt, {
-      status: "expired",
-      operationId: record.operationId,
-      preparedId: record.preparedId,
-      pendingId,
+  const evidence = parsed.evidence;
+  const outcome = parsed.outcome;
+  if (!record) {
+    const status = expiredRecord ? "expired" : "not_found";
+    await writeResumeAudit(context.audit, startedAt, {
+      status,
+      operationId: expiredRecord?.operationId,
+      preparedId: expiredRecord?.preparedId,
+      pendingId: expiredRecord?.pendingId,
       outcome,
-      reason: record.reason,
-      confirmTokenHash: tokenHash,
-      confirmTokenAccepted: true,
+      reason: expiredRecord?.reason,
+      resumeCommandAccepted: true,
       verification: base.verification,
       evidence,
     });
     return {
-      ...recordResponse(base, record, "expired"),
-      next: nextResponse(pendingId, "expired", evidence),
+      ...recordResponse(base, expiredRecord, status),
+      outcome,
+      next: nextResponse(expiredRecord?.pendingId, status, evidence),
     };
   }
 
@@ -150,21 +141,21 @@ export async function confirmManualAction(
     record.status = "cancelled";
     record.events.push({ at: new Date().toISOString(), type: "cancelled", ...eventEvidence(evidence) });
     await store.save(record);
-    await writeConfirmAudit(context.audit, startedAt, {
+    await writeResumeAudit(context.audit, startedAt, {
       status: "cancelled",
       operationId: record.operationId,
       preparedId: record.preparedId,
-      pendingId,
+      pendingId: record.pendingId,
       outcome,
       reason: record.reason,
-      confirmTokenHash: tokenHash,
-      confirmTokenAccepted: true,
+      resumeCommandAccepted: true,
       verification: base.verification,
       evidence,
     });
     return {
       ...recordResponse(base, record, "cancelled"),
-      next: nextResponse(pendingId, "cancelled", evidence),
+      outcome,
+      next: nextResponse(record.pendingId, "cancelled", evidence),
     };
   }
 
@@ -176,44 +167,44 @@ export async function confirmManualAction(
       ...eventEvidence(evidence),
     });
     await store.save(record);
-    await writeConfirmAudit(context.audit, startedAt, {
+    await writeResumeAudit(context.audit, startedAt, {
       status: "verification_failed",
       operationId: record.operationId,
       preparedId: record.preparedId,
-      pendingId,
+      pendingId: record.pendingId,
       outcome,
       reason: record.reason,
-      confirmTokenHash: tokenHash,
-      confirmTokenAccepted: true,
+      resumeCommandAccepted: true,
       verification,
       evidence,
     });
     return {
       ...recordResponse(base, record, "verification_failed"),
+      outcome,
       verification,
-      next: nextResponse(pendingId, "verification_failed", evidence),
+      next: nextResponse(record.pendingId, "verification_failed", evidence),
     };
   }
 
   record.status = "confirmed";
   record.events.push({ at: new Date().toISOString(), type: "confirmed", ...eventEvidence(evidence) });
   await store.save(record);
-  await writeConfirmAudit(context.audit, startedAt, {
+  await writeResumeAudit(context.audit, startedAt, {
     status: "confirmed",
     operationId: record.operationId,
     preparedId: record.preparedId,
-    pendingId,
+    pendingId: record.pendingId,
     outcome,
     reason: record.reason,
-    confirmTokenHash: tokenHash,
-    confirmTokenAccepted: true,
+    resumeCommandAccepted: true,
     verification,
     evidence,
   });
   return {
     ...recordResponse(base, record, "confirmed"),
+    outcome,
     verification,
-    next: nextResponse(pendingId, "confirmed", evidence),
+    next: nextResponse(record.pendingId, "confirmed", evidence),
   };
 }
 
@@ -270,17 +261,43 @@ function gitChangedPaths(stdout: string): string[] {
     .filter(Boolean);
 }
 
-function nextResponse(pendingId: string, status: string, evidence: ManualEvidence = {}): {
+function parseResumeMessage(
+  value: string,
+  context: { workspaceRoot: string; workspace: WorkspacePolicy },
+): ParsedResumeCommand {
+  const text = value.trimStart();
+  const match = /^\/resume(?:\s+([\s\S]*))?$/.exec(text);
+  if (!match) {
+    return { valid: false, message: "Next user message must start with /resume." };
+  }
+  const tail = (match[1] ?? "").trim();
+  if (!tail) return { valid: true, outcome: "completed", evidence: {} };
+  if (tail === "cancel") return { valid: true, outcome: "cancelled", evidence: {} };
+  return {
+    valid: true,
+    outcome: "completed",
+    evidence: {
+      manualLogPath: normalizeManualLogPath(tail, context),
+    },
+  };
+}
+
+function nextResponse(
+  pendingId: string | undefined,
+  status: string,
+  evidence: ManualEvidence = {},
+): {
   recommendedTools: string[];
   followUpPrompt: string;
 } {
   const evidenceText = formatEvidenceForFollowUp(evidence);
+  const subject = pendingId ? `Manual action ${pendingId}` : "Manual action";
   return {
-    recommendedTools: ["git.status", "git.diff", "read.stat", "read.files", "task.run"],
+    recommendedTools: ["context.get", "git.status", "git.diff", "read.stat", "read.files", "task.run"],
     followUpPrompt: [
-      `Manual action ${pendingId} was confirmed with status ${status}.`,
+      `${subject} resumed with status ${status}.`,
       evidenceText,
-      "Continue by verifying current workspace state with appropriate read/git/task tools before making further changes.",
+      "Continue by verifying current workspace state with context.get and appropriate read/git/task tools before making further changes.",
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -288,60 +305,65 @@ function nextResponse(pendingId: string, status: string, evidence: ManualEvidenc
 }
 
 function recordResponse(
-  base: Pick<ConfirmManualActionResult, "pendingId" | "outcome" | "verification" | "next">,
-  record: {
-    operationId: string;
-    preparedId?: string;
-    reason: ManualActionReason;
-  },
-  status: ConfirmManualActionResult["status"],
-): ConfirmManualActionResult {
+  base: Pick<ResumeManualActionResult, "pendingId" | "verification" | "next">,
+  record:
+    | {
+        operationId: string;
+        pendingId: string;
+        preparedId?: string;
+        reason: ManualActionReason;
+      }
+    | undefined,
+  status: ResumeManualActionResult["status"],
+): ResumeManualActionResult {
   return {
     ...base,
     status,
-    operationId: record.operationId,
-    preparedId: record.preparedId,
-    reason: record.reason,
+    operationId: record?.operationId,
+    pendingId: record?.pendingId ?? base.pendingId,
+    preparedId: record?.preparedId,
+    reason: record?.reason,
   };
 }
 
-async function writeConfirmAudit(
+async function writeResumeAudit(
   audit: AuditLog | undefined,
   startedAt: number,
   input: {
-    status: "confirmed" | "cancelled" | "verification_failed" | "expired" | "not_found" | "forbidden";
+    status: "confirmed" | "cancelled" | "verification_failed" | "expired" | "not_found" | "blocked";
     operationId?: string;
     preparedId?: string;
-    pendingId: string;
-    outcome: "completed" | "cancelled";
+    pendingId?: string;
+    outcome?: "completed" | "cancelled";
     reason?: ManualActionReason;
-    confirmTokenHash: string;
-    confirmTokenAccepted: boolean;
+    resumeCommandAccepted: boolean;
     verification: VerificationResult;
     evidence?: ManualEvidence;
   },
 ): Promise<void> {
   await audit?.write({
     timestamp: new Date().toISOString(),
-    event: "manual.confirm",
+    event: "manual.resume",
     operationId: input.operationId,
     preparedId: input.preparedId,
     pendingId: input.pendingId,
-    tool: "manual.confirm",
+    tool: "manual.resume",
     type: "builtIn",
-    status: input.status === "forbidden" || input.status === "not_found" ? "error" : "ok",
+    status:
+      input.status === "not_found"
+        ? "error"
+        : input.status === "blocked"
+          ? "blocked"
+          : "ok",
     durationMs: Date.now() - startedAt,
     inputHash: sha256({
-      pendingId: input.pendingId,
       outcome: input.outcome,
-      confirmTokenHash: input.confirmTokenHash,
       manualLogPath: input.evidence?.manualLogPath,
+      resumeCommandAccepted: input.resumeCommandAccepted,
     }),
     input: {
-      pendingId: input.pendingId,
       outcome: input.outcome,
-      confirmTokenHash: input.confirmTokenHash,
-      confirmTokenAccepted: input.confirmTokenAccepted,
+      resumeCommandAccepted: input.resumeCommandAccepted,
       manualLogPath: input.evidence?.manualLogPath,
     },
     rawOutput: {
@@ -354,17 +376,15 @@ async function writeConfirmAudit(
   });
 }
 
-function normalizeOptional(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
 function normalizeManualLogPath(
   value: string | undefined,
   context: { workspaceRoot: string; workspace: WorkspacePolicy },
 ): string | undefined {
-  const trimmed = normalizeOptional(value);
+  const trimmed = value?.trim();
   if (!trimmed) return undefined;
+  if (trimmed.length > MANUAL_LOG_PATH_MAX_CHARS) {
+    throw new BadRequestError(`manualLogPath must be at most ${MANUAL_LOG_PATH_MAX_CHARS} characters`);
+  }
   return normalizeWorkspacePath(trimmed, context, { allowRoot: false }).relativePath;
 }
 

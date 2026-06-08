@@ -12,11 +12,9 @@ export type AuditRecord = {
     | "tool.error"
     | "manual.prepared.created"
     | "manual.gate.created"
-    | "manual.gate.detail"
     | "manual.gate.expired"
-    | "manual.confirm"
-    | "manual.artifact.download"
-    | "mcp.resources.read";
+    | "manual.resume"
+    | "manual.artifact.download";
   operationId?: string;
   preparedId?: string;
   pendingId?: string;

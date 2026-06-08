@@ -35,6 +35,12 @@ one complete batch file change, and use one `change.apply` call for the full
 requested file change. Default dev mode does not expose raw per-file write tools
 or arbitrary shell execution.
 
+When ChatGPT Web blocks a write or a required local capability is unavailable,
+dev mode uses `manual.gate`: the assistant shows exact manual instructions,
+opens a local pending barrier, stops, and waits for the next user message to
+start with `/resume`. `manual.resume` clears the barrier only after confirmation
+or cancellation and does not run commands or write files.
+
 The default tool list is stable. If a named task cannot run in the current
 workspace or host environment, the call returns `status: "unavailable"` and an
 `unavailableReason` instead of disappearing from the tool list.

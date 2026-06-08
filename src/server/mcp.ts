@@ -12,11 +12,9 @@ import {
   UnauthorizedError,
   WebvibeError,
 } from "../util/errors.js";
-import { sha256 } from "../util/hash.js";
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
 import { webvibeServerInstructions } from "./instructions.js";
 import { readBody } from "./oauth.js";
-import { readMcpResource } from "./resources.js";
 
 export type McpHandlerOptions = {
   store: OAuthStore;
@@ -76,7 +74,7 @@ async function handleMcpRequest(
     case "initialize":
       return {
         protocolVersion: "2025-06-18",
-        capabilities: { tools: {}, resources: {} },
+        capabilities: { tools: {} },
         instructions: webvibeServerInstructions,
         serverInfo: { name: "webvibe", version: "0.1.0" },
       };
@@ -93,43 +91,11 @@ async function handleMcpRequest(
       });
       return toToolResult(result);
     }
-    case "resources/read": {
-      const startedAt = Date.now();
-      const params = normalizeResourceReadParams(request.params);
-      const result = readMcpResource({
-        uri: params.uri,
-        publicBaseUrl: options.publicBaseUrl,
-      });
-      await options.audit.write({
-        timestamp: new Date().toISOString(),
-        event: "mcp.resources.read",
-        clientId: caller.clientId,
-        subject: caller.subject,
-        status: "ok",
-        durationMs: Date.now() - startedAt,
-        inputHash: sha256(params),
-        input: params,
-        rawOutput: {
-          uri: params.uri,
-          mimeType: result.contents[0]?.mimeType,
-        },
-      });
-      return result;
-    }
     case "notifications/initialized":
       return {};
     default:
       throw new BadRequestError(`Unsupported MCP method: ${request.method}`);
   }
-}
-
-function normalizeResourceReadParams(params: unknown): { uri: string } {
-  if (typeof params !== "object" || params === null || Array.isArray(params)) {
-    throw new BadRequestError("resources/read params must be object");
-  }
-  const record = params as Record<string, unknown>;
-  if (typeof record.uri !== "string") throw new BadRequestError("resources/read uri is required");
-  return { uri: record.uri };
 }
 
 function normalizeToolCallParams(params: unknown): {

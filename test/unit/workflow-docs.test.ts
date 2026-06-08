@@ -14,13 +14,15 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("blocked_by_openai_safety");
     expect(text).toContain("manual_required_capability_limit");
     expect(text).toContain("workspace-relative log file path");
-    expect(text).toContain("does not fetch `/manual-gates/:pendingId`");
+    expect(text).toContain("/resume");
     expect(text).toContain("12KB and 200 lines");
     expect(text).toContain("manual.gate");
-    expect(text).toContain("manual.confirm");
-    expect(text).toContain("sendFollowUpMessage");
+    expect(text).toContain("manual.resume");
+    expect(text).toContain("OpenAI limitation or bug");
     expect(text).toContain("not suspend an in-flight JSON-RPC");
     expect(text).toContain("MANUAL_PENDING_REQUIRED");
+    expect(text).not.toContain("sendFollowUpMessage");
+    expect(text).not.toContain("manual.confirm");
     expect(text).not.toContain("applyPrepared");
     expect(text).not.toContain("applyById");
     expect(text).not.toContain("base64");

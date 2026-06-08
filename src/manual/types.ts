@@ -68,12 +68,10 @@ export type ManualActionRecord = {
   };
   artifacts: ManualArtifactRef[];
   checks: ManualCheck[];
-  confirmTokenHash: string;
   events: Array<{
     at: string;
     type:
       | "created"
-      | "widget_opened"
       | "confirmed"
       | "cancelled"
       | "expired"

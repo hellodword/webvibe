@@ -23,7 +23,6 @@
     "format": "prettier -w ."
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "latest",
     "@modelcontextprotocol/sdk": "latest",
     "execa": "latest",
     "fast-json-stable-stringify": "latest",
