@@ -103,6 +103,9 @@ describe("default policies", () => {
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBe(true);
     expect((manualGate.outputSchema as any).properties.detailUrl).toBeUndefined();
     expect(
+      (manualGate.outputSchema as any).properties.continuation.properties.mode.enum,
+    ).toEqual(["await_manual_confirm"]);
+    expect(
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.nextTool.enum,
     ).toEqual(["manual.gate"]);

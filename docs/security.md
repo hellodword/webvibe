@@ -107,6 +107,11 @@ Boundaries:
 - Pending, prepared, and artifact state live in `stateDir` for UI, audit,
   troubleshooting, and expiry control.
 
+While a manual action is pending, the relay blocks follow-up tools with
+`MANUAL_PENDING_REQUIRED` except `context.get`, `diagnostics.health`, and
+`manual.confirm`. This is a local barrier, not a ChatGPT Web host hard-pending
+protocol.
+
 `manual.confirm` is the authoritative transition from a pending manual action to
 confirmed/cancelled/expired. It does not apply patches, delete files, run
 commands, or mutate the workspace. It records that the user clicked the widget

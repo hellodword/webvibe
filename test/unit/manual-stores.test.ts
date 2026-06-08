@@ -117,6 +117,7 @@ function testContext(
   limits: LimitsPolicy;
   stateDir: string;
   publicBaseUrl: string;
+  caller: { clientId: string };
 } {
   return {
     workspaceRoot: root,
@@ -131,5 +132,6 @@ function testContext(
     },
     stateDir,
     publicBaseUrl: "http://localhost",
+    caller: { clientId: "manual-store-test" },
   };
 }

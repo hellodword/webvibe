@@ -18,10 +18,13 @@ Recommended order:
 12. Model verifies with `git.status` / `git.diff` / `read.stat` / `task.run`
 13. `git.commit` only when explicitly requested or appropriate
 
-`webvibe` does not suspend an in-flight JSON-RPC `tools/call`. The manual gate
-is a completed tool result with a widget. Continuation starts when the widget
-calls `manual.confirm` and then `sendFollowUpMessage` creates a new ChatGPT
-turn.
+`webvibe` does not suspend an in-flight JSON-RPC `tools/call` or force
+ChatGPT Web to hard-pend the current assistant turn. The manual gate is a
+completed tool result with a widget, but it also opens a local relay barrier.
+While that barrier is pending, follow-up tools are blocked with
+`MANUAL_PENDING_REQUIRED` except `context.get`, `diagnostics.health`, and
+`manual.confirm`. Continuation starts when the widget calls `manual.confirm`
+and then `sendFollowUpMessage` creates a new ChatGPT turn.
 
 `manual.confirm` is the authoritative transition from a pending manual action
 to confirmed/cancelled/expired. It does not apply patches, delete files, run
@@ -34,12 +37,13 @@ Manual continuation sequence:
 
 1. `manual.gate` returns an `awaiting_manual_completion` tool result.
 2. ChatGPT renders the widget.
-3. User completes the required manual work outside ChatGPT.
-4. User clicks "I completed this manually" in the widget.
-5. Widget calls `manual.confirm` with `pendingId`, component-only confirm token, and optional `manualLogPath`.
-6. `manual.confirm` records confirmed/cancelled/expired, stores the log path, and returns the result to the widget.
-7. Widget calls `sendFollowUpMessage` so ChatGPT starts a new continuation turn.
-8. Model verifies current state with normal read/git/task tools.
+3. The assistant must stop; if it tries to call more tools, relay returns `MANUAL_PENDING_REQUIRED`.
+4. User completes the required manual work outside ChatGPT.
+5. User clicks "I completed this manually" in the widget.
+6. Widget calls `manual.confirm` with `pendingId`, component-only confirm token, and optional `manualLogPath`.
+7. `manual.confirm` records confirmed/cancelled/expired, stores the log path, and returns the result to the widget.
+8. Widget calls `sendFollowUpMessage` so ChatGPT starts a new continuation turn.
+9. Model verifies current state with normal read/git/task tools.
 
 Host output decision table:
 
@@ -47,6 +51,7 @@ Host output decision table:
 | --- | --- | ---: | --- | ---: | --- | --- |
 | normal structured result such as `applied: true` | `normal_tool_result` | yes | continue normal workflow | 0 | none | normal tool audit |
 | `CONTEXT_REQUIRED` | `relay_policy_block` | yes | call `context.get` | 0 | none | blocked audit from relay |
+| `MANUAL_PENDING_REQUIRED` | `manual_action_pending` | yes | stop and wait for widget confirmation/cancellation | 0 | existing pending widget | blocked audit from relay |
 | `requires confirmation` / `please confirm` / `click allow` | `secondary_confirmation_required` | maybe no | retry same tool once with identical name and identical JSON arguments | 1 | none unless retry becomes safety block | local relay may not see first attempt |
 | exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | stop write tools; call `manual.gate` with latest `preparedId` | 0 | generic manual completion widget | `manual.gate.hostObservation` records observed block |
 | `受工具限制` / `cannot run arbitrary shell` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with external instructions | 0 | generic manual completion widget with log path input | `manual.gate.hostObservation` records observed limit |

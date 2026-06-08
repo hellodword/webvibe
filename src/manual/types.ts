@@ -7,6 +7,14 @@ export type ManualActionReason =
 
 export type ManualActionStatus = "pending" | "confirmed" | "cancelled" | "expired";
 
+export type ManualActionScope = {
+  workspaceRootHash: string;
+  clientIdHash?: string;
+  subjectHash?: string;
+  sessionHash?: string;
+  organizationHash?: string;
+};
+
 export type ManualArtifactRef = {
   artifactId: string;
   label: string;
@@ -47,6 +55,7 @@ export type ManualActionRecord = {
   createdAt: string;
   expiresAt: string;
   createdByTool: string;
+  scope: ManualActionScope;
   hostObservation?: {
     toolName?: string;
     outputText?: string;

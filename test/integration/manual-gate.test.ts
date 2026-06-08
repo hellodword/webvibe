@@ -28,7 +28,7 @@ describe("manual gate", () => {
         stateDir,
         publicBaseUrl: "http://localhost",
       });
-      const caller = { clientId: "manual-client" };
+      const caller = { clientId: "manual-client", openaiSession: "session-a" };
       await router.call("context.get", {}, caller);
 
       const gate = (await router.call(
@@ -44,6 +44,7 @@ describe("manual gate", () => {
       expect(gate.structuredContent).toMatchObject({
         status: "awaiting_manual_completion",
         confirmTool: "manual.confirm",
+        continuation: { mode: "await_manual_confirm", modelShouldStop: true },
       });
       const pendingId = gate.structuredContent.pendingId;
       const confirmToken = gate._meta.manualAction.confirmToken;
@@ -60,6 +61,36 @@ describe("manual gate", () => {
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
       expect(pending).toMatchObject({ status: "pending", title: "Manual test action" });
+      expect(pending?.scope.sessionHash).toBeTruthy();
+
+      await expect(router.call("read.tree", {}, caller)).resolves.toMatchObject({
+        status: "blocked",
+        code: "MANUAL_PENDING_REQUIRED",
+        pendingId,
+        confirmTool: "manual.confirm",
+      });
+      await expect(
+        router.call(
+          "manual.gate",
+          {
+            reason: "manual_review_requested",
+            title: "Second gate should wait",
+            instructions: "Do not open while first gate is pending.",
+          },
+          caller,
+        ),
+      ).resolves.toMatchObject({
+        status: "blocked",
+        code: "MANUAL_PENDING_REQUIRED",
+        pendingId,
+      });
+      await expect(router.call("context.get", {}, caller)).resolves.toMatchObject({ status: "ok" });
+
+      const otherCaller = { clientId: "manual-client", openaiSession: "session-b" };
+      await router.call("context.get", {}, otherCaller);
+      await expect(router.call("read.tree", {}, otherCaller)).resolves.not.toMatchObject({
+        code: "MANUAL_PENDING_REQUIRED",
+      });
 
       await expect(
         router.call(

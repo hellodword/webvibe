@@ -15,6 +15,7 @@ import {
   gitShow,
   gitStatus,
 } from "../workspace/inspect/git.js";
+import type { CallerIdentity } from "./tools-call.js";
 import { getContext, getDiagnostics } from "./context.js";
 
 export type BuiltInContext = {
@@ -24,6 +25,7 @@ export type BuiltInContext = {
   workspaceRoot: string;
   stateDir: string;
   publicBaseUrl: string;
+  caller: CallerIdentity;
   audit: AuditLog;
 };
 
@@ -135,6 +137,7 @@ export function callBuiltIn(
       limits: context.policy.limits,
       stateDir: context.stateDir,
       publicBaseUrl: context.publicBaseUrl,
+      caller: context.caller,
       audit: context.audit,
     });
   }

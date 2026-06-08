@@ -18,6 +18,8 @@ describe("server instructions", () => {
     expect(prefix).toContain("identical tool name");
     expect(prefix).toContain("identical JSON arguments");
     expect(webvibeServerInstructions).toContain("manual.confirm");
+    expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
+    expect(webvibeServerInstructions).toContain("stop the assistant turn immediately");
   });
 
   it("classifies host output without bypass advice", () => {

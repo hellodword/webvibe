@@ -20,6 +20,7 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("manual.confirm");
     expect(text).toContain("sendFollowUpMessage");
     expect(text).toContain("not suspend an in-flight JSON-RPC");
+    expect(text).toContain("MANUAL_PENDING_REQUIRED");
     expect(text).not.toContain("applyPrepared");
     expect(text).not.toContain("applyById");
     expect(text).not.toContain("base64");

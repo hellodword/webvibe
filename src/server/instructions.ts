@@ -45,6 +45,6 @@ Case-insensitive capability-limit fragments:
 Safety block exact text:
 This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.
 
-manual.gate is generic. It means a pending manual action was opened for a user to complete outside ChatGPT. It does not mean the local relay wrote anything, and it does not mean the user has completed the action. Only manual.confirm means the widget reported the user returned, clicked confirmation, and optionally provided a workspace-relative manual log file path for the continuation turn.
+manual.gate is generic. It means a pending manual action was opened for a user to complete outside ChatGPT. It does not mean the local relay wrote anything, and it does not mean the user has completed the action. After manual.gate returns awaiting_manual_completion, stop the assistant turn immediately. Do not call more tools or continue until the widget calls manual.confirm. While the pending action is active, webvibe blocks follow-up tools with MANUAL_PENDING_REQUIRED except context.get, diagnostics.health, and manual.confirm. Only manual.confirm means the widget reported the user returned, clicked confirmation, and optionally provided a workspace-relative manual log file path for the continuation turn.
 
 Do not use hidden prepared payload writes.`;

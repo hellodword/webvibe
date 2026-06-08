@@ -389,7 +389,10 @@ tools:
       temporary log file; for prepared diffs, show small diffs inline or link
       large review artifacts from change.prepare. Use this after an OpenAI
       safety block or whenever the user must manually complete something before
-      the model continues.
+      the model continues. After this tool returns awaiting_manual_completion,
+      stop the assistant turn immediately and wait for the widget to call
+      manual.confirm; while pending, webvibe will block other tools with
+      MANUAL_PENDING_REQUIRED.
     inputSchema:
       type: object
       properties:
@@ -447,7 +450,17 @@ tools:
         confirmTool:
           type: string
           enum: [manual.confirm]
-      required: [status, operationId, pendingId, reason, title, expiresAt, confirmTool]
+        continuation:
+          type: object
+          properties:
+            mode:
+              type: string
+              enum: [await_manual_confirm]
+            modelShouldStop:
+              type: boolean
+          required: [mode, modelShouldStop]
+          additionalProperties: false
+      required: [status, operationId, pendingId, reason, title, expiresAt, confirmTool, continuation]
       additionalProperties: false
     annotations:
       readOnlyHint: false

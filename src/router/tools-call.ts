@@ -1,4 +1,7 @@
 import { interpolateValue } from "../config/interpolation.js";
+import { ManualPendingStore } from "../manual/pending-store.js";
+import { buildManualActionScope } from "../manual/scope.js";
+import type { ManualActionRecord } from "../manual/types.js";
 import { assertToolInput } from "../policy/engine.js";
 import { assertInputPolicy } from "../policy/matcher.js";
 import type { RelayPolicy, ToolPolicy } from "../policy/policy.js";
@@ -21,6 +24,9 @@ import { executeWorkflow } from "./workflow.js";
 export type CallerIdentity = {
   clientId?: string;
   subject?: string;
+  openaiSession?: string;
+  openaiOrganization?: string;
+  openaiUserAgent?: string;
 };
 
 export type ToolCallOptions = {
@@ -53,6 +59,24 @@ export class ToolRouter {
       assertToolAllowed(name, this.options.registry);
       entry = this.options.registry.get(name)!;
       this.rateLimiter.assertAllowed(caller, this.options.policy.limits.maxCallsPerMinute);
+      const manualBlock = await this.manualPendingBlock(name, caller);
+      if (manualBlock) {
+        await this.options.audit.write(
+          buildAuditRecord({
+            clientId: caller.clientId,
+            subject: caller.subject,
+            tool: name,
+            type: entry.policy.type,
+            upstream: entry.policy.type === "passThrough" ? entry.policy.upstream : undefined,
+            status: "blocked",
+            startedAt,
+            input: args,
+            output: manualBlock,
+            errorCode: manualBlock.code,
+          }),
+        );
+        return manualBlock;
+      }
       const contextBlock = this.contextBlock(name, caller);
       if (contextBlock) {
         await this.options.audit.write(
@@ -126,15 +150,46 @@ export class ToolRouter {
     name: string,
     caller: CallerIdentity,
   ): { status: "blocked"; code: "CONTEXT_REQUIRED"; message: string; nextTool: "context.get"; reason: string } | undefined {
-    if (name === "context.get" || name === "diagnostics.health") return undefined;
+    if (isManualBarrierAllowedTool(name)) return undefined;
     const state = this.preflight.get(this.callerKey(caller));
     if (!state) return contextRequired("missing");
     if (!fingerprintsEqual(state.fingerprint, this.currentFingerprint())) return contextRequired("stale");
     return undefined;
   }
 
+  private async manualPendingBlock(
+    name: string,
+    caller: CallerIdentity,
+  ): Promise<ManualPendingBlockedResult | undefined> {
+    if (isManualBarrierAllowedTool(name)) return undefined;
+    const store = new ManualPendingStore(this.options.stateDir);
+    const scope = buildManualActionScope({
+      workspaceRoot: this.options.workspaceRoot,
+      caller,
+    });
+    const expired = await store.expirePendingForScope(scope);
+    for (const record of expired) {
+      await this.options.audit.write({
+        timestamp: new Date().toISOString(),
+        event: "manual.gate.expired",
+        operationId: record.operationId,
+        preparedId: record.preparedId,
+        pendingId: record.pendingId,
+        tool: "manual.gate",
+        type: "builtIn",
+        status: "ok",
+        rawOutput: {
+          reason: "manual_action_expired",
+          expiresAt: record.expiresAt,
+        },
+      });
+    }
+    const pending = await store.firstBlockingPending(scope);
+    return pending ? manualPendingRequired(pending) : undefined;
+  }
+
   private callerKey(caller: CallerIdentity): string {
-    return caller.subject ?? caller.clientId ?? "anonymous";
+    return caller.openaiSession ?? caller.subject ?? caller.clientId ?? "anonymous";
   }
 
   private currentFingerprint(): PreflightFingerprint {
@@ -159,6 +214,7 @@ export class ToolRouter {
         workspaceRoot: this.options.workspaceRoot,
         stateDir: this.options.stateDir,
         publicBaseUrl: this.options.publicBaseUrl,
+        caller,
         audit: this.options.audit,
       });
     }
@@ -218,6 +274,41 @@ export class ToolRouter {
       },
     });
   }
+}
+
+type ManualPendingBlockedResult = {
+  status: "blocked";
+  code: "MANUAL_PENDING_REQUIRED";
+  message: string;
+  reason: "manual_action_pending";
+  pendingId: string;
+  operationId: string;
+  preparedId?: string;
+  title: string;
+  expiresAt: string;
+  confirmTool: "manual.confirm";
+  nextAction: "complete_or_cancel_widget";
+};
+
+function isManualBarrierAllowedTool(name: string): boolean {
+  return name === "context.get" || name === "diagnostics.health" || name === "manual.confirm";
+}
+
+function manualPendingRequired(record: ManualActionRecord): ManualPendingBlockedResult {
+  return {
+    status: "blocked",
+    code: "MANUAL_PENDING_REQUIRED",
+    message:
+      "A manual action is still pending for this ChatGPT session. Use the manual completion widget to confirm or cancel it before continuing.",
+    reason: "manual_action_pending",
+    pendingId: record.pendingId,
+    operationId: record.operationId,
+    preparedId: record.preparedId,
+    title: record.title,
+    expiresAt: record.expiresAt,
+    confirmTool: "manual.confirm",
+    nextAction: "complete_or_cancel_widget",
+  };
 }
 
 function contextRequired(reason: string): {

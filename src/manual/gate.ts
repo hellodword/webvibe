@@ -9,8 +9,10 @@ import {
 import { classifyHostOutput } from "./host-output.js";
 import { ManualPendingStore } from "./pending-store.js";
 import { PreparedManualActionStore } from "./prepared-store.js";
+import { buildManualActionScope } from "./scope.js";
 import type { ManualActionReason, ManualArtifactRef, ManualCheck } from "./types.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../policy/policy.js";
+import type { CallerIdentity } from "../router/tools-call.js";
 import type { AuditLog } from "../state/audit.js";
 import { BadRequestError } from "../util/errors.js";
 import { randomToken, sha256 } from "../util/hash.js";
@@ -45,6 +47,7 @@ export async function openManualGate(
     limits: LimitsPolicy;
     stateDir: string;
     publicBaseUrl: string;
+    caller: CallerIdentity;
     audit?: AuditLog;
   },
 ): Promise<{
@@ -57,6 +60,10 @@ export async function openManualGate(
     title: string;
     expiresAt: string;
     confirmTool: "manual.confirm";
+    continuation: {
+      mode: "await_manual_confirm";
+      modelShouldStop: true;
+    };
   };
   content: Array<{ type: "text"; text: string }>;
   _meta: {
@@ -97,6 +104,10 @@ export async function openManualGate(
   const pendingStore = new ManualPendingStore(context.stateDir);
   const pendingId = pendingStore.newPendingId();
   const confirmToken = randomToken(24);
+  const scope = buildManualActionScope({
+    workspaceRoot: context.workspaceRoot,
+    caller: context.caller,
+  });
   const classification = classifyHostOutput(input.hostObservation?.outputText);
   const hostObservation = input.hostObservation
     ? {
@@ -115,6 +126,7 @@ export async function openManualGate(
     createdAt: now.toISOString(),
     expiresAt,
     createdByTool: "manual.gate",
+    scope,
     hostObservation,
     artifacts,
     checks,
@@ -163,11 +175,15 @@ export async function openManualGate(
       title: record.title,
       expiresAt: record.expiresAt,
       confirmTool: "manual.confirm",
+      continuation: {
+        mode: "await_manual_confirm",
+        modelShouldStop: true,
+      },
     },
     content: [
       {
         type: "text",
-        text: "Manual completion widget opened. Complete the manual step, paste a workspace-relative log file path into the widget if logs were produced, then confirm.",
+        text: "Manual gate opened and awaiting widget confirmation. Stop this assistant turn now. Do not summarize, call more tools, or continue the task until manual.confirm returns confirmed, cancelled, expired, or verification_failed.",
       },
     ],
     _meta: {

@@ -123,6 +123,7 @@ auth:
         createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
         createdByTool: "manual.gate",
+        scope: { workspaceRootHash: sha256(root) },
         artifacts: [],
         checks: [],
         confirmTokenHash: sha256(confirmToken),

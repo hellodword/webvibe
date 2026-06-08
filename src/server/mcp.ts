@@ -84,7 +84,13 @@ async function handleMcpRequest(
       return toolsList(options.registry);
     case "tools/call": {
       const params = normalizeToolCallParams(request.params);
-      const result = await options.router.call(params.name, params.arguments, caller);
+      const result = await options.router.call(params.name, params.arguments, {
+        clientId: caller.clientId,
+        subject: caller.subject,
+        openaiSession: params.meta.openaiSession,
+        openaiOrganization: params.meta.openaiOrganization,
+        openaiUserAgent: params.meta.openaiUserAgent,
+      });
       return toToolResult(result);
     }
     case "resources/read": {
@@ -129,12 +135,21 @@ function normalizeResourceReadParams(params: unknown): { uri: string } {
 function normalizeToolCallParams(params: unknown): {
   name: string;
   arguments: Record<string, unknown>;
+  meta: {
+    openaiSession?: string;
+    openaiOrganization?: string;
+    openaiUserAgent?: string;
+  };
 } {
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     throw new BadRequestError("tools/call params must be object");
   }
   const record = params as Record<string, unknown>;
   if (typeof record.name !== "string") throw new BadRequestError("tools/call name is required");
+  const metaRecord =
+    typeof record._meta === "object" && record._meta !== null && !Array.isArray(record._meta)
+      ? (record._meta as Record<string, unknown>)
+      : {};
   return {
     name: record.name,
     arguments:
@@ -143,6 +158,20 @@ function normalizeToolCallParams(params: unknown): {
       !Array.isArray(record.arguments)
         ? (record.arguments as Record<string, unknown>)
         : {},
+    meta: {
+      openaiSession:
+        typeof metaRecord["openai/session"] === "string"
+          ? metaRecord["openai/session"]
+          : undefined,
+      openaiOrganization:
+        typeof metaRecord["openai/organization"] === "string"
+          ? metaRecord["openai/organization"]
+          : undefined,
+      openaiUserAgent:
+        typeof metaRecord["openai/userAgent"] === "string"
+          ? metaRecord["openai/userAgent"]
+          : undefined,
+    },
   };
 }
 
