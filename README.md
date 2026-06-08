@@ -41,6 +41,9 @@ identical retry is blocked again, or a required local capability is unavailable,
 dev mode uses `manual.gate`: the assistant first shows exact manual
 instructions in chat, opens a local pending barrier with minimal gate arguments,
 stops immediately, and waits for the next user message to start with `/resume`.
+Manual commands and their stdout/stderr stay in chat and in the user's local log
+file only; `manual.gate` arguments must not contain command text or log
+contents.
 `manual.resume` clears the barrier only after confirmation or cancellation, does
 not run commands or write files, and directs the model back to the original
 interrupted request after verification.

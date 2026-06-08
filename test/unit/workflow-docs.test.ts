@@ -14,8 +14,12 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("blocked_by_openai_safety");
     expect(text).toContain("manual_required_capability_limit");
     expect(text).toContain("workspace-relative log file path");
+    expect(text).toContain("no matching task id");
+    expect(text).toContain("capability.limit");
+    expect(text).toContain("ChatGPT Web must not send command text");
+    expect(text).toContain("contents through `manual.gate`");
     expect(text).toContain("/resume");
-    expect(text).toContain("12KB and 200 lines");
+    expect(text).toContain("12KB and\n200 lines");
     expect(text).toContain("manual.gate");
     expect(text).toContain("manual.resume");
     expect(text).toContain("retry the identical tool call once");
@@ -23,7 +27,7 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("OpenAI limitation or bug");
     expect(text).toContain("not suspend an in-flight JSON-RPC");
     expect(text).toContain("MANUAL_PENDING_REQUIRED");
-    expect(text).toContain("Do not put detailed manual instructions into `manual.gate` arguments.");
+    expect(text).toContain("Do not put detailed manual instructions, commands, scripts, diffs");
     expect(text).toContain("if still blocked, stop immediately and wait for human completion followed by `/resume`");
     expect(text).toContain("continues the original interrupted request");
     expect(text).not.toContain("sendFollowUpMessage");

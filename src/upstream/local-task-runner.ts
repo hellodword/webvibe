@@ -27,7 +27,7 @@ type ManualRequired = {
   reason: "external_manual_step";
   userInstructions: string;
   hostObservation: {
-    toolName: "task.run";
+    toolName: string;
     outputText: string;
   };
 };
@@ -104,7 +104,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
                 hostObservation: {
                   type: "object",
                   properties: {
-                    toolName: { type: "string", enum: ["task.run"] },
+                    toolName: { type: "string" },
                     outputText: { type: "string" },
                   },
                   required: ["toolName", "outputText"],
@@ -362,7 +362,6 @@ function manualRequiredForTask(
   workspaceRoot: string,
   extraArgs: string[],
 ): ManualRequired {
-  const outputText = `Task unavailable: ${reason}`;
   const logPath = `.webvibe/manual-logs/${safeLogName(taskId)}.log`;
   const cwdRelative = toWorkspaceRelative(workspaceRoot, cwd) || ".";
   const command = [...[task.executable, ...(task.args ?? []), ...extraArgs].map(shellQuote)].join(
@@ -385,10 +384,11 @@ function manualRequiredForTask(
       "printf '%s\\n' \"$LOG\"\n" +
       "exit \"$STATUS\"\n" +
       "```\n\n" +
-      `Reply in the next ChatGPT message with /resume ${logPath}`,
+      `Reply in the next ChatGPT message with /resume ${logPath}.\n\n` +
+      "Do not paste this command, stdout/stderr, or log contents into manual.gate; the gate call must use only reason and the low-risk hostObservation.",
     hostObservation: {
-      toolName: "task.run",
-      outputText,
+      toolName: "capability.limit",
+      outputText: "manual step required because configured task is unavailable",
     },
   };
 }

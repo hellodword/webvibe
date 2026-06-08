@@ -138,8 +138,8 @@ describe("local task runner upstream", () => {
           reason: "external_manual_step",
           userInstructions: expect.stringContaining("webvibe-missing-executable"),
           hostObservation: {
-            toolName: "task.run",
-            outputText: "Task unavailable: Missing executable: webvibe-missing-executable",
+            toolName: "capability.limit",
+            outputText: "manual step required because configured task is unavailable",
           },
         },
       },

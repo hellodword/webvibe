@@ -105,6 +105,13 @@ list, so ChatGPT Web does not need a manual tool refresh when a command is
 missing. Project manifests and package scripts are environment facts reported by
 `context.get`; they do not gate task availability.
 
+If a required command has no matching task ID or needs arbitrary shell/Node,
+the model must use the manual fallback flow instead of ending with an inability
+statement. Manual commands and stdout/stderr are shown in chat and written by
+the user's terminal to a workspace-relative log path. They are not sent through
+`manual.gate`; the gate receives only `reason` plus a low-risk
+`hostObservation` summary.
+
 ## Git
 
 Read-only Git tools are `git.status`, `git.diff`, `git.history`, and

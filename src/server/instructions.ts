@@ -1,4 +1,4 @@
-export const webvibeServerInstructions: string = `Before workspace-changing tools: call context.get; for file changes call change.prepare, then one full change.apply. If ChatGPT Web asks for confirmation, retry once with identical tool name and identical JSON arguments. If it says "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", retry that same tool call once with the identical tool name and identical JSON arguments. If the same safety block repeats, show manual details in ChatGPT Web, then call manual.gate with the latest preparedId and observed host output only. Before any manual.gate call, ChatGPT Web must first show the exact manual instructions in chat. If the best next step requires unavailable arbitrary shell, an unavailable task, or any other tool capability limit, show the manual details in ChatGPT Web, then call manual.gate with only reason external_manual_step and hostObservation instead of narrating that you are unable to do it. For any manual command, show the complete command and redirect stdout/stderr to a workspace-relative temporary log file such as .webvibe/manual-logs/<id>.log; tell the user that the next ChatGPT message must start with /resume and may include that log path. For a prepared diff, show diffs at most 12KB and 200 lines inline in a code block; for larger diffs, give the artifact download URL from change.prepare. After manual.resume returns, treat /resume as a control signal, verify with context.get and read/git/task tools, then continue the original interrupted user request.
+export const webvibeServerInstructions: string = `Before workspace-changing tools: call context.get; for file changes call change.prepare, then one full change.apply. Capability limits are not final answers: if you know a command or verification step is needed but cannot run it because arbitrary shell/Node is unavailable, no matching taskId exists, a task is unavailable, or any required tool capability is missing, you must show manual instructions in ChatGPT Web, call manual.gate with minimal low-risk arguments, then stop. Do not end by saying you could not run it. If ChatGPT Web asks for confirmation, retry once with identical tool name and identical JSON arguments. If it says "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", retry that same tool call once with the identical tool name and identical JSON arguments. If the same safety block repeats, show manual details in ChatGPT Web, then call manual.gate with the latest preparedId and observed host output only. Before any manual.gate call, ChatGPT Web must first show the exact manual instructions in chat. For any manual command, show the complete command and redirect stdout/stderr to a workspace-relative temporary log file such as .webvibe/manual-logs/<id>.log; tell the user that the next ChatGPT message must start with /resume and may include only that log path. Never put manual commands, scripts, diffs, file contents, stdout/stderr, or log contents in manual.gate arguments. For a prepared diff, show diffs at most 12KB and 200 lines inline in a code block; for larger diffs, give the artifact download URL from change.prepare. After manual.resume returns, treat /resume as a control signal, verify with context.get and read/git/task tools, then continue the original interrupted user request.
 
 Host output classifications:
 
@@ -23,12 +23,16 @@ blocked_by_openai_safety:
 
 manual_required_capability_limit:
   Stop explaining the limitation in natural language.
+  Do not make inability to run a command the final answer.
+  This applies even when no tool was called, if you can tell from the available tool surface that the required command cannot be run.
   Show the manual command/details in ChatGPT Web before opening the manual gate.
   Never call manual.gate before those manual instructions are visible in chat.
-  Open manual.gate with only reason external_manual_step and the observed limitation in hostObservation.
+  Open manual.gate with only reason external_manual_step and a low-risk hostObservation summary.
+  For model-observed capability gaps, use hostObservation.toolName capability.limit and hostObservation.outputText manual step required because required execution capability is unavailable.
+  Never put manual commands, scripts, diffs, file contents, stdout/stderr, or log contents in manual.gate arguments.
   Stop the assistant turn immediately after manual.gate returns, even if other tasks remain.
   If manual.gate itself is blocked by OpenAI safety checks, retry the same manual.gate call once with identical arguments; if it is still blocked, stop immediately and wait for human completion followed by /resume.
-  The next user message must start with /resume and may include a workspace-relative manual log file path.
+  The next user message must start with /resume and may include only a workspace-relative manual log file path.
 
 Case-insensitive secondary-confirmation fragments:
 - requires confirmation
@@ -45,6 +49,10 @@ Case-insensitive capability-limit fragments:
 - cannot run arbitrary shell
 - task unavailable
 - tool unavailable
+- no available task id
+- no matching task id
+- no tool available
+- cannot execute arbitrary node
 - missing executable
 - task upstream is unavailable
 

@@ -44,7 +44,7 @@ describe("tool router", () => {
       });
       await expect(router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
         status: "ok",
-        toolSurface: { version: "3.0.0" },
+        toolSurface: { version: "3.1.0" },
       });
       await expect(router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",

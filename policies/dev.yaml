@@ -395,6 +395,13 @@ tools:
       from change.prepare. Use this after an OpenAI safety block has already
       been retried once with identical arguments, or whenever the user must
       manually complete something before the model continues.
+      Never include manual commands, scripts, diffs, file contents,
+      stdout/stderr, or log contents in this tool's arguments. Those details
+      must stay in ChatGPT Web chat only. For model-observed capability limits
+      such as no raw shell, no matching taskId, or unavailable Node execution,
+      use only a low-risk hostObservation summary such as toolName
+      "capability.limit" and outputText "manual step required because required
+      execution capability is unavailable".
       After this tool returns awaiting_manual_completion, stop the assistant
       turn immediately even if other tasks remain, and wait for a later user
       message that starts with /resume. If ChatGPT Web blocks this manual.gate
@@ -559,9 +566,11 @@ tools:
       Available taskIds, cwd support, argument rules, and availability are
       returned by context.get. If the task is unavailable and manualRequired is
       returned, show its userInstructions in ChatGPT Web, then call manual.gate
-      only with reason and hostObservation gate fields so the user can run the
-      task manually and reply later with /resume and an optional
-      workspace-relative log file path.
+      only with reason and the low-risk hostObservation gate fields, not with
+      the manual command, stdout/stderr, or log contents. If the required
+      command has no matching taskId or would need arbitrary shell/Node, use the
+      context.get manualFallback guidance instead of ending with an inability
+      statement.
       Requires context.get first.
     inputSchema:
       type: object

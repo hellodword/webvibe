@@ -12,7 +12,7 @@ Recommended order:
 6. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
 7. If ChatGPT Web blocks with OpenAI safety checks: retry the identical tool call once with unchanged arguments
 8. If the identical retry is blocked again: show manual instructions, then call `manual.gate` with the latest `preparedId` and observed host output only
-9. If the best next step requires unavailable arbitrary shell or an unavailable task: show manual instructions, then call `manual.gate` with only `reason` and `hostObservation`
+9. If the best next step requires unavailable arbitrary shell/Node, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with only `reason` and a low-risk `hostObservation`
 10. Stop the assistant turn immediately after `manual.gate`, even if other work remains
 11. User completes the manual step outside ChatGPT
 12. The next user message must start with `/resume`
@@ -63,7 +63,7 @@ Host output decision table:
 | `requires confirmation` / `please confirm` / `click allow` | `secondary_confirmation_required` | maybe no | retry same tool once with identical name and identical JSON arguments | 1 | none unless retry becomes safety block | local relay may not see first attempt |
 | exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | retry the same tool once with identical name and identical JSON arguments; if the identical retry is blocked again, show manual instructions, then call `manual.gate` with latest `preparedId` and observed host output only | 1 | manual barrier requiring `/resume` only after repeated safety block | `manual.gate.hostObservation` records the repeated observed block |
 | `manual.gate` is blocked by OpenAI safety checks | `blocked_manual_gate` | usually no | retry the same `manual.gate` once with identical arguments; if still blocked, stop immediately and wait for human completion followed by `/resume` | 1 | none if call never reached relay | no local audit if host blocked before relay |
-| `受工具限制` / `cannot run arbitrary shell` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with only `reason` and `hostObservation` | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records observed limit |
+| `受工具限制` / `cannot run arbitrary shell` / `no matching task id` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with only `reason` and a low-risk `hostObservation` summary | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records only the low-risk capability-limit summary |
 | next user message starts with `/resume` | `manual_completion_resumed` | yes | call `manual.resume`, then verify workspace state and continue the original interrupted request | 0 | pending record transitions if checks pass or cancel requested | `manual.resume` audit event |
 | next user message does not start with `/resume` | `manual_resume_required` | yes if tool called | call `manual.resume` only when the message starts with `/resume` | 0 | pending record remains pending | blocked audit from relay |
 
@@ -71,7 +71,8 @@ Do not split a blocked write into additional write calls.
 Do not encode, obfuscate, rename, or hide payloads.
 Do retry an exact OpenAI safety block once with the same tool name and unchanged
 JSON arguments before entering manual flow.
-Do not put detailed manual instructions into `manual.gate` arguments.
+Do not put detailed manual instructions, commands, scripts, diffs, file
+contents, stdout/stderr, or log contents into `manual.gate` arguments.
 Do not continue the current assistant turn after `manual.gate`.
 Do not use a `preparedId` as a hidden write mechanism.
 Do not implement or call apply-by-id tools.
@@ -79,16 +80,23 @@ Do not treat `manual.gate` as proof that the user completed the work.
 Do not continue until `manual.resume` reports confirmed or cancelled.
 
 ChatGPT Web must show the required manual details in chat before calling
-`manual.gate`. For commands, show the exact command and redirect stdout/stderr
-to a workspace-relative log file such as `.webvibe/manual-logs/<id>.log`. For
-prepared diffs, show diffs at most 12KB and 200 lines in a code block; for
-larger diffs, provide the downloadable artifact URL returned by
-`change.prepare`. The `manual.gate` tool call itself uses minimal arguments
-only: `reason`, optional `preparedId`, and optional `hostObservation`.
+`manual.gate`. For commands, show the exact command and have the user redirect
+stdout/stderr locally to a workspace-relative log file such as
+`.webvibe/manual-logs/<id>.log`. That log file is created by the user's terminal
+outside ChatGPT; ChatGPT Web must not send command text, stdout/stderr, or log
+contents through `manual.gate`. For prepared diffs, show diffs at most 12KB and
+200 lines in a code block; for larger diffs, provide the downloadable artifact
+URL returned by `change.prepare`. The `manual.gate` tool call itself uses
+minimal arguments only: `reason`, optional `preparedId`, and optional
+`hostObservation`. For model-observed capability limits, use a low-risk
+`hostObservation` such as `toolName: "capability.limit"` and
+`outputText: "manual step required because required execution capability is unavailable"`.
 
 `task.run` runs only preconfigured task IDs. It does not accept arbitrary shell
 commands. `context.get` returns available task IDs, unavailable reasons, timeout
-defaults, cwd support, and extra argument rules.
+defaults, cwd support, extra argument rules, and manual fallback guidance. If
+there is no matching task ID for a required command, the model uses the same
+manual gate flow instead of ending with an inability statement.
 
 `diagnostics.health` is for connector diagnostics. It reports relay mode, tool
 surface version, hashes, and upstream health. It is not the coding preflight.

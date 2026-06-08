@@ -136,6 +136,18 @@ describe("default policies", () => {
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.userInstructions.type,
     ).toBe("string");
+    expect(dev.tools.find((tool) => tool.name === "task.run")!.description).toContain(
+      "no matching taskId",
+    );
+    expect(dev.tools.find((tool) => tool.name === "task.run")!.description).toContain(
+      "not with the manual command",
+    );
+    expect(dev.tools.find((tool) => tool.name === "manual.gate")!.description).toContain(
+      "Never include manual commands",
+    );
+    expect(dev.tools.find((tool) => tool.name === "manual.gate")!.description).toContain(
+      "capability.limit",
+    );
     const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
     const devPolicyText = JSON.stringify(dev);

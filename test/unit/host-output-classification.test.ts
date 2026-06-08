@@ -11,6 +11,9 @@ describe("host output classification", () => {
     expect(classifyHostOutput("受工具限制我无法用任意 shell 直接执行新增 Node 脚本")).toBe(
       "manual_required_capability_limit",
     );
+    expect(
+      classifyHostOutput("当前工具面不能直接执行任意 Node 命令，也没有暴露可用的 task id，所以没有实际跑到"),
+    ).toBe("manual_required_capability_limit");
     expect(classifyHostOutput("Task unavailable: Missing executable: npm")).toBe(
       "manual_required_capability_limit",
     );
@@ -51,7 +54,7 @@ describe("host output classification", () => {
     ).toMatchObject({ action: "manual.gate" });
     expect(
       planHostRetry({
-        outputText: "Cannot run arbitrary shell in this tool environment.",
+        outputText: "Cannot run arbitrary Node in this tool environment.",
         secondaryConfirmationAttempts: 0,
         safetyBlockAttempts: 0,
       }),

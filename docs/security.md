@@ -100,6 +100,10 @@ unavailable arbitrary shell, an unavailable configured task, or another tool
 capability limit. `manual.resume` records user intent, an optional
 workspace-relative manual log file path, and optional post-completion checks; it
 does not perform the blocked write.
+Manual command text, scripts, stdout/stderr, diffs, file contents, and log
+contents are not sent through `manual.gate`. They stay in ChatGPT Web chat or in
+the user's local workspace log file, while the gate receives only a low-risk
+summary of why manual completion is required.
 
 UI widget results cannot make the ChatGPT Web page reliably pending; this
 appears to be an OpenAI limitation or bug. `webvibe` does not try to bypass

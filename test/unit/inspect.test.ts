@@ -96,6 +96,55 @@ describe("workspace inspection built-ins", () => {
       expect.arrayContaining([expect.objectContaining({ taskId: "go_test", acceptsCwd: true })]),
     );
   });
+
+  it("reports manual fallback guidance for capability gaps and unavailable tasks", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-manual-fallback-"));
+    const policy = policyFor(root);
+    policy.upstreams.tasks.tasks = {
+      missing_node_check: {
+        executable: "webvibe-missing-node",
+        args: ["scripts/check.js"],
+      },
+    };
+    const registry = new Map([
+      ["context.get", {} as any],
+      ["task.run", {} as any],
+      ["manual.gate", {} as any],
+    ]);
+
+    const context = await getContext({
+      registry,
+      policy,
+      upstreams: { listHealth: () => [] } as any,
+      workspaceRoot: root,
+    });
+
+    expect(context.manualFallback).toMatchObject({
+      nextTool: "manual.gate",
+      reason: "external_manual_step",
+      gatePayloadRule: expect.stringContaining("Never put manual commands"),
+      hostObservation: {
+        toolName: "capability.limit",
+        outputText: "manual step required because required execution capability is unavailable",
+      },
+    });
+    expect((context.tasks as any).unavailable).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "missing_node_check",
+          manualRequired: expect.objectContaining({
+            nextTool: "manual.gate",
+            reason: "external_manual_step",
+            userInstructions: expect.stringContaining(".webvibe/manual-logs/missing_node_check.log"),
+            hostObservation: {
+              toolName: "capability.limit",
+              outputText: "manual step required because configured task is unavailable",
+            },
+          }),
+        }),
+      ]),
+    );
+  });
 });
 
 function policyFor(root: string): RelayPolicy {
