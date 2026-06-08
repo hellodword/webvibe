@@ -13,6 +13,9 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("manual.gate");
     expect(webvibeServerInstructions).toContain("manual.resume");
     expect(webvibeServerInstructions).toContain("/resume");
+    expect(webvibeServerInstructions).toContain("read.files");
+    expect(webvibeServerInstructions).toContain("nextOffsetBytes");
+    expect(webvibeServerInstructions).toContain("smaller maxBytes");
     expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
     expect(webvibeServerInstructions).toContain(safetyBlock);
     expect(webvibeServerInstructions).toContain("identical JSON arguments");

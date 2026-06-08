@@ -60,6 +60,18 @@ result with `code: "CONTEXT_REQUIRED"` and `nextTool: "context.get"`.
 filesystem pass-through tools. This keeps path protection, output truncation,
 and result shape under webvibe control.
 
+`read.files` reads text in byte chunks. Inputs are `paths`, optional
+`offsetBytes` defaulting to `0`, and optional `maxBytes` defaulting to `10000`
+with a maximum of `10000`. `offsetBytes` and `maxBytes` apply to every path in
+the call; for large files, read one file at a time. File results include
+continuation metadata before `content`: `offsetBytes`, `returnedBytes`,
+optional `nextOffsetBytes`, and `truncated`. `size` remains the original file
+size in bytes. When `truncated` is true, call `read.files` again with
+`offsetBytes` set to `nextOffsetBytes`. If the ChatGPT Web host still truncates
+the tool result, retry the same offset with a smaller `maxBytes`. UTF-8
+characters are not split across chunk boundaries; an offset inside a multibyte
+character advances to the next character boundary.
+
 ## Batch Changes
 
 Default dev mode exposes one read-only planning tool and one write tool:

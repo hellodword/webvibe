@@ -1,4 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 
 import { minimatch } from "minimatch";
@@ -26,7 +27,7 @@ const MAX_RESULTS = 200;
 const MAX_TREE_ENTRIES = 1000;
 const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
 const MAX_READ_FILES = 50;
-const MAX_READ_FILE_BYTES = 1024 * 1024;
+const MAX_READ_FILE_CHUNK_BYTES = 10000;
 
 export async function searchCode(
   args: Record<string, unknown>,
@@ -164,6 +165,9 @@ export async function readFiles(
     exists: boolean;
     type?: "file" | "directory" | "symlink" | "other";
     size?: number;
+    offsetBytes?: number;
+    returnedBytes?: number;
+    nextOffsetBytes?: number;
     content?: string;
     truncated?: boolean;
     error?: string;
@@ -172,11 +176,22 @@ export async function readFiles(
   const rawPaths = Array.isArray(args.paths) ? args.paths : undefined;
   if (!rawPaths || rawPaths.length === 0) throw new BadRequestError("paths must be a non-empty array");
   if (rawPaths.length > MAX_READ_FILES) throw new BadRequestError("paths has too many items");
+  const requestedOffset = boundedInteger(args.offsetBytes, "offsetBytes", 0, 0, Number.MAX_SAFE_INTEGER);
+  const maxBytes = boundedInteger(
+    args.maxBytes,
+    "maxBytes",
+    MAX_READ_FILE_CHUNK_BYTES,
+    1,
+    MAX_READ_FILE_CHUNK_BYTES,
+  );
   const files: Array<{
     path: string;
     exists: boolean;
     type?: "file" | "directory" | "symlink" | "other";
     size?: number;
+    offsetBytes?: number;
+    returnedBytes?: number;
+    nextOffsetBytes?: number;
     content?: string;
     truncated?: boolean;
     error?: string;
@@ -205,18 +220,102 @@ export async function readFiles(
       });
       continue;
     }
-    const buffer = await readFile(resolved.absolutePath);
-    const truncated = buffer.length > MAX_READ_FILE_BYTES;
+    const chunk = await readUtf8FileChunk(resolved.absolutePath, stat.size, requestedOffset, maxBytes);
     files.push({
       path: resolved.relativePath,
       exists: true,
       type,
       size: stat.size,
-      content: buffer.subarray(0, MAX_READ_FILE_BYTES).toString("utf8"),
-      truncated,
+      offsetBytes: chunk.offsetBytes,
+      returnedBytes: chunk.returnedBytes,
+      ...(chunk.nextOffsetBytes === undefined ? {} : { nextOffsetBytes: chunk.nextOffsetBytes }),
+      truncated: chunk.truncated,
+      content: chunk.content,
     });
   }
   return { status: "ok", files };
+}
+
+async function readUtf8FileChunk(
+  filePath: string,
+  size: number,
+  requestedOffset: number,
+  maxBytes: number,
+): Promise<{
+  offsetBytes: number;
+  returnedBytes: number;
+  nextOffsetBytes?: number;
+  truncated: boolean;
+  content: string;
+}> {
+  if (requestedOffset >= size) {
+    return { offsetBytes: requestedOffset, returnedBytes: 0, truncated: false, content: "" };
+  }
+
+  const handle = await open(filePath, "r");
+  try {
+    const offsetBytes = await nextUtf8Boundary(handle, requestedOffset, size);
+    if (offsetBytes >= size) {
+      return { offsetBytes, returnedBytes: 0, truncated: false, content: "" };
+    }
+
+    const bytesToRead = Math.min(maxBytes, size - offsetBytes);
+    const buffer = Buffer.alloc(bytesToRead);
+    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, offsetBytes);
+    const readBuffer = buffer.subarray(0, bytesRead);
+    let returnedBytes =
+      offsetBytes + bytesRead >= size ? bytesRead : completeUtf8PrefixLength(readBuffer);
+    if (bytesRead > 0 && returnedBytes === 0 && offsetBytes + bytesRead < size) {
+      throw new BadRequestError("maxBytes is too small to include the next UTF-8 character");
+    }
+
+    const nextOffsetBytes = offsetBytes + returnedBytes;
+    const truncated = nextOffsetBytes < size;
+    return {
+      offsetBytes,
+      returnedBytes,
+      ...(truncated ? { nextOffsetBytes } : {}),
+      truncated,
+      content: readBuffer.subarray(0, returnedBytes).toString("utf8"),
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function nextUtf8Boundary(handle: FileHandle, requestedOffset: number, size: number): Promise<number> {
+  const probe = Buffer.alloc(1);
+  let offset = requestedOffset;
+  while (offset < size) {
+    const { bytesRead } = await handle.read(probe, 0, 1, offset);
+    if (bytesRead === 0 || !isUtf8ContinuationByte(probe[0])) return offset;
+    offset += 1;
+  }
+  return offset;
+}
+
+function completeUtf8PrefixLength(buffer: Buffer): number {
+  if (buffer.length === 0) return 0;
+  let leadIndex = buffer.length - 1;
+  while (leadIndex >= 0 && isUtf8ContinuationByte(buffer[leadIndex])) {
+    leadIndex -= 1;
+  }
+  if (leadIndex < 0) return 0;
+  const expectedLength = utf8SequenceLength(buffer[leadIndex]);
+  if (expectedLength === 0) return buffer.length;
+  return buffer.length - leadIndex >= expectedLength ? buffer.length : leadIndex;
+}
+
+function isUtf8ContinuationByte(byte: number): boolean {
+  return byte >= 0x80 && byte <= 0xbf;
+}
+
+function utf8SequenceLength(byte: number): number {
+  if (byte <= 0x7f) return 1;
+  if (byte >= 0xc2 && byte <= 0xdf) return 2;
+  if (byte >= 0xe0 && byte <= 0xef) return 3;
+  if (byte >= 0xf0 && byte <= 0xf4) return 4;
+  return 0;
 }
 
 export async function fileStat(
@@ -293,4 +392,20 @@ function clampInteger(value: unknown, defaultValue: number, minimum: number, max
     throw new BadRequestError("numeric option must be integer");
   }
   return Math.min(Math.max(value, minimum), maximum);
+}
+
+function boundedInteger(
+  value: unknown,
+  field: string,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new BadRequestError(`${field} must be integer`);
+  }
+  if (value < minimum) throw new BadRequestError(`${field} is below minimum`);
+  if (value > maximum) throw new BadRequestError(`${field} is above maximum`);
+  return value;
 }

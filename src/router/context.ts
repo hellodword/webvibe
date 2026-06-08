@@ -33,6 +33,7 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
   const workflow = [
     "Use context.get before workspace tools.",
     "Use read.tree, read.search, and read.files to inspect only relevant files.",
+    "read.files returns at most 10000 content bytes per file by default; when truncated is true, continue the same file with nextOffsetBytes, and reduce maxBytes if the host still truncates the result.",
     "Use change.plan to validate one complete batch workspace change.",
     "Use one change.apply call for the full requested file change.",
     "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",

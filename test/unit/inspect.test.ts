@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RelayPolicy } from "../../src/policy/policy.js";
 import { getContext } from "../../src/router/context.js";
-import { fileTree, searchCode } from "../../src/workspace/inspect/code.js";
+import { fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
 
@@ -95,6 +95,137 @@ describe("workspace inspection built-ins", () => {
     expect((context.tasks as any).available).toEqual(
       expect.arrayContaining([expect.objectContaining({ taskId: "go_test", acceptsCwd: true })]),
     );
+  });
+
+  it("reads text files in bounded UTF-8 byte chunks", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-read-files-"));
+    await writeFile(path.join(root, "small.txt"), "hello");
+    await writeFile(path.join(root, "big.txt"), `${"x".repeat(10050)}tail`);
+    await writeFile(path.join(root, "unicode.txt"), "aébc");
+    const policy = policyFor(root);
+    const context = { workspaceRoot: root, workspace: policy.workspace };
+
+    await expect(readFiles({ paths: ["big.txt"], offsetBytes: -1 }, context)).rejects.toThrow(
+      "offsetBytes is below minimum",
+    );
+    await expect(readFiles({ paths: ["big.txt"], maxBytes: 10001 }, context)).rejects.toThrow(
+      "maxBytes is above maximum",
+    );
+
+    const small = await readFiles({ paths: ["small.txt"] }, context);
+
+    expect(small.files[0]).toMatchObject({
+      path: "small.txt",
+      offsetBytes: 0,
+      returnedBytes: 5,
+      truncated: false,
+      content: "hello",
+    });
+    expect(small.files[0]).not.toHaveProperty("nextOffsetBytes");
+
+    const first = await readFiles({ paths: ["big.txt"] }, context);
+
+    expect(first.files[0]).toMatchObject({
+      path: "big.txt",
+      exists: true,
+      type: "file",
+      size: 10054,
+      offsetBytes: 0,
+      returnedBytes: 10000,
+      nextOffsetBytes: 10000,
+      truncated: true,
+    });
+    expect(Object.keys(first.files[0]!)).toEqual([
+      "path",
+      "exists",
+      "type",
+      "size",
+      "offsetBytes",
+      "returnedBytes",
+      "nextOffsetBytes",
+      "truncated",
+      "content",
+    ]);
+    expect(Buffer.byteLength(first.files[0]!.content ?? "", "utf8")).toBe(10000);
+
+    const second = await readFiles(
+      { paths: ["big.txt"], offsetBytes: first.files[0]!.nextOffsetBytes, maxBytes: 10 },
+      context,
+    );
+
+    expect(second.files[0]).toMatchObject({
+      path: "big.txt",
+      offsetBytes: 10000,
+      returnedBytes: 10,
+      nextOffsetBytes: 10010,
+      truncated: true,
+    });
+    expect(second.files[0]!.content).toBe("xxxxxxxxxx");
+
+    const unicodeFirst = await readFiles({ paths: ["unicode.txt"], maxBytes: 2 }, context);
+
+    expect(unicodeFirst.files[0]).toMatchObject({
+      path: "unicode.txt",
+      offsetBytes: 0,
+      returnedBytes: 1,
+      nextOffsetBytes: 1,
+      truncated: true,
+      content: "a",
+    });
+
+    const unicodeSecond = await readFiles(
+      { paths: ["unicode.txt"], offsetBytes: unicodeFirst.files[0]!.nextOffsetBytes, maxBytes: 3 },
+      context,
+    );
+
+    expect(unicodeSecond.files[0]).toMatchObject({
+      path: "unicode.txt",
+      offsetBytes: 1,
+      returnedBytes: 3,
+      nextOffsetBytes: 4,
+      truncated: true,
+      content: "éb",
+    });
+
+    await expect(
+      readFiles({ paths: ["unicode.txt"], offsetBytes: 2, maxBytes: 10 }, context),
+    ).resolves.toMatchObject({
+      files: [{ offsetBytes: 3, returnedBytes: 2, truncated: false, content: "bc" }],
+    });
+    const eof = await readFiles({ paths: ["unicode.txt"], offsetBytes: 999 }, context);
+
+    expect(eof.files[0]).toMatchObject({
+      offsetBytes: 999,
+      returnedBytes: 0,
+      truncated: false,
+      content: "",
+    });
+    expect(eof.files[0]).not.toHaveProperty("nextOffsetBytes");
+  });
+
+  it("keeps read.files protected, missing, and non-file behavior unchanged", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-read-files-errors-"));
+    await mkdir(path.join(root, "dir"));
+    await writeFile(path.join(root, ".env"), "SECRET_TARGET=hidden\n");
+    const policy = policyFor(root);
+    const context = { workspaceRoot: root, workspace: policy.workspace };
+
+    await expect(readFiles({ paths: [".env"] }, context)).rejects.toThrow("protected");
+    const result = await readFiles({ paths: ["missing.txt", "dir"] }, context);
+
+    expect(result).toMatchObject({
+      files: [
+        { path: "missing.txt", exists: false },
+        {
+          path: "dir",
+          exists: true,
+          type: "directory",
+          error: "Path is not a file",
+        },
+      ],
+    });
+    expect(result.files[0]).not.toHaveProperty("offsetBytes");
+    expect(result.files[1]).not.toHaveProperty("offsetBytes");
   });
 
   it("reports manual fallback guidance for capability gaps and unavailable tasks", async () => {

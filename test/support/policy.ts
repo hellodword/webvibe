@@ -35,8 +35,16 @@ tools:
         paths:
           type: array
           minItems: 1
+          maxItems: 50
           items:
             type: string
+        offsetBytes:
+          type: integer
+          minimum: 0
+        maxBytes:
+          type: integer
+          minimum: 1
+          maximum: 10000
       required: [paths]
       additionalProperties: false
   - name: change.apply

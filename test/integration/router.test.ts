@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -27,7 +27,7 @@ describe("tool router", () => {
       });
       await expect(setup.router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
         status: "ok",
-        toolSurface: { version: "3.1.0" },
+        toolSurface: { version: "3.2.0" },
       });
       await expect(setup.router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
@@ -49,6 +49,58 @@ describe("tool router", () => {
         timeout: 2000,
       });
       await expect(setup.router.call("x.nope", {}, { clientId: "c1" })).rejects.toThrow("not exposed");
+    } finally {
+      await setup.close();
+    }
+  });
+
+  it("keeps large read.files results structured and supports explicit byte chunks", async () => {
+    const setup = await setupRouter("webvibe-router-read-files-");
+    try {
+      await writeFile(path.join(setup.root, "large.txt"), "a".repeat(12050));
+      await setup.router.call("context.get", {}, { clientId: "read-client" });
+
+      const first = await setup.router.call(
+        "read.files",
+        { paths: ["large.txt"] },
+        { clientId: "read-client" },
+      );
+
+      expect(first).toMatchObject({
+        status: "ok",
+        files: [
+          {
+            path: "large.txt",
+            size: 12050,
+            offsetBytes: 0,
+            returnedBytes: 10000,
+            nextOffsetBytes: 10000,
+            truncated: true,
+          },
+        ],
+      });
+      expect((first as any).truncated).toBeUndefined();
+      expect((first as any).text).toBeUndefined();
+
+      await expect(
+        setup.router.call(
+          "read.files",
+          { paths: ["large.txt"], offsetBytes: 10000, maxBytes: 50 },
+          { clientId: "read-client" },
+        ),
+      ).resolves.toMatchObject({
+        status: "ok",
+        files: [
+          {
+            path: "large.txt",
+            offsetBytes: 10000,
+            returnedBytes: 50,
+            nextOffsetBytes: 10050,
+            truncated: true,
+            content: "a".repeat(50),
+          },
+        ],
+      });
     } finally {
       await setup.close();
     }

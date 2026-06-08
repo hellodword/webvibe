@@ -63,6 +63,23 @@ describe("default policies", () => {
     expect(devTools.filter((name) => /pnpm|yarn|bun|poetry|maven|gradle|dotnet|ruby|php/.test(name))).toEqual(
       [],
     );
+    const readOnlyReadFiles = normalizeDescriptor(readOnly.tools.find((tool) => tool.name === "read.files")!);
+    const devReadFiles = normalizeDescriptor(dev.tools.find((tool) => tool.name === "read.files")!);
+    for (const descriptor of [readOnlyReadFiles, devReadFiles]) {
+      const schema = descriptor.inputSchema as any;
+      expect(Object.keys(schema.properties)).toEqual(["paths", "offsetBytes", "maxBytes"]);
+      expect(schema.properties.offsetBytes).toEqual({
+        type: "integer",
+        minimum: 0,
+      });
+      expect(schema.properties.maxBytes).toEqual({
+        type: "integer",
+        minimum: 1,
+        maximum: 10000,
+      });
+      expect(schema.required).toEqual(["paths"]);
+      expect(schema.additionalProperties).toBe(false);
+    }
     expect(
       readOnly.tools
         .filter((tool) => tool.name.startsWith("git."))

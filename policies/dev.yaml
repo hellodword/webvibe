@@ -259,7 +259,7 @@ tools:
 
   - name: read.files
     type: builtIn
-    description: Read one or more workspace text files while enforcing protected paths and output limits. Requires context.get first.
+    description: Read one or more workspace text files while enforcing protected paths and output limits. Defaults to 10000 content bytes per file; continue truncated files with nextOffsetBytes, and lower maxBytes if the host still truncates the result. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -269,6 +269,13 @@ tools:
           maxItems: 50
           items:
             type: string
+        offsetBytes:
+          type: integer
+          minimum: 0
+        maxBytes:
+          type: integer
+          minimum: 1
+          maximum: 10000
       required: [paths]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema

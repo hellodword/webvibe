@@ -20,6 +20,13 @@ Recommended order:
 14. Model treats `/resume` as a control signal, verifies with `context.get` plus `git.status` / `git.diff` / `read.stat` / `task.run`, then continues the original interrupted request
 15. `git.commit` only when explicitly requested or appropriate
 
+`read.files` returns text in chunks, defaulting to at most `10000` content bytes
+per file. A truncated file result includes `nextOffsetBytes`; continue that file
+by passing the value as `offsetBytes`. For large files, read one path per call.
+If the ChatGPT Web host still truncates the result, retry the same offset with a
+smaller `maxBytes`. This is output sizing for a relay result, not a bypass of
+OpenAI restrictions.
+
 `webvibe` does not suspend an in-flight JSON-RPC `tools/call` or force
 ChatGPT Web to hard-pend the current assistant turn. UI widget results cannot
 make the ChatGPT Web page reliably pending; this appears to be an OpenAI
