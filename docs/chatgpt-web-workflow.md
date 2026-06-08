@@ -2,6 +2,10 @@
 
 ChatGPT Web coding starts with `context.get`.
 
+For observed black-box host behavior, see
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md). webvibe adapts to
+those limits under OpenAI's Terms of Service; it does not try to bypass them.
+
 Recommended order:
 
 1. `context.get`
@@ -25,14 +29,13 @@ per file. A truncated file result includes `nextOffsetBytes`; continue that file
 by passing the value as `offsetBytes`. For large files, read one path per call.
 If the ChatGPT Web host still truncates the result, retry the same offset with a
 smaller `maxBytes`. This is output sizing for a relay result, not a bypass of
-OpenAI restrictions.
+OpenAI restrictions. Host-side truncation examples are tracked in
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
 `webvibe` does not suspend an in-flight JSON-RPC `tools/call` or force
-ChatGPT Web to hard-pend the current assistant turn. UI widget results cannot
-make the ChatGPT Web page reliably pending; this appears to be an OpenAI
-limitation or bug. `webvibe` does not try to bypass OpenAI restrictions. It
-adapts by opening a local relay barrier and requiring `/resume` through
-`manual.resume` before tools continue.
+ChatGPT Web to hard-pend the current assistant turn. Because UI widget pending
+state is a host-side limit, webvibe adapts by opening a local relay barrier and
+requiring `/resume` through `manual.resume` before tools continue.
 
 While that barrier is pending, follow-up tools are blocked with
 `MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`.
@@ -119,4 +122,6 @@ user message should still start with `/resume`; after `manual.resume`, the model
 verifies state and resumes the original interrupted task.
 
 After changing tool descriptors, annotations, or `_meta` fields, refresh
-connector tools in ChatGPT Web settings and start a new chat.
+connector tools in ChatGPT Web settings and start a new chat. Tool refresh and
+memory caching limits are tracked in
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).

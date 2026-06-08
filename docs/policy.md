@@ -58,7 +58,8 @@ result with `code: "CONTEXT_REQUIRED"` and `nextTool: "context.get"`.
 
 `read.*` tools are relay built-ins. The default policies do not expose raw
 filesystem pass-through tools. This keeps path protection, output truncation,
-and result shape under webvibe control.
+and result shape under webvibe control. Host-side output truncation is still
+possible; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
 `read.files` reads text in byte chunks. Inputs are `paths`, optional
 `offsetBytes` defaulting to `0`, and optional `maxBytes` defaulting to `10000`
@@ -85,7 +86,8 @@ Default dev mode exposes one read-only planning tool and one write tool:
 
 This matches ChatGPT Web's confirmation model. File operations require user
 confirmation, so the default policy puts confirmation at one batch change
-boundary instead of repeated per-file writes.
+boundary instead of repeated per-file writes. Known confirmation limitations are
+tracked in [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
 Batch change limits default to 80 paths, 5 MiB per change, and 1 MiB per file.
 Update/delete operations require `expectedSha256` so stale model plans do not
@@ -140,7 +142,8 @@ health.
 ## Stable Tool Registration
 
 Default policies avoid environment-dependent hiding for the public tool list.
-ChatGPT Web refreshes MCP tools manually, so dynamic registration can leave the
-model reasoning over stale tools. webvibe keeps the list stable and uses
-structured `unavailable` and `CONTEXT_REQUIRED` results instead. Tool surface
-renames are hard cuts; users must refresh connector tools in ChatGPT Web.
+Because ChatGPT Web tool refresh can leave the model reasoning over stale tools,
+webvibe keeps the list stable and uses structured `unavailable` and
+`CONTEXT_REQUIRED` results instead. Tool surface renames are hard cuts; users
+must refresh connector tools in ChatGPT Web. See
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).

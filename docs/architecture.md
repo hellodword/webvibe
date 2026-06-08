@@ -28,10 +28,9 @@ workspace changeset semantics.
 
 The root constraint is ChatGPT Web, not local code. This project exists to make
 ChatGPT Web usable for vibecoding, but ChatGPT Web is not Codex. It has OpenAI
-safety review in front of MCP calls, and that review often blocks raw shell,
-patch text, heredocs, stdin, and similar low-level execution surfaces before the
-local relay can handle them. File operations also require user confirmation in
-ChatGPT Web and cannot be configured to run without asking the way Codex can.
+host-side safety review and UI confirmation in front of MCP calls. Those
+black-box limits are described in [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+webvibe treats them as constraints, not as targets to bypass.
 
 Codex owns model runtime behavior, shell semantics, sandboxing, approval flow,
 patch application, and command execution. Forking or imitating Codex would not
@@ -76,21 +75,20 @@ instead of hostnames, user paths, container IDs, or pod names.
 
 ## Stable Tool Registration
 
-ChatGPT Web does not continuously reconcile MCP tool changes; users often need
-to manually refresh tools. Dynamic hiding based on local command availability can
-leave the model reasoning over stale descriptors. Default webvibe policies keep
-the public tool list stable and gate execution inside tools. If a task
-executable such as `cargo`, `make`, or `pip` is missing, the named task returns
-`status: "unavailable"` with `unavailableReason`. Project manifests and package
-scripts are reported by `context.get`; they do not hide or disable task IDs. The
-public task tool remains `task.run`.
+ChatGPT Web tool refresh is host-controlled and may leave the model reasoning
+over stale descriptors; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+Default webvibe policies keep the public tool list stable and gate execution
+inside tools. If a task executable such as `cargo`, `make`, or `pip` is missing,
+the named task returns `status: "unavailable"` with `unavailableReason`. Project
+manifests and package scripts are reported by `context.get`; they do not hide or
+disable task IDs. The public task tool remains `task.run`.
 
 ## Why Local Task Runner
 
 The default dev policy intentionally does not use a broad desktop/server control
 surface such as `wonderwhy-er/desktop-commander` for command execution. That
-style of upstream exposes command/process surfaces that are likely to be blocked
-or repeatedly challenged by ChatGPT Web's safety and confirmation layer.
+style of upstream exposes command/process surfaces that map poorly to observed
+ChatGPT Web host limits.
 
 `local-task-runner` exposes one narrow tool, `run_task`, and only executes task
 IDs defined by policy. Each task has fixed executable/arguments, bounded
@@ -105,10 +103,9 @@ a shell command.
 ## Why Batch Workspace Apply
 
 Default dev mode uses `change.plan` and `change.apply` instead of raw
-filesystem write/edit tools. ChatGPT Web asks for confirmation on file
-operations and cannot be configured like Codex to skip those prompts. A complete
-batch change gives the user one reviewed write boundary instead of many small
-per-file confirmations.
+filesystem write/edit tools. Because ChatGPT Web confirmation prompts cannot be
+reliably disabled, a complete batch change gives the user one reviewed write
+boundary instead of many small per-file confirmations.
 
 Batch changes also give the relay one place to enforce hash guards, protected
 paths, symlink guards, UTF-8 checks, size limits, and rollback.

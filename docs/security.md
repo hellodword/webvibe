@@ -28,9 +28,9 @@ Security model:
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
 stdin, kill process, Git mutation tools, or raw filesystem write tools in
-default policies. These defaults match ChatGPT Web's host-side safety model:
-raw shell and patch-like surfaces are often blocked before local MCP code runs,
-and file writes require confirmation that cannot be disabled like Codex.
+default policies. These defaults match the observed host-side constraints in
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md): use narrow,
+reviewable tool shapes and do not attempt to bypass ChatGPT Web safety review.
 
 ## OAuth And Pairing
 
@@ -105,10 +105,10 @@ contents are not sent through `manual.gate`. They stay in ChatGPT Web chat or in
 the user's local workspace log file, while the gate receives only a low-risk
 summary of why manual completion is required.
 
-UI widget results cannot make the ChatGPT Web page reliably pending; this
-appears to be an OpenAI limitation or bug. `webvibe` does not try to bypass
-OpenAI restrictions. It adapts by blocking local tools while manual work is
-pending and requiring `/resume` through `manual.resume` before tools continue.
+Because ChatGPT Web cannot reliably be forced into a pending UI state, webvibe
+adapts by blocking local tools while manual work is pending and requiring
+`/resume` through `manual.resume` before tools continue. See
+[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
 Boundaries:
 

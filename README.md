@@ -39,6 +39,7 @@ npx tsc -p tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters
 ## Documents
 
 - [Architecture](docs/architecture.md)
+- [ChatGPT Web Known Limits](docs/chatgpt-web-known-limits.md)
 - [ChatGPT Web Workflow](docs/chatgpt-web-workflow.md)
 - [Policy](docs/policy.md)
 - [Security](docs/security.md)
