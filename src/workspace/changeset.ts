@@ -114,7 +114,10 @@ export async function prepareChangeset(
   const operationId = randomToken(18);
   const title = "Prepared workspace change";
   const instructions =
-    'If ChatGPT Web cannot complete the write action, complete the prepared workspace change manually outside ChatGPT using the review material and the conversation context. Return to the manual completion widget and click "I completed this manually" after you finish.';
+    "If ChatGPT Web cannot complete the write action, show the user the prepared workspace change details in ChatGPT Web before opening manual.gate. " +
+    "If the diff is at most 12KB and 200 lines, show it in a code block; otherwise link the downloadable review artifact from change.prepare. " +
+    "The user should complete the prepared workspace change manually outside ChatGPT, write any command output or logs to a workspace-relative path such as " +
+    `.webvibe/manual-logs/${operationId}.log, paste only that log file path into the manual completion widget, and click "I completed this manually" after finishing.`;
   const artifactStore = new ManualArtifactStore(context.stateDir);
   const artifact = await artifactStore.create({
     label: "Workspace change review material",

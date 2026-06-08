@@ -183,11 +183,16 @@ function manualRequiredForUnavailableTask(
     reason: "external_manual_step",
     title: `Manual task required: ${taskId || "task.run"}`,
     instructions:
-      `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}. ` +
-      "Run the equivalent step outside ChatGPT, paste stdout, stderr, logs, or result details into the manual completion widget, then confirm.",
+      `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}.\n\n` +
+      "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then paste only that log file path into the manual completion widget.\n\n" +
+      `Suggested log path: .webvibe/manual-logs/${safeLogName(taskId || "task.run")}.log`,
     hostObservation: {
       toolName: "task.run",
       outputText: reason,
     },
   };
+}
+
+function safeLogName(taskId: string): string {
+  return taskId.replace(/[^A-Za-z0-9_.-]+/g, "-") || "task";
 }

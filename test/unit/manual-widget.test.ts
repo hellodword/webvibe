@@ -15,7 +15,7 @@ describe("manual gate widget resource", () => {
     });
     expect(resource.contents[0]._meta.ui.domain).toBe("http://127.0.0.1:7777");
     expect(resource.contents[0]._meta["openai/widgetDomain"]).toBe("http://127.0.0.1:7777");
-    expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual(["http://127.0.0.1:7777"]);
+    expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual([]);
   });
 
   it("normalizes widget domain metadata from publicBaseUrl origin", () => {
@@ -26,7 +26,7 @@ describe("manual gate widget resource", () => {
 
     expect(resource.contents[0]._meta.ui.domain).toBe("https://mcp.example.com");
     expect(resource.contents[0]._meta["openai/widgetDomain"]).toBe("https://mcp.example.com");
-    expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual(["https://mcp.example.com"]);
+    expect(resource.contents[0]._meta.ui.csp.connectDomains).toEqual([]);
   });
 
   it("renders generic completion controls and only calls manual.confirm", () => {
@@ -37,10 +37,16 @@ describe("manual gate widget resource", () => {
 
     expect(html).toContain("I completed this manually");
     expect(html).toContain("Cancel");
-    expect(html).toContain("Manual output or logs");
-    expect(html).toContain("Evidence note");
-    expect(html).toContain("loadDetail");
-    expect(html).toContain("fetch(detailUrl");
+    expect(html).toContain("Log file path");
+    expect(html).toContain("manualLogPath");
+    expect(html).toContain("width: min(100%, 680px)");
+    expect(html).not.toContain("Evidence note");
+    expect(html).not.toContain("Output format");
+    expect(html).not.toContain("loadDetail");
+    expect(html).not.toContain("fetch(detailUrl");
+    expect(html).not.toContain("manualOutput");
+    expect(html).not.toContain("manualOutputFormat");
+    expect((html.match(/document.createElement\("textarea"\)/g) ?? []).length).toBe(1);
     expect(html).toContain("manual.confirm");
     expect(html).toContain("sendFollowUpMessage");
     expect(html).toContain("This manual completion card requires the ChatGPT Apps widget runtime.");

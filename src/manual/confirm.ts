@@ -1,32 +1,26 @@
 import { z } from "zod";
 
-import {
-  MANUAL_EVIDENCE_NOTE_MAX_CHARS,
-  MANUAL_OUTPUT_MAX_CHARS,
-} from "./constants.js";
+import { MANUAL_LOG_PATH_MAX_CHARS } from "./constants.js";
 import { ManualPendingStore } from "./pending-store.js";
-import type { ManualActionReason, ManualCheck, ManualOutputFormat } from "./types.js";
+import type { ManualActionReason, ManualCheck } from "./types.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
 import { sha256 } from "../util/hash.js";
 import { fileManifest } from "../workspace/changeset.js";
 import { gitStatus } from "../workspace/inspect/git.js";
+import { normalizeWorkspacePath } from "../workspace/inspect/path.js";
 
 const confirmInputSchema = z
   .object({
     pendingId: z.string().min(1),
     confirmToken: z.string().min(1),
     outcome: z.enum(["completed", "cancelled"]),
-    manualOutput: z.string().max(MANUAL_OUTPUT_MAX_CHARS).optional(),
-    manualOutputFormat: z.enum(["text", "markdown", "json"]).optional(),
-    evidenceNote: z.string().max(MANUAL_EVIDENCE_NOTE_MAX_CHARS).optional(),
+    manualLogPath: z.string().max(MANUAL_LOG_PATH_MAX_CHARS).optional(),
   })
   .strict();
 
 type ManualEvidence = {
-  manualOutput?: string;
-  manualOutputFormat?: ManualOutputFormat;
-  evidenceNote?: string;
+  manualLogPath?: string;
 };
 
 type VerificationResult = {
@@ -83,9 +77,7 @@ export async function confirmManualAction(
   const token = input.success ? input.data.confirmToken : "";
   const evidence: ManualEvidence = input.success
     ? {
-        manualOutput: normalizeOptional(input.data.manualOutput),
-        manualOutputFormat: input.data.manualOutputFormat ?? "text",
-        evidenceNote: normalizeOptional(input.data.evidenceNote),
+        manualLogPath: normalizeManualLogPath(input.data.manualLogPath, context),
       }
     : {};
   const tokenHash = token ? sha256(token) : "";
@@ -284,7 +276,7 @@ function nextResponse(pendingId: string, status: string, evidence: ManualEvidenc
 } {
   const evidenceText = formatEvidenceForFollowUp(evidence);
   return {
-    recommendedTools: ["git.status", "git.diff", "read.stat", "task.run"],
+    recommendedTools: ["git.status", "git.diff", "read.stat", "read.files", "task.run"],
     followUpPrompt: [
       `Manual action ${pendingId} was confirmed with status ${status}.`,
       evidenceText,
@@ -343,25 +335,20 @@ async function writeConfirmAudit(
       pendingId: input.pendingId,
       outcome: input.outcome,
       confirmTokenHash: input.confirmTokenHash,
-      manualOutput: input.evidence?.manualOutput,
-      manualOutputFormat: input.evidence?.manualOutputFormat,
-      evidenceNote: input.evidence?.evidenceNote,
+      manualLogPath: input.evidence?.manualLogPath,
     }),
     input: {
       pendingId: input.pendingId,
       outcome: input.outcome,
       confirmTokenHash: input.confirmTokenHash,
       confirmTokenAccepted: input.confirmTokenAccepted,
-      manualOutput: input.evidence?.manualOutput,
-      manualOutputFormat: input.evidence?.manualOutputFormat,
-      evidenceNote: input.evidence?.evidenceNote,
+      manualLogPath: input.evidence?.manualLogPath,
     },
     rawOutput: {
       status: input.status,
       reason: input.reason,
       verification: input.verification,
-      manualOutputBytes: Buffer.byteLength(input.evidence?.manualOutput ?? "", "utf8"),
-      evidenceNoteBytes: Buffer.byteLength(input.evidence?.evidenceNote ?? "", "utf8"),
+      manualLogPathBytes: Buffer.byteLength(input.evidence?.manualLogPath ?? "", "utf8"),
     },
     verification: input.verification,
   });
@@ -372,31 +359,24 @@ function normalizeOptional(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function normalizeManualLogPath(
+  value: string | undefined,
+  context: { workspaceRoot: string; workspace: WorkspacePolicy },
+): string | undefined {
+  const trimmed = normalizeOptional(value);
+  if (!trimmed) return undefined;
+  return normalizeWorkspacePath(trimmed, context, { allowRoot: false }).relativePath;
+}
+
 function eventEvidence(evidence: ManualEvidence): {
-  note?: string;
-  manualOutput?: string;
-  manualOutputFormat?: ManualOutputFormat;
+  manualLogPath?: string;
 } {
   return {
-    note: evidence.evidenceNote,
-    manualOutput: evidence.manualOutput,
-    manualOutputFormat: evidence.manualOutput ? (evidence.manualOutputFormat ?? "text") : undefined,
+    manualLogPath: evidence.manualLogPath,
   };
 }
 
 function formatEvidenceForFollowUp(evidence: ManualEvidence): string {
-  const parts: string[] = [];
-  if (evidence.evidenceNote) {
-    parts.push(`Manual evidence note:\n${evidence.evidenceNote}`);
-  }
-  if (evidence.manualOutput) {
-    const format = evidence.manualOutputFormat ?? "text";
-    parts.push(`Manual output/logs (${format}):\n${fence(format, evidence.manualOutput)}`);
-  }
-  return parts.join("\n\n");
-}
-
-function fence(format: ManualOutputFormat, value: string): string {
-  const info = format === "json" ? "json" : format === "markdown" ? "markdown" : "";
-  return `\`\`\`${info}\n${value}\n\`\`\``;
+  if (!evidence.manualLogPath) return "";
+  return `Manual log file path:\n${evidence.manualLogPath}`;
 }

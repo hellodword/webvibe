@@ -13,8 +13,9 @@ describe("ChatGPT Web workflow docs", () => {
     expect(text).toContain("secondary_confirmation_required");
     expect(text).toContain("blocked_by_openai_safety");
     expect(text).toContain("manual_required_capability_limit");
-    expect(text).toContain("manual output/logs");
-    expect(text).toContain("/manual-gates/:pendingId");
+    expect(text).toContain("workspace-relative log file path");
+    expect(text).toContain("does not fetch `/manual-gates/:pendingId`");
+    expect(text).toContain("12KB and 200 lines");
     expect(text).toContain("manual.gate");
     expect(text).toContain("manual.confirm");
     expect(text).toContain("sendFollowUpMessage");

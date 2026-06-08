@@ -88,7 +88,10 @@ describe("default policies", () => {
 
     const manualConfirm = dev.tools.find((tool) => tool.name === "manual.confirm")!;
     expect((manualConfirm._meta as any).ui.visibility).toEqual(["app"]);
-    expect((manualConfirm.inputSchema as any).properties.manualOutput.maxLength).toBe(20000);
+    expect((manualConfirm.inputSchema as any).properties.manualLogPath.maxLength).toBe(500);
+    expect((manualConfirm.inputSchema as any).properties.manualOutput).toBeUndefined();
+    expect((manualConfirm.inputSchema as any).properties.manualOutputFormat).toBeUndefined();
+    expect((manualConfirm.inputSchema as any).properties.evidenceNote).toBeUndefined();
     expect((manualConfirm.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
       "string",
     );
@@ -98,7 +101,7 @@ describe("default policies", () => {
       "ui://webvibe/manual-gate.html",
     );
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBe(true);
-    expect((manualGate.outputSchema as any).properties.detailUrl.type).toBe("string");
+    expect((manualGate.outputSchema as any).properties.detailUrl).toBeUndefined();
     expect(
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.nextTool.enum,

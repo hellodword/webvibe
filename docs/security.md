@@ -93,9 +93,9 @@ write, encode the payload, or apply a prepared payload by id. Instead, the model
 opens a generic widget that asks the user to complete the required step outside
 ChatGPT and return to confirm. The same manual path is used when the best next
 step requires unavailable arbitrary shell, an unavailable configured task, or
-another tool capability limit. Confirmation records user intent, optional manual
-output/logs/evidence, and optional post-completion checks; it does not perform
-the blocked write.
+another tool capability limit. Confirmation records user intent, an optional
+workspace-relative manual log file path, and optional post-completion checks; it
+does not perform the blocked write.
 
 Boundaries:
 
@@ -110,10 +110,10 @@ Boundaries:
 `manual.confirm` is the authoritative transition from a pending manual action to
 confirmed/cancelled/expired. It does not apply patches, delete files, run
 commands, or mutate the workspace. It records that the user clicked the widget
-after completing the manual step outside ChatGPT, stores optional manual
-output/logs/evidence from the widget, optionally verifies configured
-post-completion checks, writes an audit event, and lets the widget ask ChatGPT
-to continue in a new turn.
+after completing the manual step outside ChatGPT, stores an optional
+workspace-relative manual log file path from the widget, optionally verifies
+configured post-completion checks, writes an audit event, and lets the widget
+ask ChatGPT to continue in a new turn.
 
 `manual.confirm` exists because a widget button alone does not tell the local
 relay what happened, `sendFollowUpMessage` alone creates no trusted server audit
@@ -128,10 +128,13 @@ cannot log that blocked call directly. The model records the observed host
 output by passing it to `manual.gate.hostObservation`.
 
 The `manual.gate` tool result is intentionally lightweight. Long instructions,
-artifact lists, and checks stay in private pending state and are loaded by the
-widget through `/manual-gates/:pendingId` with the component-only confirm token.
-This keeps ChatGPT Web widget hydration small and avoids leaking the confirm
-token into model-visible `structuredContent`.
+artifact lists, and checks are not requested by the widget. ChatGPT Web shows
+manual details in chat before opening the gate: commands include stdout/stderr
+redirection to a workspace-relative log file, small prepared diffs are shown
+inline, and large prepared diffs use the artifact download URL from
+`change.prepare`. The widget only collects an optional workspace-relative log
+file path, keeping ChatGPT Web widget hydration and widget-origin requests small
+and avoiding leaking the confirm token into model-visible `structuredContent`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,

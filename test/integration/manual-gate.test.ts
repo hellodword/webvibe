@@ -52,8 +52,10 @@ describe("manual gate", () => {
       expect(gate.structuredContent.instructions).toBeUndefined();
       expect(gate.structuredContent.artifacts).toBeUndefined();
       expect(gate.structuredContent.checks).toBeUndefined();
+      expect(gate.structuredContent.detailUrl).toBeUndefined();
       expect(gate._meta.manualAction.artifacts).toBeUndefined();
       expect(gate._meta.manualAction.checks).toBeUndefined();
+      expect(gate._meta.manualAction.detailUrl).toBeUndefined();
       expect(Buffer.byteLength(JSON.stringify(gate), "utf8")).toBeLessThan(4096);
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
@@ -78,7 +80,7 @@ describe("manual gate", () => {
         "manual.gate",
         {
           reason: "external_manual_step",
-          title: "Manual output action",
+          title: "Manual log action",
           instructions: "Run external command and paste logs.",
         },
         caller,
@@ -91,20 +93,17 @@ describe("manual gate", () => {
           pendingId: outputPendingId,
           confirmToken: outputToken,
           outcome: "completed",
-          manualOutput: "stdout: done",
-          manualOutputFormat: "text",
-          evidenceNote: "Ran outside ChatGPT.",
+          manualLogPath: ".webvibe/manual-logs/manual-output-action.log",
         },
         caller,
       )) as any;
-      expect(outputConfirm.next.followUpPrompt).toContain("stdout: done");
-      expect(outputConfirm.next.followUpPrompt).toContain("Ran outside ChatGPT.");
+      expect(outputConfirm.next.followUpPrompt).toContain(
+        ".webvibe/manual-logs/manual-output-action.log",
+      );
       const outputRecord = await new ManualPendingStore(stateDir).read(outputPendingId);
       expect(outputRecord?.events.at(-1)).toMatchObject({
         type: "confirmed",
-        note: "Ran outside ChatGPT.",
-        manualOutput: "stdout: done",
-        manualOutputFormat: "text",
+        manualLogPath: ".webvibe/manual-logs/manual-output-action.log",
       });
 
       const confirmed = await new ManualPendingStore(stateDir).read(pendingId);

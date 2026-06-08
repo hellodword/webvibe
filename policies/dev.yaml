@@ -378,7 +378,18 @@ tools:
 
   - name: manual.gate
     type: builtIn
-    description: Open a generic ChatGPT widget that waits for the user to complete a manual step outside ChatGPT and then confirm completion. This tool does not apply patches, delete files, run commands, or mutate the workspace. It creates an expiring pending manual action and returns a widget-backed tool result. Use this after an OpenAI safety block or whenever the user must manually complete something before the model continues.
+    description: >-
+      Open a generic ChatGPT widget that waits for the user to complete a manual
+      step outside ChatGPT and then confirm completion. This tool does not apply
+      patches, delete files, run commands, or mutate the workspace. It creates
+      an expiring pending manual action and returns a small widget-backed tool
+      result. Before calling this tool, ChatGPT Web must show the user the
+      detailed manual instructions in the chat: for commands, include the
+      complete command and redirect stdout/stderr to a workspace-relative
+      temporary log file; for prepared diffs, show small diffs inline or link
+      large review artifacts from change.prepare. Use this after an OpenAI
+      safety block or whenever the user must manually complete something before
+      the model continues.
     inputSchema:
       type: object
       properties:
@@ -433,12 +444,10 @@ tools:
           type: string
         expiresAt:
           type: string
-        detailUrl:
-          type: string
         confirmTool:
           type: string
           enum: [manual.confirm]
-      required: [status, operationId, pendingId, reason, title, expiresAt, detailUrl, confirmTool]
+      required: [status, operationId, pendingId, reason, title, expiresAt, confirmTool]
       additionalProperties: false
     annotations:
       readOnlyHint: false
@@ -455,7 +464,7 @@ tools:
 
   - name: manual.confirm
     type: builtIn
-    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, accepts manual output/logs/evidence, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
+    description: manual.confirm is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. It records that the user clicked the widget after completing the manual step outside ChatGPT, accepts an optional workspace-relative manual log file path, optionally verifies configured post-completion checks, writes an audit event, and lets the widget ask ChatGPT to continue in a new turn. The widget must provide the component-only confirmToken from tool result _meta.
     inputSchema:
       type: object
       properties:
@@ -468,15 +477,9 @@ tools:
         outcome:
           type: string
           enum: [completed, cancelled]
-        manualOutput:
+        manualLogPath:
           type: string
-          maxLength: 20000
-        manualOutputFormat:
-          type: string
-          enum: [text, markdown, json]
-        evidenceNote:
-          type: string
-          maxLength: 4000
+          maxLength: 500
       required: [pendingId, confirmToken, outcome]
       additionalProperties: false
     outputSchema:
@@ -538,7 +541,14 @@ tools:
 
   - name: task.run
     type: builtIn
-    description: Run one preconfigured local task by taskId, optionally from a workspace-relative cwd. Does not accept arbitrary shell commands. Available taskIds, cwd support, argument rules, and availability are returned by context.get. If the task is unavailable and manualRequired is returned, call manual.gate with those arguments so the user can run the task manually and paste output/logs. Requires context.get first.
+    description: >-
+      Run one preconfigured local task by taskId, optionally from a
+      workspace-relative cwd. Does not accept arbitrary shell commands.
+      Available taskIds, cwd support, argument rules, and availability are
+      returned by context.get. If the task is unavailable and manualRequired is
+      returned, show its command/log-file instructions in ChatGPT Web, then call
+      manual.gate with those arguments so the user can run the task manually and
+      paste the workspace-relative log file path. Requires context.get first.
     inputSchema:
       type: object
       properties:

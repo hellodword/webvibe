@@ -7,8 +7,6 @@ export type ManualActionReason =
 
 export type ManualActionStatus = "pending" | "confirmed" | "cancelled" | "expired";
 
-export type ManualOutputFormat = "text" | "markdown" | "json";
-
 export type ManualArtifactRef = {
   artifactId: string;
   label: string;
@@ -71,8 +69,6 @@ export type ManualActionRecord = {
       | "cancelled"
       | "expired"
       | "verification_failed";
-    note?: string;
-    manualOutput?: string;
-    manualOutputFormat?: ManualOutputFormat;
+    manualLogPath?: string;
   }>;
 };

@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import type { McpToolDescriptor } from "../descriptor/normalize.js";
 import type { TaskPolicy, UpstreamPolicy, WorkspacePolicy } from "../policy/policy.js";
 import { BadRequestError } from "../util/errors.js";
-import { isInside } from "../util/paths.js";
+import { isInside, toWorkspaceRelative } from "../util/paths.js";
 import { findExecutable } from "../workspace/inspect/command.js";
 import { normalizeWorkspacePath } from "../workspace/inspect/path.js";
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
@@ -156,11 +156,18 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     const startedAt = Date.now();
     const timeoutSeconds = this.effectiveTimeoutSeconds(taskId, args.timeoutSeconds);
     const cwd = await this.resolveTaskCwd(task, args.cwd);
-    const unavailable = await this.checkAvailability(taskId, task, timeoutSeconds, startedAt);
+    const extraArgs = this.extraArgsForTask(task, args.extraArgs);
+    const unavailable = await this.checkAvailability(
+      taskId,
+      task,
+      timeoutSeconds,
+      startedAt,
+      cwd,
+      extraArgs,
+    );
     if (unavailable) return unavailable;
 
     const env = { ...process.env, ...this.policy.env, ...task.env };
-    const extraArgs = this.extraArgsForTask(task, args.extraArgs);
 
     return new Promise<TaskResult>((resolve) => {
       const child = spawn(task.executable, [...(task.args ?? []), ...extraArgs], {
@@ -232,6 +239,8 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     task: TaskPolicy,
     timeoutSeconds: number,
     startedAt: number,
+    cwd: string,
+    extraArgs: string[],
   ): Promise<TaskResult | undefined> {
     const env = { ...process.env, ...this.policy.env, ...task.env };
     const executable = await findExecutable(task.executable, env, this.workspaceRoot);
@@ -241,6 +250,10 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         timeoutSeconds,
         startedAt,
         `Missing executable: ${displayExecutable(task.executable)}`,
+        task,
+        cwd,
+        this.workspaceRoot,
+        extraArgs,
       );
     }
     return undefined;
@@ -325,6 +338,10 @@ function unavailable(
   timeoutSeconds: number,
   startedAt: number,
   reason: string,
+  task: TaskPolicy,
+  cwd: string,
+  workspaceRoot: string,
+  extraArgs: string[],
 ): TaskResult {
   return {
     status: "unavailable",
@@ -335,22 +352,55 @@ function unavailable(
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
     unavailableReason: reason,
-    manualRequired: manualRequiredForTask(taskId, reason),
+    manualRequired: manualRequiredForTask(taskId, reason, task, cwd, workspaceRoot, extraArgs),
   };
 }
 
-function manualRequiredForTask(taskId: string, reason: string): ManualRequired {
+function manualRequiredForTask(
+  taskId: string,
+  reason: string,
+  task: TaskPolicy,
+  cwd: string,
+  workspaceRoot: string,
+  extraArgs: string[],
+): ManualRequired {
   const outputText = `Task unavailable: ${reason}`;
+  const logPath = `.webvibe/manual-logs/${safeLogName(taskId)}.log`;
+  const cwdRelative = toWorkspaceRelative(workspaceRoot, cwd) || ".";
+  const command = [...[task.executable, ...(task.args ?? []), ...extraArgs].map(shellQuote)].join(
+    " ",
+  );
+  const commandInCwd =
+    cwdRelative === "." ? command : `cd ${shellQuote(cwdRelative)} && ${command}`;
   return {
     nextTool: "manual.gate",
     reason: "external_manual_step",
     title: `Manual task required: ${taskId}`,
     instructions:
-      `ChatGPT Web could not run task '${taskId}' because ${reason}. ` +
-      "Run the equivalent step outside ChatGPT, paste stdout, stderr, logs, or result details into the manual completion widget, then confirm.",
+      `ChatGPT Web could not run task '${taskId}' because ${reason}.\n\n` +
+      "Run this command outside ChatGPT from the workspace root:\n\n" +
+      "```sh\n" +
+      "mkdir -p .webvibe/manual-logs\n" +
+      `LOG=${shellQuote(logPath)}\n` +
+      `( ${commandInCwd} ) >"$LOG" 2>&1\n` +
+      "STATUS=$?\n" +
+      "printf '\\n[exit_code=%s]\\n' \"$STATUS\" >>\"$LOG\"\n" +
+      "printf '%s\\n' \"$LOG\"\n" +
+      "exit \"$STATUS\"\n" +
+      "```\n\n" +
+      `Paste only this workspace-relative log file path into the manual completion widget: ${logPath}`,
     hostObservation: {
       toolName: "task.run",
       outputText,
     },
   };
+}
+
+function safeLogName(taskId: string): string {
+  return taskId.replace(/[^A-Za-z0-9_.-]+/g, "-") || "task";
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }

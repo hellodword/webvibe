@@ -35,5 +35,4 @@ export const CAPABILITY_LIMIT_FRAGMENTS = [
   "task upstream is unavailable",
 ];
 
-export const MANUAL_OUTPUT_MAX_CHARS = 20_000;
-export const MANUAL_EVIDENCE_NOTE_MAX_CHARS = 4_000;
+export const MANUAL_LOG_PATH_MAX_CHARS = 500;

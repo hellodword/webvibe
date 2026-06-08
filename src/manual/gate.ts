@@ -56,7 +56,6 @@ export async function openManualGate(
     reason: ManualActionReason;
     title: string;
     expiresAt: string;
-    detailUrl: string;
     confirmTool: "manual.confirm";
   };
   content: Array<{ type: "text"; text: string }>;
@@ -65,7 +64,6 @@ export async function openManualGate(
       operationId: string;
       pendingId: string;
       confirmToken: string;
-      detailUrl: string;
     };
   };
 }> {
@@ -99,15 +97,6 @@ export async function openManualGate(
   const pendingStore = new ManualPendingStore(context.stateDir);
   const pendingId = pendingStore.newPendingId();
   const confirmToken = randomToken(24);
-  const publicDetailUrl = manualGateDetailUrl({
-    publicBaseUrl: context.publicBaseUrl,
-    pendingId,
-  });
-  const privateDetailUrl = manualGateDetailUrl({
-    publicBaseUrl: context.publicBaseUrl,
-    pendingId,
-    confirmToken,
-  });
   const classification = classifyHostOutput(input.hostObservation?.outputText);
   const hostObservation = input.hostObservation
     ? {
@@ -173,13 +162,12 @@ export async function openManualGate(
       reason: record.reason,
       title: record.title,
       expiresAt: record.expiresAt,
-      detailUrl: publicDetailUrl,
       confirmTool: "manual.confirm",
     },
     content: [
       {
         type: "text",
-        text: "Manual completion widget opened. Complete the manual step, paste output or logs into the widget, then confirm.",
+        text: "Manual completion widget opened. Complete the manual step, paste a workspace-relative log file path into the widget if logs were produced, then confirm.",
       },
     ],
     _meta: {
@@ -187,21 +175,7 @@ export async function openManualGate(
         operationId: record.operationId,
         pendingId: record.pendingId,
         confirmToken,
-        detailUrl: privateDetailUrl,
       },
     },
   };
-}
-
-export function manualGateDetailUrl(input: {
-  publicBaseUrl: string;
-  pendingId: string;
-  confirmToken?: string;
-}): string {
-  const url = new URL(
-    `/manual-gates/${encodeURIComponent(input.pendingId)}`,
-    input.publicBaseUrl,
-  );
-  if (input.confirmToken) url.searchParams.set("t", input.confirmToken);
-  return url.toString();
 }
