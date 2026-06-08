@@ -20,13 +20,12 @@ export type PreparedManualAction = {
   instructions: string;
   artifacts: ManualArtifactRef[];
   checks: ManualCheck[];
-  debugPayload?: unknown;
 };
 
 export class PreparedManualActionStore {
   readonly dir: string;
 
-  constructor(private readonly stateDir: string) {
+  constructor(stateDir: string) {
     this.dir = path.join(stateDir, MANUAL_PREPARED_DIR);
   }
 
@@ -38,7 +37,12 @@ export class PreparedManualActionStore {
   ): Promise<PreparedManualAction> {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const record: PreparedManualAction = {
-      ...input,
+      operationId: input.operationId,
+      createdByTool: input.createdByTool,
+      title: input.title,
+      instructions: input.instructions,
+      artifacts: input.artifacts,
+      checks: input.checks,
       preparedId: randomToken(18),
       createdAt,
       expiresAt: input.expiresAt ?? new Date(Date.parse(createdAt) + MANUAL_PREPARED_TTL_MS).toISOString(),

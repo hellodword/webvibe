@@ -30,7 +30,7 @@ export type ManualArtifactRecord = {
 export class ManualArtifactStore {
   readonly dir: string;
 
-  constructor(private readonly stateDir: string) {
+  constructor(stateDir: string) {
     this.dir = path.join(stateDir, MANUAL_ARTIFACT_DIR);
   }
 

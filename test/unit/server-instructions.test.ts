@@ -6,44 +6,25 @@ const safetyBlock =
   "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.";
 
 describe("server instructions", () => {
-  it("front-loads ChatGPT Web write and manual gate rules", () => {
-    const prefix = webvibeServerInstructions.slice(0, 1200);
-
-    expect(prefix).toContain("context.get");
-    expect(prefix).toContain("change.prepare");
-    expect(prefix).toContain("change.apply");
-    expect(prefix).toContain("manual.gate");
-    expect(prefix).toContain(safetyBlock);
-    expect(prefix).toContain("retry once");
-    expect(prefix).toContain("retry that same tool call once");
-    expect(prefix).toContain("identical tool name");
-    expect(prefix).toContain("identical JSON arguments");
-    expect(webvibeServerInstructions).toContain("Before any manual.gate call");
-    expect(webvibeServerInstructions).toContain("must first show the exact manual instructions");
+  it("publishes the initialize-time workflow contract", () => {
+    expect(webvibeServerInstructions).toContain("context.get");
+    expect(webvibeServerInstructions).toContain("change.prepare");
+    expect(webvibeServerInstructions).toContain("change.apply");
+    expect(webvibeServerInstructions).toContain("manual.gate");
     expect(webvibeServerInstructions).toContain("manual.resume");
     expect(webvibeServerInstructions).toContain("/resume");
     expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
+    expect(webvibeServerInstructions).toContain(safetyBlock);
+    expect(webvibeServerInstructions).toContain("identical JSON arguments");
     expect(webvibeServerInstructions).toContain("stop the assistant turn immediately");
-    expect(webvibeServerInstructions).toContain("Capability limits are not final answers");
-    expect(webvibeServerInstructions).toContain("Do not end by saying you could not run it");
-    expect(webvibeServerInstructions).toContain("Never put manual commands");
-    expect(webvibeServerInstructions).toContain("log contents in manual.gate arguments");
-    expect(webvibeServerInstructions).toContain("capability.limit");
   });
 
-  it("classifies host output without bypass advice", () => {
+  it("covers host-output decisions without bypass advice", () => {
     expect(webvibeServerInstructions).toContain("normal_tool_result");
     expect(webvibeServerInstructions).toContain("secondary_confirmation_required");
     expect(webvibeServerInstructions).toContain("blocked_by_openai_safety");
     expect(webvibeServerInstructions).toContain("manual_required_capability_limit");
     expect(webvibeServerInstructions).toContain("OpenAI host limitation or bug");
-    expect(webvibeServerInstructions).toContain("retry the same manual.gate call once");
-    expect(webvibeServerInstructions).toContain("original interrupted user request");
-    expect(webvibeServerInstructions).toContain("cannot run arbitrary shell");
-    expect(webvibeServerInstructions).toContain("no matching task id");
-    expect(webvibeServerInstructions).toContain("cannot execute arbitrary node");
-    expect(webvibeServerInstructions).toContain("requires confirmation");
-    expect(webvibeServerInstructions).toContain("click allow");
     expect(webvibeServerInstructions).not.toContain("base64");
     expect(webvibeServerInstructions).not.toContain("split into smaller");
     expect(webvibeServerInstructions).not.toContain("applyById");

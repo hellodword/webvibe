@@ -1,9 +1,7 @@
 export type ManualActionReason =
   | "openai_safety_block"
-  | "host_confirmation_block"
   | "manual_review_requested"
-  | "external_manual_step"
-  | "user_requested_manual_step";
+  | "external_manual_step";
 
 export type ManualActionStatus = "pending" | "confirmed" | "cancelled" | "expired";
 

@@ -27,9 +27,6 @@ limitation or bug. `webvibe` does not try to bypass OpenAI restrictions. It
 adapts by opening a local relay barrier and requiring `/resume` through
 `manual.resume` before tools continue.
 
-This is treated as an OpenAI limitation or bug, not a behavior for webvibe to
-bypass.
-
 While that barrier is pending, follow-up tools are blocked with
 `MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`.
 `context.get` is also blocked while manual work is pending, because the current

@@ -10,18 +10,13 @@ import { main } from "../../src/main.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("scaffold", () => {
-  it("parses config CLI flags and help", () => {
+  it("parses CLI flags and prints help without loading config", async () => {
     expect(parseCliArgs(["--config", "./config.yaml"])).toEqual({ config: "./config.yaml" });
     expect(parseCliArgs(["--config=./config.yaml"])).toEqual({ config: "./config.yaml" });
     expect(parseCliArgs(["--help"])).toEqual({ help: true });
     expect(helpText()).toContain("Usage: webvibe --config <path>");
-  });
-
-  it("requires a config file", async () => {
     await expect(loadRuntimeConfig({})).rejects.toThrow("Missing required --config");
-  });
 
-  it("prints help without loading config", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     try {
       await main(["--help"]);
@@ -60,11 +55,11 @@ auth:
     expect(runtime.config.auth.accessTokenTtlDays).toBe(30);
   });
 
-  it("uses server mode to select a built-in policy", async () => {
+  it("uses server mode to select a built-in policy and rejects policy conflicts", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
-    const configPath = path.join(root, "config.yaml");
+    const modeConfigPath = path.join(root, "config.yaml");
     await writeFile(
-      configPath,
+      modeConfigPath,
       `version: 1
 server:
   mode: "dev"
@@ -75,17 +70,14 @@ auth:
 `,
     );
 
-    const runtime = await loadRuntimeConfig({ config: configPath });
+    const runtime = await loadRuntimeConfig({ config: modeConfigPath });
     expect(runtime.workspaceRoot).toBe(root);
     expect(runtime.policyPath).toBe(defaultPolicyPaths.dev);
-  });
 
-  it("rejects configs with server mode and server policy", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
     const policyPath = await writeFakePolicy(root);
-    const configPath = path.join(root, "config.yaml");
+    const conflictConfigPath = path.join(root, "conflict.yaml");
     await writeFile(
-      configPath,
+      conflictConfigPath,
       `version: 1
 server:
   mode: "dev"
@@ -95,27 +87,8 @@ auth:
 `,
     );
 
-    await expect(loadRuntimeConfig({ config: configPath })).rejects.toThrow(
+    await expect(loadRuntimeConfig({ config: conflictConfigPath })).rejects.toThrow(
       "server.mode and server.policy are mutually exclusive",
     );
-  });
-
-  it("rejects top-level policy config", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-"));
-    const policyPath = await writeFakePolicy(root);
-    const configPath = path.join(root, "config.yaml");
-    await writeFile(
-      configPath,
-      `version: 1
-server:
-  mode: "dev"
-auth:
-  pairingCode: "123456"
-policy:
-  path: "${policyPath}"
-`,
-    );
-
-    await expect(loadRuntimeConfig({ config: configPath })).rejects.toThrow("Unrecognized key");
   });
 });

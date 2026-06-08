@@ -157,7 +157,6 @@ In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,
 artifact downloads, host observations supplied by the model, and manual resume
 events. Download tokens are never logged in plaintext.
-In dev mode, audit records redacted full tool inputs for troubleshooting.
 
 ## Context Preflight
 

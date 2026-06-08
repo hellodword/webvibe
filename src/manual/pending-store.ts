@@ -15,7 +15,7 @@ import {
 export class ManualPendingStore {
   readonly dir: string;
 
-  constructor(private readonly stateDir: string) {
+  constructor(stateDir: string) {
     this.dir = path.join(stateDir, MANUAL_PENDING_DIR);
   }
 

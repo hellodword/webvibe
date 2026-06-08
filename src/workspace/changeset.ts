@@ -134,12 +134,6 @@ export async function prepareChangeset(
     instructions,
     artifacts: [artifact.ref],
     checks,
-    debugPayload: {
-      baseRevision: plan.baseRevision,
-      summary: plan.summary,
-      files: plan.files,
-      diff: plan.diff,
-    },
   });
 
   await context.audit?.write({

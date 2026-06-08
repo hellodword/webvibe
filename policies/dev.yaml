@@ -419,10 +419,8 @@ tools:
           type: string
           enum:
             - openai_safety_block
-            - host_confirmation_block
             - manual_review_requested
             - external_manual_step
-            - user_requested_manual_step
         hostObservation:
           type: object
           properties:
@@ -450,10 +448,8 @@ tools:
           type: string
           enum:
             - openai_safety_block
-            - host_confirmation_block
             - manual_review_requested
             - external_manual_step
-            - user_requested_manual_step
         expiresAt:
           type: string
         resumeTool:

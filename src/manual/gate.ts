@@ -11,7 +11,6 @@ import { ManualPendingStore } from "./pending-store.js";
 import { PreparedManualActionStore } from "./prepared-store.js";
 import { buildManualActionScope } from "./scope.js";
 import type { ManualActionReason, ManualArtifactRef, ManualCheck } from "./types.js";
-import type { LimitsPolicy, WorkspacePolicy } from "../policy/policy.js";
 import type { CallerIdentity } from "../router/tools-call.js";
 import type { AuditLog } from "../state/audit.js";
 import { BadRequestError } from "../util/errors.js";
@@ -22,10 +21,8 @@ const gateInputSchema = z
     preparedId: z.string().optional(),
     reason: z.enum([
       "openai_safety_block",
-      "host_confirmation_block",
       "manual_review_requested",
       "external_manual_step",
-      "user_requested_manual_step",
     ]),
     hostObservation: z
       .object({
@@ -41,10 +38,7 @@ export async function openManualGate(
   rawArgs: unknown,
   context: {
     workspaceRoot: string;
-    workspace: WorkspacePolicy;
-    limits: LimitsPolicy;
     stateDir: string;
-    publicBaseUrl: string;
     caller: CallerIdentity;
     audit?: AuditLog;
   },
@@ -66,10 +60,6 @@ export async function openManualGate(
   };
   content: Array<{ type: "text"; text: string }>;
 }> {
-  void context.workspaceRoot;
-  void context.workspace;
-  void context.limits;
-
   const input = gateInputSchema.parse(rawArgs);
   let title = "Manual action required";
   let instructions =

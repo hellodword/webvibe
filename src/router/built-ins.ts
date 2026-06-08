@@ -133,10 +133,7 @@ export function callBuiltIn(
   if (name === "manual.gate") {
     return openManualGate(args, {
       workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-      limits: context.policy.limits,
       stateDir: context.stateDir,
-      publicBaseUrl: context.publicBaseUrl,
       caller: context.caller,
       audit: context.audit,
     });

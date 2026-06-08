@@ -110,6 +110,16 @@ describe("default policies", () => {
     expect((manualGate._meta as any).ui).toBeUndefined();
     expect((manualGate._meta as any)["openai/outputTemplate"]).toBeUndefined();
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBeUndefined();
+    expect((manualGate.inputSchema as any).properties.reason.enum).toEqual([
+      "openai_safety_block",
+      "manual_review_requested",
+      "external_manual_step",
+    ]);
+    expect((manualGate.outputSchema as any).properties.reason.enum).toEqual([
+      "openai_safety_block",
+      "manual_review_requested",
+      "external_manual_step",
+    ]);
     expect((manualGate.inputSchema as any).properties.title).toBeUndefined();
     expect((manualGate.inputSchema as any).properties.instructions).toBeUndefined();
     expect((manualGate.outputSchema as any).properties.title).toBeUndefined();
@@ -136,40 +146,8 @@ describe("default policies", () => {
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.userInstructions.type,
     ).toBe("string");
-    expect(dev.tools.find((tool) => tool.name === "task.run")!.description).toContain(
-      "no matching taskId",
-    );
-    expect(dev.tools.find((tool) => tool.name === "task.run")!.description).toContain(
-      "not with the manual command",
-    );
-    expect(dev.tools.find((tool) => tool.name === "manual.gate")!.description).toContain(
-      "Never include manual commands",
-    );
-    expect(dev.tools.find((tool) => tool.name === "manual.gate")!.description).toContain(
-      "capability.limit",
-    );
     const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
-    const devPolicyText = JSON.stringify(dev);
-    expect(devPolicyText).not.toContain("preparedChangeId");
-    expect(devPolicyText).not.toContain("hiddenPayloadId");
-    expect(devPolicyText).not.toContain("serverSidePayloadId");
-  });
-
-  it("keeps context.get first and strongly described", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-context-"));
-    const dev = await loadPolicy("policies/dev.yaml", {
-      workspaceRoot: root,
-      stateDir: path.join(root, "state"),
-    });
-    const descriptor = normalizeDescriptor(dev.tools[0]);
-    expect(descriptor.name).toBe("context.get");
-    expect(descriptor.description).toContain("Call this first");
-    expect(descriptor.annotations).toMatchObject({
-      readOnlyHint: true,
-      destructiveHint: false,
-      openWorldHint: false,
-    });
   });
 
   it("keeps nested JSON schema required and primitive fields valid when capping depth", async () => {

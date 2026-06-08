@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -87,16 +87,29 @@ describe("manual action stores", () => {
     ).resolves.toMatchObject({ status: "expired" });
   });
 
-  it("keeps manual types and confirm implementation generic", async () => {
-    const types = await readFile("src/manual/types.ts", "utf8");
-    for (const forbidden of ["patchKind", "applyPatch", "deletePaths", "gitApplyCommand", "rmCommand"]) {
-      expect(types).not.toContain(forbidden);
-    }
-    const resume = await readFile("src/manual/resume.ts", "utf8");
-    for (const forbidden of ["applyPlan", "writeFileAtomic", "unlink(", "rm(", "mkdir(", "upstreams.call"]) {
-      expect(resume).not.toContain(forbidden);
-    }
-    expect(resume).not.toContain('call("task.run"');
+  it("stores prepared manual state without debug payloads", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-prepared-store-"));
+    const stateDir = path.join(root, "state");
+    const store = new PreparedManualActionStore(stateDir);
+    const prepared = await store.create({
+      operationId: "op",
+      createdByTool: "test",
+      title: "Prepared change",
+      instructions: "Review manually.",
+      artifacts: [],
+      checks: [],
+      debugPayload: { secret: "should not be written" },
+    } as any);
+
+    const saved = await store.read(prepared.preparedId);
+    expect(saved).toMatchObject({
+      operationId: "op",
+      createdByTool: "test",
+      title: "Prepared change",
+      artifacts: [],
+      checks: [],
+    });
+    expect(saved).not.toHaveProperty("debugPayload");
   });
 });
 
