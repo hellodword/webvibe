@@ -263,7 +263,7 @@ async function readUtf8FileChunk(
     const buffer = Buffer.alloc(bytesToRead);
     const { bytesRead } = await handle.read(buffer, 0, bytesToRead, offsetBytes);
     const readBuffer = buffer.subarray(0, bytesRead);
-    let returnedBytes =
+    const returnedBytes =
       offsetBytes + bytesRead >= size ? bytesRead : completeUtf8PrefixLength(readBuffer);
     if (bytesRead > 0 && returnedBytes === 0 && offsetBytes + bytesRead < size) {
       throw new BadRequestError("maxBytes is too small to include the next UTF-8 character");
