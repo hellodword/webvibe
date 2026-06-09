@@ -307,6 +307,16 @@ function policyFor(root: string): RelayPolicy {
       maxChangesetBytes: 5 * 1024 * 1024,
       maxChangesetFileBytes: 1024 * 1024,
     },
-    audit: { enabled: true, maxLogBytes: 10 * 1024 * 1024 },
+    audit: {
+      enabled: true,
+      maxLogBytes: 10 * 1024 * 1024,
+      payloads: "hash-only",
+      includeClientVisibleOutput: false,
+      includeRawToolOutput: false,
+      includeErrors: true,
+      includeErrorStack: false,
+      includeManualEvents: true,
+      redact: true,
+    },
   };
 }
