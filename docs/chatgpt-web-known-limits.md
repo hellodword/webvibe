@@ -21,6 +21,8 @@ only sometimes, and absence in one session does not mean the limit is gone.
 - Patch text or file paths containing suspicious terms may trigger review even
   when the actual operation is legitimate. One observed example is a path such
   as `password_hash.go`.
+- Changes to Go projects' `internal` packages may also be false-positive
+  flagged, even when the edits are ordinary code changes.
 - ChatGPT Web cannot reliably be configured to "never ask" for local file
   operations. A workflow that edits several files may receive a confirmation
   prompt for each file or tool call.
