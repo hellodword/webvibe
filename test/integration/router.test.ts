@@ -35,6 +35,7 @@ describe("tool router", () => {
         status: "ok",
         data: {
           status: "ok",
+          hostRisk: "low",
           toolSurface: { version: "4.0.4" },
           policy: { profile: "chatgptWebDefault" },
           capabilities: { editMode: "single" },

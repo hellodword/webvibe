@@ -95,6 +95,11 @@ paths are rolled back from snapshots. The default edit mode prefers one logical
 file operation per reviewed change; batch edit mode is an explicit policy
 choice for multi-file payloads.
 
+Every tool result carries `hostRisk`. Change preview computes payload, path,
+delete, and diff risk. Oversized diffs and delete-heavy changes return
+`hostRisk: "high"` with a `manualPlan`, and apply refuses those plans before
+writing so manual-first routing is enforced locally.
+
 ## Manual Completion Gate
 
 The manual completion gate is a recovery protocol, not a hidden write path. When

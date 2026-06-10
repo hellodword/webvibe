@@ -119,6 +119,11 @@ the configured edit mode controls the write boundary: `single` prefers one
 logical file operation, while opt-in batch mode can group multi-file payloads
 when the user accepts that tradeoff.
 
+Tool results carry `hostRisk` so the model can distinguish low-risk inspection,
+medium-risk fixed writes/tasks, and high-risk manual-first cases. Change preview
+computes payload/delete/diff risk and returns a `manualPlan` for oversized diffs
+or delete-heavy changes. Apply blocks those high-risk plans before writing.
+
 Change tools also give the relay one place to enforce hash guards, protected
 paths, symlink guards, UTF-8 checks, size limits, and rollback.
 

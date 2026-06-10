@@ -101,6 +101,12 @@ Change limits default to policy `limits.change` values. Mutating
 operations require `expectedSha256` where appropriate so stale model plans do
 not overwrite newer workspace edits.
 
+All tool results include `hostRisk`. Change previews also return a structured
+`risk` assessment with estimated payload bytes, path/delete/diff risk, a
+recommended route, and `manualPlan` when the preview is high risk. Oversized
+diffs and delete-heavy changes are manual-first; direct apply returns blocked for
+high-risk plans instead of writing.
+
 If ChatGPT Web blocks the write with the exact OpenAI
 safety-check text, the model retries the same tool once with unchanged
 arguments. If the identical retry is blocked again, the model prepares low-risk

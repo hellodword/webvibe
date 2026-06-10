@@ -64,7 +64,7 @@ export class ToolRouter {
       const manualBlock = await this.manualPendingBlock(name, caller);
       if (manualBlock) {
         const finalOutput = prepareToolOutput(
-          manualBlock,
+          attachHostRisk(manualBlock, hostRiskForTool(entry.policy)),
           this.options.policy.limits.output.maxToolOutputBytes,
           this.toolOutputLimits(),
         );
@@ -88,7 +88,7 @@ export class ToolRouter {
       const contextBlock = this.contextBlock(name, caller);
       if (contextBlock) {
         const finalOutput = prepareToolOutput(
-          contextBlock,
+          attachHostRisk(contextBlock, hostRiskForTool(entry.policy)),
           this.options.policy.limits.output.maxToolOutputBytes,
           this.toolOutputLimits(),
         );
@@ -115,6 +115,7 @@ export class ToolRouter {
         this.toolCallTimeoutMs(entry.policy, args),
         name,
       );
+      const outputWithRisk = attachHostRisk(output, hostRiskForTool(entry.policy));
       if (name === "workspace.context") {
         this.preflight.set(this.callerKey(caller), {
           inspectedAt: new Date().toISOString(),
@@ -122,7 +123,7 @@ export class ToolRouter {
         });
       }
       const finalOutput = prepareToolOutput(
-        output,
+        outputWithRisk,
         this.options.policy.limits.output.maxToolOutputBytes,
         this.toolOutputLimits(),
       );
@@ -136,7 +137,7 @@ export class ToolRouter {
           status: "ok",
           startedAt,
           input: args,
-          rawOutput: output,
+          rawOutput: outputWithRisk,
           clientOutput: finalOutput,
         }),
       );
@@ -350,6 +351,73 @@ type ManualPendingBlockedResult = {
   resumeTool: "manual.resume";
   nextAction: "reply_with_resume_command";
 };
+
+type HostRisk = "low" | "medium" | "high";
+
+function hostRiskForTool(tool: ToolPolicy): HostRisk {
+  if (tool.type === "builtIn") {
+    if (
+      [
+        "workspace.context",
+        "workspace.scan",
+        "workspace.symbols",
+        "diagnostics.health",
+        "fs.search",
+        "fs.tree",
+        "fs.read",
+        "fs.read_many",
+        "fs.stat",
+        "fs.manifest",
+        "git.status",
+        "git.changed",
+        "git.diff",
+        "git.show",
+        "git.blame",
+        "git.commit_preview",
+        "task.list",
+        "task.explain",
+        "task.result",
+        "manual.prepare",
+        "manual.status",
+        "manual.resume",
+      ].includes(tool.name)
+    ) {
+      return "low";
+    }
+    if (tool.name === "manual.gate") return "low";
+    if (tool.name === "batch.change_apply" || tool.name === "change.apply") return "high";
+    if (tool.name === "file.change_apply" || tool.name === "task.run" || tool.name === "git.commit") {
+      return "medium";
+    }
+    if (tool.name === "file.change_preview" || tool.name === "batch.change_preview" || tool.name === "change.preview") {
+      return "medium";
+    }
+  }
+  if (tool.annotations?.readOnlyHint === true) return "low";
+  if (tool.annotations?.destructiveHint === true) return "high";
+  return "medium";
+}
+
+function attachHostRisk(output: unknown, risk: HostRisk): unknown {
+  if (!isPlainRecord(output)) return output;
+  if (isEnvelopeLike(output) && isPlainRecord(output.data)) {
+    return { ...output, data: withHostRisk(output.data, risk) };
+  }
+  return withHostRisk(output, risk);
+}
+
+function withHostRisk(output: Record<string, unknown>, risk: HostRisk): Record<string, unknown> {
+  if (typeof output.hostRisk === "string") return output;
+  return { ...output, hostRisk: risk };
+}
+
+function isEnvelopeLike(output: Record<string, unknown>): output is Record<string, unknown> & { data: unknown } {
+  return typeof output.ok === "boolean" && typeof output.status === "string" && "data" in output;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function isManualBarrierAllowedTool(name: string): boolean {
   return name === "diagnostics.health" || name === "manual.resume" || name === "manual.status";

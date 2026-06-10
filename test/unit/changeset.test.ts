@@ -37,6 +37,8 @@ describe("workspace changesets", () => {
     expect(preview.status).toBe("ok");
     expect(preview.previewId).toMatch(/^cp_/);
     expect(preview.previewHash).toMatch(/^sha256:/);
+    expect(preview.hostRisk).toBe("medium");
+    expect(preview.risk.recommendedRoute).toMatchObject({ tool: "batch.change_apply" });
     expect(preview.base.manifestHash).toMatch(/^sha256:/);
     expect(preview.diff).toContain("+++ b/src/new.ts");
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("alpha\nbeta\n");
@@ -60,6 +62,7 @@ describe("workspace changesets", () => {
 
     expect(applied.applied).toBe(true);
     expect(applied.verified).toBe(true);
+    expect(applied.hostRisk).toBe("medium");
     expect(applied.base.manifestHash).toBe(preview.base.manifestHash);
     expect(applied.verification).toMatchObject({
       status: "passed",
@@ -205,6 +208,45 @@ describe("workspace changesets", () => {
       verification: { status: "passed" },
       previewHash: preview.previewHash,
     });
+  });
+
+  it("marks high-risk deletes manual-first and blocks direct apply", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-delete-risk-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "a.txt"), "a\n");
+    await writeFile(path.join(root, "b.txt"), "b\n");
+    await writeFile(path.join(root, "c.txt"), "c\n");
+    const changes = [
+      { op: "delete" as const, path: "a.txt", expectedSha256: sha256("a\n") },
+      { op: "delete" as const, path: "b.txt", expectedSha256: sha256("b\n") },
+      { op: "delete" as const, path: "c.txt", expectedSha256: sha256("c\n") },
+    ];
+
+    const preview = await previewChangeset({ changes }, context);
+    const applied = await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+
+    expect(preview).toMatchObject({
+      hostRisk: "high",
+      risk: {
+        manualFirst: true,
+        deleteRisk: { deleteCount: 3, threshold: 3, high: true },
+        recommendedRoute: { tool: "manual.prepare", reason: "high_host_risk" },
+      },
+      manualPlan: {
+        operation: { kind: "change" },
+        next: { tool: "manual.prepare" },
+      },
+    });
+    expect(applied).toMatchObject({
+      status: "blocked",
+      applied: false,
+      verified: false,
+      hostRisk: "high",
+      manualPlan: { next: { tool: "manual.prepare" } },
+    });
+    expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("a\n");
+    expect(await readFile(path.join(root, "b.txt"), "utf8")).toBe("b\n");
+    expect(await readFile(path.join(root, "c.txt"), "utf8")).toBe("c\n");
   });
 
   it("applies JSON patch changes through preview hash", async () => {

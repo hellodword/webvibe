@@ -54,6 +54,64 @@ type DiffPreview = {
   artifact: ManualArtifactRef | null;
 };
 
+type HostRisk = "low" | "medium" | "high";
+
+type ChangeRiskAssessment = {
+  hostRisk: HostRisk;
+  estimatedPayloadBytes: number;
+  pathRisk: {
+    affectedPaths: string[];
+    protectedPathsBlocked: true;
+    symlinkPathsBlocked: true;
+  };
+  deleteRisk: {
+    deleteCount: number;
+    threshold: number;
+    high: boolean;
+  };
+  diffRisk: {
+    bytes: number;
+    lines: number;
+    maxInlineBytes: number;
+    maxInlineLines: number;
+    truncated: boolean;
+    high: boolean;
+  };
+  reasons: string[];
+  manualFirst: boolean;
+  recommendedRoute: {
+    tool: "file.change_apply" | "batch.change_apply" | "manual.prepare";
+    reason: string;
+  };
+};
+
+type ManualPlan = {
+  operation: {
+    id: string;
+    kind: "change";
+  };
+  reason: "high_host_risk";
+  displayInstructions: string;
+  verificationPlan: Array<Record<string, unknown>>;
+  resumeCommand: string;
+  next: {
+    tool: "manual.prepare";
+    args: {
+      operation: {
+        id: string;
+        kind: "change";
+      };
+      originalRequestSummary: string;
+      interruptedAt: "edit";
+      verificationPlan: Array<Record<string, unknown>>;
+      nextAfterResume: {
+        tool: "workspace.context";
+        reason: string;
+      };
+    };
+  };
+};
+
 type VerificationExpectation = {
   path: string;
   op: PlannedAction["op"];
@@ -84,21 +142,17 @@ export async function previewChangeset(
   artifacts: ManualArtifactRef[];
   previewHash: string;
   changeHash: string;
+  hostRisk: HostRisk;
+  risk: ChangeRiskAssessment;
+  manualPlan?: ManualPlan;
 }> {
   const plan = await buildChangesetPlan(rawArgs, context);
   const hashes = previewHashes(rawArgs, plan);
   const previewId = `cp_${randomToken(12)}`;
   const diffInfo = await buildDiffPreview(plan, context, previewId);
-  const warnings = diffInfo.truncated
-    ? [
-        {
-          code: "DIFF_TRUNCATED",
-          message: diffInfo.artifact
-            ? "Diff exceeded inline limits and was saved as an artifact."
-            : "Diff exceeded inline limits and no artifact store was configured.",
-        },
-      ]
-    : [];
+  const risk = assessChangeRisk(plan, diffInfo, context.toolName);
+  const warnings = changeRiskWarnings(diffInfo, risk);
+  const manualPlan = risk.hostRisk === "high" ? manualPlanForChange(previewId, risk) : undefined;
   return {
     valid: plan.conflicts.length === 0,
     status: plan.conflicts.length === 0 ? "ok" : "conflicted",
@@ -113,6 +167,9 @@ export async function previewChangeset(
     warnings,
     artifacts: diffInfo.artifact ? [diffInfo.artifact] : [],
     ...hashes,
+    hostRisk: risk.hostRisk,
+    risk,
+    ...(manualPlan ? { manualPlan } : {}),
   };
 }
 
@@ -132,6 +189,10 @@ export async function applyChangeset(
   files: PlannedFile[];
   conflicts: Conflict[];
   previewHash?: string;
+  status?: "blocked";
+  hostRisk: HostRisk;
+  risk: ChangeRiskAssessment;
+  manualPlan?: ManualPlan;
 }> {
   const input = parseInput(changesetInputSchema, rawArgs);
   if (!input.previewHash) {
@@ -141,6 +202,25 @@ export async function applyChangeset(
   const hashes = previewHashes(rawArgs, plan);
   if (input.previewHash !== hashes.previewHash) {
     throw new BadRequestError("previewHash mismatch");
+  }
+  const risk = assessChangeRisk(plan, diffPreviewFromPlan(plan, context), context.toolName);
+  if (risk.hostRisk === "high") {
+    const operationId = `cp_${randomToken(12)}`;
+    return {
+      status: "blocked",
+      applied: false,
+      verified: false,
+      verification: skippedVerification(plan),
+      baseRevision: plan.baseRevision,
+      base: { manifestHash: baseManifestHash(plan) },
+      summary: plan.summary,
+      files: plan.files,
+      conflicts: plan.conflicts,
+      previewHash: hashes.previewHash,
+      hostRisk: risk.hostRisk,
+      risk,
+      manualPlan: manualPlanForChange(operationId, risk),
+    };
   }
   if (plan.conflicts.length > 0) {
     return {
@@ -153,6 +233,8 @@ export async function applyChangeset(
       files: plan.files,
       conflicts: plan.conflicts,
       previewHash: hashes.previewHash,
+      hostRisk: risk.hostRisk,
+      risk,
     };
   }
 
@@ -173,6 +255,8 @@ export async function applyChangeset(
     files: plan.files,
     conflicts: [],
     previewHash: hashes.previewHash,
+    hostRisk: risk.hostRisk,
+    risk,
   };
 }
 
@@ -263,6 +347,123 @@ async function buildDiffPreview(
     maxInlineLines,
     affectedPaths,
     artifact,
+  };
+}
+
+function diffPreviewFromPlan(plan: { diff: string; files: PlannedFile[] }, context: WorkspaceContext): DiffPreview {
+  const bytes = Buffer.byteLength(plan.diff, "utf8");
+  const lines = countLines(plan.diff);
+  const maxInlineBytes = context.limits.change.maxInlineDiffBytes;
+  const maxInlineLines = context.limits.change.maxInlineDiffLines;
+  return {
+    text: "",
+    truncated: bytes > maxInlineBytes || lines > maxInlineLines,
+    bytes,
+    lines,
+    maxInlineBytes,
+    maxInlineLines,
+    affectedPaths: plan.files.map((file) => file.path),
+    artifact: null,
+  };
+}
+
+function assessChangeRisk(
+  plan: { summary: ChangesetSummary; files: PlannedFile[] },
+  diffInfo: DiffPreview,
+  toolName = "change.preview",
+): ChangeRiskAssessment {
+  const deleteThreshold = 3;
+  const deleteRiskHigh = plan.summary.deletes >= deleteThreshold;
+  const diffRiskHigh = diffInfo.truncated;
+  const reasons = [
+    ...(deleteRiskHigh
+      ? [`delete count ${plan.summary.deletes} meets manual-first threshold ${deleteThreshold}`]
+      : []),
+    ...(diffRiskHigh ? ["diff exceeds inline payload limits"] : []),
+  ];
+  const hostRisk: HostRisk = reasons.length > 0 ? "high" : "medium";
+  const applyTool = toolName.startsWith("batch.") || toolName === "change.preview"
+    ? "batch.change_apply"
+    : "file.change_apply";
+  return {
+    hostRisk,
+    estimatedPayloadBytes: diffInfo.bytes,
+    pathRisk: {
+      affectedPaths: diffInfo.affectedPaths,
+      protectedPathsBlocked: true,
+      symlinkPathsBlocked: true,
+    },
+    deleteRisk: {
+      deleteCount: plan.summary.deletes,
+      threshold: deleteThreshold,
+      high: deleteRiskHigh,
+    },
+    diffRisk: {
+      bytes: diffInfo.bytes,
+      lines: diffInfo.lines,
+      maxInlineBytes: diffInfo.maxInlineBytes,
+      maxInlineLines: diffInfo.maxInlineLines,
+      truncated: diffInfo.truncated,
+      high: diffRiskHigh,
+    },
+    reasons,
+    manualFirst: hostRisk === "high",
+    recommendedRoute:
+      hostRisk === "high"
+        ? { tool: "manual.prepare", reason: "high_host_risk" }
+        : { tool: applyTool, reason: "risk_acceptable" },
+  };
+}
+
+function changeRiskWarnings(diffInfo: DiffPreview, risk: ChangeRiskAssessment): PreviewWarning[] {
+  const warnings: PreviewWarning[] = [];
+  if (diffInfo.truncated) {
+    warnings.push({
+      code: "DIFF_TRUNCATED",
+      message: diffInfo.artifact
+        ? "Diff exceeded inline limits and was saved as an artifact."
+        : "Diff exceeded inline limits and no artifact store was configured.",
+    });
+  }
+  if (risk.hostRisk === "high") {
+    warnings.push({
+      code: "HIGH_HOST_RISK",
+      message: "Change preview is high risk for ChatGPT Web; use the manual plan instead of direct apply.",
+    });
+  }
+  return warnings;
+}
+
+function manualPlanForChange(operationId: string, risk: ChangeRiskAssessment): ManualPlan {
+  const logPath = `.webvibe/manual-logs/${operationId}.log`;
+  const operation = { id: operationId, kind: "change" as const };
+  const verificationPlan = [
+    {
+      kind: "fs.manifest",
+      paths: risk.pathRisk.affectedPaths,
+      reason: "Verify manually applied change paths before continuing.",
+    },
+  ];
+  return {
+    operation,
+    reason: "high_host_risk",
+    displayInstructions:
+      "Show the high-risk change instructions in ChatGPT Web chat, ask the user to apply them outside ChatGPT, write stdout/stderr to the suggested workspace log path, and reply with the resume command.",
+    verificationPlan,
+    resumeCommand: `/resume ${operationId} ${logPath}`,
+    next: {
+      tool: "manual.prepare",
+      args: {
+        operation,
+        originalRequestSummary: "High-risk workspace change requires manual application.",
+        interruptedAt: "edit",
+        verificationPlan,
+        nextAfterResume: {
+          tool: "workspace.context",
+          reason: "Verify workspace state after manual change resume.",
+        },
+      },
+    },
   };
 }
 

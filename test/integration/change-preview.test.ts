@@ -54,6 +54,11 @@ describe("file.change_preview", () => {
         status: "ok",
         data: {
           valid: true,
+          hostRisk: "medium",
+          risk: {
+            manualFirst: false,
+            recommendedRoute: { tool: "file.change_apply", reason: "risk_acceptable" },
+          },
           files: [{ path: "code.txt", op: "edit" }],
           conflicts: [],
         },
@@ -124,10 +129,18 @@ describe("file.change_preview", () => {
         status: "ok",
         truncated: true,
         data: {
+          hostRisk: "high",
           diff: "",
           diffInfo: {
             truncated: true,
             artifact: expect.objectContaining({ mimeType: "text/x-diff" }),
+          },
+          risk: {
+            manualFirst: true,
+            recommendedRoute: { tool: "manual.prepare", reason: "high_host_risk" },
+          },
+          manualPlan: {
+            next: { tool: "manual.prepare" },
           },
         },
       });
