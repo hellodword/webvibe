@@ -289,7 +289,7 @@ function manualRequiredForUnavailableTask(
       `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}.\n\n` +
       "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then reply in the next ChatGPT message with /resume followed by that optional workspace-relative log file path.\n\n" +
       `Suggested log path: ${logPath}\n\n` +
-      "Do not paste the command, stdout/stderr, or log contents into manual.gate; the gate call must use only reason and the low-risk hostObservation.",
+      "Do not paste the command, stdout/stderr, or log contents into manual.gate; the gate call must use only v1 proof fields, reason, and the low-risk hostObservation.",
     hostObservation: {
       toolName: "capability.limit",
       outputText: "manual step required because required execution capability is unavailable",

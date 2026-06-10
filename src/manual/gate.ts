@@ -17,6 +17,8 @@ import type { AuditLog } from "../state/audit.js";
 import { BadRequestError } from "../util/errors.js";
 import { randomToken, sha256 } from "../util/hash.js";
 
+const MANUAL_FORMAT_VERSION = "WEBVIBE_MANUAL_REQUIRED v1";
+
 const gateInputSchema = z
   .object({
     preparedId: z.string().optional(),
@@ -25,9 +27,18 @@ const gateInputSchema = z
       "manual_review_requested",
       "external_manual_step",
     ]),
+    manualFormatVersion: z.literal(MANUAL_FORMAT_VERSION),
+    manualMessageHash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    operation: z
+      .object({
+        id: z.string().min(1).max(100).regex(/^[A-Za-z0-9_.-]+$/),
+        kind: z.enum(["task", "change", "external"]),
+      })
+      .strict(),
     hostObservation: z
       .object({
         toolName: z.string().optional(),
+        classification: z.string().optional(),
         outputText: z.string().max(4000).optional(),
       })
       .strict()
@@ -48,6 +59,9 @@ export async function openManualGate(
   structuredContent: {
     status: "awaiting_manual_completion";
     operationId: string;
+    operation: { id: string; kind: "task" | "change" | "external" };
+    manualFormatVersion: "WEBVIBE_MANUAL_REQUIRED v1";
+    manualMessageHash: string;
     pendingId: string;
     preparedId?: string;
     reason: ManualActionReason;
@@ -66,7 +80,7 @@ export async function openManualGate(
   let title = "Manual action required";
   let instructions =
     "See the preceding ChatGPT message for the manual instructions. After completing the manual step, reply with /resume and an optional workspace-relative log file path.";
-  let operationId = randomToken(18);
+  let operationId = input.operation.id || randomToken(18);
   let artifacts: ManualArtifactRef[] = [];
   let checks: ManualCheck[] = [];
   const preparedStore = new PreparedManualActionStore(context.stateDir);
@@ -100,6 +114,9 @@ export async function openManualGate(
     : undefined;
   const record = await pendingStore.create({
     operationId,
+    operation: input.operation,
+    manualFormatVersion: input.manualFormatVersion,
+    manualMessageHash: input.manualMessageHash,
     pendingId,
     preparedId: input.preparedId,
     reason: input.reason,
@@ -129,11 +146,17 @@ export async function openManualGate(
     inputHash: sha256({
       preparedId: input.preparedId,
       reason: input.reason,
+      operation: input.operation,
+      manualFormatVersion: input.manualFormatVersion,
+      manualMessageHash: input.manualMessageHash,
       hostObservation,
     }),
     input: {
       preparedId: input.preparedId,
       reason: input.reason,
+      operation: input.operation,
+      manualFormatVersion: input.manualFormatVersion,
+      manualMessageHash: input.manualMessageHash,
       hostObservation,
       safetyBlockText: SAFETY_BLOCK_TEXT,
       secondaryConfirmationFragments: SECONDARY_CONFIRMATION_FRAGMENTS,
@@ -147,6 +170,9 @@ export async function openManualGate(
     structuredContent: {
       status: "awaiting_manual_completion",
       operationId: record.operationId,
+      operation: input.operation,
+      manualFormatVersion: input.manualFormatVersion,
+      manualMessageHash: input.manualMessageHash,
       pendingId: record.pendingId,
       preparedId: record.preparedId,
       reason: record.reason,

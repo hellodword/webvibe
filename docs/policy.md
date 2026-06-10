@@ -95,7 +95,8 @@ not overwrite newer workspace edits.
 If ChatGPT Web blocks the write with the exact OpenAI
 safety-check text, the model retries the same tool once with unchanged
 arguments. If the identical retry is blocked again, the model shows manual
-instructions in chat, calls `manual.gate` with minimal arguments, stops the
+instructions in chat, calls `manual.gate` with `WEBVIBE_MANUAL_REQUIRED v1`
+proof fields, stops the
 assistant turn immediately, and waits for a later user message that starts with
 `/resume`. Detailed manual instructions stay in the chat text, not in the
 `manual.gate` call. While pending, webvibe blocks workspace tools except
@@ -122,8 +123,9 @@ If a required command has no matching task ID or needs arbitrary shell/Node,
 the model must use the manual fallback flow instead of ending with an inability
 statement. Manual commands and stdout/stderr are shown in chat and written by
 the user's terminal to a workspace-relative log path. They are not sent through
-`manual.gate`; the gate receives only `reason` plus a low-risk
-`hostObservation` summary.
+`manual.gate`; the gate receives only `manualFormatVersion`,
+`manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
+summary.
 
 ## Git
 

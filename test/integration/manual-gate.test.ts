@@ -33,9 +33,7 @@ describe("manual gate", () => {
 
       const gateEnvelope = (await router.call(
         "manual.gate",
-        {
-          reason: "manual_review_requested",
-        },
+        gateArgs("manual_review_requested", "manual-review"),
         caller,
       )) as any;
       const gate = gateEnvelope.data;
@@ -43,6 +41,9 @@ describe("manual gate", () => {
       expect(gateEnvelope).toMatchObject({ ok: true, status: "ok" });
       expect(gate.structuredContent).toMatchObject({
         status: "awaiting_manual_completion",
+        operation: { id: "manual-review", kind: "external" },
+        manualFormatVersion: "WEBVIBE_MANUAL_REQUIRED v1",
+        manualMessageHash: expect.stringMatching(/^sha256:/),
         resumeTool: "manual.resume",
         continuation: {
           mode: "await_resume_command",
@@ -61,7 +62,13 @@ describe("manual gate", () => {
       expect(Buffer.byteLength(JSON.stringify(gate), "utf8")).toBeLessThan(4096);
 
       const pending = await new ManualPendingStore(stateDir).read(pendingId);
-      expect(pending).toMatchObject({ status: "pending", title: "Manual action required" });
+      expect(pending).toMatchObject({
+        status: "pending",
+        title: "Manual action required",
+        operation: { id: "manual-review", kind: "external" },
+        manualFormatVersion: "WEBVIBE_MANUAL_REQUIRED v1",
+        manualMessageHash: expect.stringMatching(/^sha256:/),
+      });
       expect(pending?.scope.sessionHash).toBeTruthy();
 
       await expect(router.call("fs.tree", {}, caller)).resolves.toMatchObject({
@@ -76,9 +83,7 @@ describe("manual gate", () => {
       await expect(
         router.call(
           "manual.gate",
-          {
-            reason: "manual_review_requested",
-          },
+          gateArgs("manual_review_requested", "blocked-while-pending"),
           caller,
         ),
       ).resolves.toMatchObject({
@@ -140,6 +145,17 @@ describe("manual gate", () => {
           "manual.gate",
           {
             reason: "manual_review_requested",
+          },
+          caller,
+        ),
+      ).rejects.toThrow("manualFormatVersion");
+
+      await expect(
+        router.call(
+          "manual.gate",
+          {
+            ...gateArgs("manual_review_requested", "old-title"),
+            reason: "manual_review_requested",
             title: "Old title field should be rejected",
           },
           caller,
@@ -148,9 +164,7 @@ describe("manual gate", () => {
 
       const outputGateEnvelope = (await router.call(
         "manual.gate",
-        {
-          reason: "external_manual_step",
-        },
+        gateArgs("external_manual_step", "manual-output-action"),
         caller,
       )) as any;
       const outputGate = outputGateEnvelope.data;
@@ -174,9 +188,7 @@ describe("manual gate", () => {
 
       const cancelGateEnvelope = (await router.call(
         "manual.gate",
-        {
-          reason: "external_manual_step",
-        },
+        gateArgs("external_manual_step", "manual-cancel-action"),
         caller,
       )) as any;
       const cancelGate = cancelGateEnvelope.data;
@@ -206,3 +218,15 @@ describe("manual gate", () => {
     }
   });
 });
+
+function gateArgs(
+  reason: "openai_safety_block" | "manual_review_requested" | "external_manual_step",
+  operationId: string,
+): Record<string, unknown> {
+  return {
+    reason,
+    manualFormatVersion: "WEBVIBE_MANUAL_REQUIRED v1",
+    manualMessageHash: "sha256:" + "a".repeat(64),
+    operation: { id: operationId, kind: "external" },
+  };
+}

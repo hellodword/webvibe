@@ -185,7 +185,7 @@ function manualRequiredForUnavailableCapability(
     userInstructions:
       `Task '${taskId}' is unavailable (${reason}). If this task is required, show the manual command or equivalent step in ChatGPT Web chat only. ` +
       `Ask the user to run it outside ChatGPT, write stdout/stderr to ${logPath}, then reply with /resume ${logPath}. ` +
-      "Call manual.gate with only reason and the provided low-risk hostObservation; do not include the command or log contents in the tool arguments.",
+      "Call manual.gate with manualFormatVersion, manualMessageHash, operation, reason, and the provided low-risk hostObservation; do not include the command or log contents in the tool arguments.",
     hostObservation: capabilityLimitHostObservation(
       "manual step required because configured task is unavailable",
     ),

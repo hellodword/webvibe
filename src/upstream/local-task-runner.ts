@@ -548,7 +548,7 @@ function manualRequiredForTask(
       "exit \"$STATUS\"\n" +
       "```\n\n" +
       `Reply in the next ChatGPT message with /resume ${logPath}.\n\n` +
-      "Do not paste this command, stdout/stderr, or log contents into manual.gate; the gate call must use only reason and the low-risk hostObservation.",
+      "Do not paste this command, stdout/stderr, or log contents into manual.gate; the gate call must use only v1 proof fields, reason, and the low-risk hostObservation.",
     hostObservation: {
       toolName: "capability.limit",
       outputText: "manual step required because configured task is unavailable",

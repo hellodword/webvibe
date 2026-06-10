@@ -146,10 +146,11 @@ manual details in chat before opening the gate: commands include stdout/stderr
 redirection to a workspace-relative manual log file, small preview diffs are
 shown inline, and large preview diffs use the tokenized artifact download URL
 from `change.preview`. Detailed manual instructions are not passed as
-`manual.gate` arguments. If ChatGPT Web blocks `manual.gate` itself, the model
-retries the same `manual.gate` call once with identical arguments. If it is still
-blocked, the model must stop and wait for human completion followed by
-`/resume`.
+`manual.gate` arguments. The gate accepts only `WEBVIBE_MANUAL_REQUIRED v1`
+proof fields, operation metadata, reason, and low-risk host observation. If
+ChatGPT Web blocks `manual.gate` itself, the model retries the same
+`manual.gate` call once with identical arguments. If it is still blocked, the
+model must stop and wait for human completion followed by `/resume`.
 
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,

@@ -563,16 +563,37 @@ tools:
             - openai_safety_block
             - manual_review_requested
             - external_manual_step
+        manualFormatVersion:
+          type: string
+          enum: ["WEBVIBE_MANUAL_REQUIRED v1"]
+        manualMessageHash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        operation:
+          type: object
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 100
+              pattern: "^[A-Za-z0-9_.-]+$"
+            kind:
+              type: string
+              enum: [task, change, external]
+          required: [id, kind]
+          additionalProperties: false
         hostObservation:
           type: object
           properties:
             toolName:
               type: string
+            classification:
+              type: string
             outputText:
               type: string
               maxLength: 4000
           additionalProperties: false
-      required: [reason]
+      required: [reason, manualFormatVersion, manualMessageHash, operation]
       additionalProperties: false
     outputSchema:
       type: object
@@ -581,6 +602,13 @@ tools:
           type: string
           enum: [awaiting_manual_completion]
         operationId:
+          type: string
+        operation:
+          type: object
+          additionalProperties: true
+        manualFormatVersion:
+          type: string
+        manualMessageHash:
           type: string
         pendingId:
           type: string
@@ -612,7 +640,7 @@ tools:
               enum: [resume_interrupted_workflow]
           required: [mode, modelShouldStop, mustEndTurn, resumeMode]
           additionalProperties: false
-      required: [status, operationId, pendingId, reason, expiresAt, resumeTool, continuation]
+      required: [status, operationId, operation, manualFormatVersion, manualMessageHash, pendingId, reason, expiresAt, resumeTool, continuation]
       additionalProperties: false
     annotations:
       readOnlyHint: false

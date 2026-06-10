@@ -176,6 +176,16 @@ describe("default policies", () => {
       "manual_review_requested",
       "external_manual_step",
     ]);
+    expect((manualGate.inputSchema as any).required).toEqual([
+      "reason",
+      "manualFormatVersion",
+      "manualMessageHash",
+      "operation",
+    ]);
+    expect((manualGate.inputSchema as any).properties.manualFormatVersion.enum).toEqual([
+      "WEBVIBE_MANUAL_REQUIRED v1",
+    ]);
+    expect((manualGate.inputSchema as any).properties.operation.required).toEqual(["id", "kind"]);
     expect((manualGate.outputSchema as any).properties.reason.enum).toEqual([
       "openai_safety_block",
       "manual_review_requested",

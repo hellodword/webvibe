@@ -15,7 +15,7 @@ Recommended order:
 5. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
 6. If ChatGPT Web blocks with OpenAI safety checks: retry the identical tool call once with unchanged arguments
 7. If the identical retry is blocked again: show manual instructions, then call `manual.gate` with observed host output only
-8. If the best next step requires unavailable arbitrary shell/Node, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with only `reason` and a low-risk `hostObservation`
+8. If the best next step requires unavailable arbitrary shell/Node, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
 9. Stop the assistant turn immediately after `manual.gate`, even if other work remains
 10. User completes the manual step outside ChatGPT
 11. The next user message must start with `/resume`
@@ -66,9 +66,9 @@ Host output decision table:
 | `CONTEXT_REQUIRED` | `relay_policy_block` | yes | call `workspace.context` | 0 | none | blocked audit from relay |
 | `MANUAL_PENDING_REQUIRED` | `manual_action_pending` | yes | stop and wait for `/resume` | 0 | existing pending barrier | blocked audit from relay |
 | `requires confirmation` / `please confirm` / `click allow` | `secondary_confirmation_required` | maybe no | retry same tool once with identical name and identical JSON arguments | 1 | none unless retry becomes safety block | local relay may not see first attempt |
-| exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | retry the same tool once with identical name and identical JSON arguments; if the identical retry is blocked again, show manual instructions, then call `manual.gate` with observed host output only | 1 | manual barrier requiring `/resume` only after repeated safety block | `manual.gate.hostObservation` records the repeated observed block |
+| exact `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.` | `blocked_by_openai_safety` | usually no | retry the same tool once with identical name and identical JSON arguments; if the identical retry is blocked again, show manual instructions, then call `manual.gate` with v1 proof fields and observed host output only | 1 | manual barrier requiring `/resume` only after repeated safety block | `manual.gate.hostObservation` records the repeated observed block |
 | `manual.gate` is blocked by OpenAI safety checks | `blocked_manual_gate` | usually no | retry the same `manual.gate` once with identical arguments; if still blocked, stop immediately and wait for human completion followed by `/resume` | 1 | none if call never reached relay | no local audit if host blocked before relay |
-| `受工具限制` / `cannot run arbitrary shell` / `no matching task id` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with only `reason` and a low-risk `hostObservation` summary | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records only the low-risk capability-limit summary |
+| `受工具限制` / `cannot run arbitrary shell` / `no matching task id` / `task unavailable` / `tool unavailable` | `manual_required_capability_limit` | yes or model-observed | stop explaining limitation; show manual command/log details in chat, then call `manual.gate` with v1 proof fields, `reason`, and a low-risk `hostObservation` summary | 0 | manual barrier requiring `/resume` | `manual.gate.hostObservation` records only the low-risk capability-limit summary |
 | next user message starts with `/resume` | `manual_completion_resumed` | yes | call `manual.resume`, then verify workspace state and continue the original interrupted request | 0 | pending record transitions if checks pass or cancel requested | `manual.resume` audit event |
 | next user message does not start with `/resume` | `manual_resume_required` | yes if tool called | call `manual.resume` only when the message starts with `/resume` | 0 | pending record remains pending | blocked audit from relay |
 
@@ -92,7 +92,7 @@ outside ChatGPT; ChatGPT Web must not send command text, stdout/stderr, or log
 contents through `manual.gate`. For workspace diffs, show diffs at most 12KB and
 200 lines in a code block; for larger diffs, provide the downloadable artifact
 URL returned by `change.preview`. The `manual.gate` tool call itself uses
-minimal arguments only: `reason` and optional `hostObservation`. For model-observed capability limits, use a low-risk
+only `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and optional `hostObservation`. For model-observed capability limits, use a low-risk
 `hostObservation` such as `toolName: "capability.limit"` and
 `outputText: "manual step required because required execution capability is unavailable"`.
 

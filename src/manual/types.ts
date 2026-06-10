@@ -13,6 +13,11 @@ export type ManualActionScope = {
   organizationHash?: string;
 };
 
+export type ManualOperation = {
+  id: string;
+  kind: "task" | "change" | "external";
+};
+
 export type ManualArtifactRef = {
   artifactId: string;
   label: string;
@@ -44,6 +49,9 @@ export type ManualCheck =
 
 export type ManualActionRecord = {
   operationId: string;
+  operation?: ManualOperation;
+  manualFormatVersion?: "WEBVIBE_MANUAL_REQUIRED v1";
+  manualMessageHash?: string;
   pendingId: string;
   preparedId?: string;
   reason: ManualActionReason;

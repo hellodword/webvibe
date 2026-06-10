@@ -18,9 +18,7 @@ describe("manual action stores", () => {
     const stateDir = path.join(root, "state");
     const context = testContext(root, stateDir);
     const gate = await openManualGate(
-      {
-        reason: "manual_review_requested",
-      },
+      gateArgs("manual_review_requested", "manual-store"),
       context,
     );
     const pendingStore = new ManualPendingStore(stateDir);
@@ -69,9 +67,7 @@ describe("manual action stores", () => {
     const stateDir = path.join(root, "state");
     const context = testContext(root, stateDir);
     const gate = await openManualGate(
-      {
-        reason: "manual_review_requested",
-      },
+      gateArgs("manual_review_requested", "manual-expiry"),
       context,
     );
     const pendingId = gate.structuredContent.pendingId;
@@ -132,5 +128,17 @@ function testContext(
     stateDir,
     publicBaseUrl: "http://localhost",
     caller: { clientId: "manual-store-test" },
+  };
+}
+
+function gateArgs(
+  reason: "openai_safety_block" | "manual_review_requested" | "external_manual_step",
+  operationId: string,
+): Record<string, unknown> {
+  return {
+    reason,
+    manualFormatVersion: "WEBVIBE_MANUAL_REQUIRED v1",
+    manualMessageHash: "sha256:" + "b".repeat(64),
+    operation: { id: operationId, kind: "external" },
   };
 }
