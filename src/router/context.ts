@@ -74,7 +74,7 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     "Use batch.change_preview and batch.change_apply only when policy explicitly enables batch edit mode and workspace.context reports those tools.",
     "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",
     "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, call manual.prepare when available, show manual details in chat, then call manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
-    "Use task.run only with taskIds reported by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
+    "Use task.explain when task routing is unclear; use task.run only with taskIds reported as available by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
     "If task.run returns manualRequired, call manual.prepare when available, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
     "If no taskId matches a required command or the needed capability is outside the fixed tool surface, use manualFallback instead of ending with an inability statement.",
     "After manual.resume returns confirmed, verify current state and continue the original interrupted user request; do not continue on cancelled, expired, not_found, blocked, or verification_failed.",
@@ -677,7 +677,12 @@ function projectTaskFileCandidates(
         target,
         command: commandForTaskFile(taskFile.type, target),
         runnable: allowedTargets.has(target),
-        ...(allowedTargets.has(target) ? { allowedByPolicy: true } : {}),
+        ...(allowedTargets.has(target)
+          ? { allowedByPolicy: true }
+          : {
+              manualFirst: true,
+              reason: "task file target is not allowlisted by policy",
+            }),
       })),
     );
 }

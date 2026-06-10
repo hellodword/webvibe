@@ -251,6 +251,14 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
     }).then((result) => ({ status: "ok", tasks: result.tasks }));
   }
+  if (name === "task.explain") {
+    return getContext({
+      registry: context.registry,
+      policy: context.policy,
+      upstreams: context.upstreams,
+      workspaceRoot: context.workspaceRoot,
+    }).then((result) => explainTask(args, result));
+  }
   if (name === "task.run") {
     const dynamicProjectTask = await runProjectTaskCandidate(args, context);
     if (dynamicProjectTask) return dynamicProjectTask;
@@ -443,6 +451,61 @@ function unavailable(toolName: string, reason: string): {
     status: "unavailable",
     toolName,
     unavailableReason: reason,
+  };
+}
+
+function explainTask(args: Record<string, unknown>, context: Record<string, unknown>): Record<string, unknown> {
+  const taskId = typeof args.taskId === "string" ? args.taskId : "";
+  const tasks = context.tasks as
+    | {
+        available?: Array<Record<string, unknown>>;
+        unavailable?: Array<Record<string, unknown>>;
+        candidates?: Array<Record<string, unknown>>;
+      }
+    | undefined;
+  const available = tasks?.available?.find((task) => task.taskId === taskId);
+  if (available) {
+    return {
+      status: "available",
+      taskId,
+      task: available,
+      decision: "Task is available and can be run with task.run.",
+      next: { tool: "task.run", args: { taskId } },
+    };
+  }
+  const unavailableTask = tasks?.unavailable?.find((task) => task.taskId === taskId);
+  if (unavailableTask) {
+    return {
+      status: "unavailable",
+      taskId,
+      task: unavailableTask,
+      decision: "Task is configured but resolver checks failed; do not run it until checks pass.",
+      next: unavailableTask.manualRequired ?? { tool: "manual.prepare" },
+    };
+  }
+  const candidate = tasks?.candidates?.find((task) => task.taskId === taskId);
+  if (candidate) {
+    return {
+      status: candidate.manualFirst ? "manualFirst" : "candidate",
+      taskId,
+      task: candidate,
+      decision: candidate.manualFirst
+        ? "Candidate exists but is not runnable by policy; use manual fallback if this step is required."
+        : candidate.runnable
+          ? "Candidate maps to a runnable policy task."
+          : "Candidate is informational and has no runnable policy task.",
+      next: candidate.manualFirst
+        ? { tool: "manual.prepare" }
+        : candidate.matchingTaskId
+          ? { tool: "task.run", args: { taskId: candidate.matchingTaskId } }
+          : { tool: "manual.prepare" },
+    };
+  }
+  return {
+    status: "manualFirst",
+    taskId,
+    decision: "No configured task or candidate matches this id; use manual fallback if this step is required.",
+    next: { tool: "manual.prepare" },
   };
 }
 

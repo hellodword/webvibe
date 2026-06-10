@@ -47,6 +47,7 @@ The built-in ChatGPT Web tool surface is intentionally compact:
 - `manual.resume` in dev mode
 - `file.change_apply` in dev mode
 - `task.list` in dev mode
+- `task.explain` in dev mode
 - `task.run` in dev mode
 - `task.result` in dev mode
 - `git.status`
@@ -123,6 +124,8 @@ command text or stdin. Callers may pass a workspace-relative `cwd` to run a
 fixed task in a nested package or module. Available task IDs, resolver checks,
 timeout defaults, cwd support, extra argument rules, and unavailable reasons
 are returned by `workspace.context`.
+Use `task.explain` when a task or candidate route is unclear; it reports
+available, unavailable, candidate, or manual-first decisions with the next tool.
 
 The default dev policy configures Node/npm, Go, Rust, and Python tasks through
 `local-task-runner`. Node script tasks require the matching `package.json`

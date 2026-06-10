@@ -42,7 +42,8 @@ application.
 npm/pnpm/yarn/bun scripts, Go, Rust, Dart/Flutter, Playwright/Cypress/Vitest/
 Jest/ESLint/TypeScript configs, Prisma/Drizzle/buf/sqlc/OpenAPI configs, and
 Make/just/Taskfile targets. Candidates are informational unless policy maps them
-to a fixed task ID. Default Node task IDs such as `node.test` and `node.build`
+to a fixed task ID. `task.explain` shows why a task is available, unavailable,
+candidate-only, or manual-first. Default Node task IDs such as `node.test` and `node.build`
 require matching package scripts, so missing scripts do not produce empty
 successful runs.
 

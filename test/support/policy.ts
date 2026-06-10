@@ -129,6 +129,15 @@ tools:
           enum: [foreground, background]
       required: [taskId]
       additionalProperties: false
+  - name: task.explain
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        taskId:
+          type: string
+      required: [taskId]
+      additionalProperties: false
   - name: task.result
     type: builtIn
     inputSchema:

@@ -35,7 +35,7 @@ describe("tool router", () => {
         status: "ok",
         data: {
           status: "ok",
-          toolSurface: { version: "4.0.3" },
+          toolSurface: { version: "4.0.4" },
           policy: { profile: "chatgptWebDefault" },
           capabilities: { editMode: "single" },
           hostConstraints: {
@@ -68,12 +68,12 @@ describe("tool router", () => {
             effectiveLimits: expect.any(Object),
           },
           toolSurface: {
-            version: "4.0.3",
+            version: "4.0.4",
             hash: expect.any(String),
             toolCount: setup.registry.size,
           },
           instructions: {
-            version: "4.0.3",
+            version: "4.0.4",
             hash: sha256(webvibeServerInstructions),
           },
           upstreams: expect.any(Array),
@@ -85,6 +85,27 @@ describe("tool router", () => {
               message: expect.stringContaining("protected"),
             }),
           ],
+        },
+      });
+      await expect(
+        setup.router.call("task.explain", { taskId: "echo" }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        status: "available",
+        data: {
+          status: "available",
+          taskId: "echo",
+          next: { tool: "task.run", args: { taskId: "echo" } },
+        },
+      });
+      await expect(
+        setup.router.call("task.explain", { taskId: "missing-task" }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        status: "manualFirst",
+        data: {
+          status: "manualFirst",
+          next: { tool: "manual.prepare" },
         },
       });
       await expect(

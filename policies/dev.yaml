@@ -833,6 +833,21 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
+  - name: task.explain
+    type: builtIn
+    description: Explain resolver checks and next route for one taskId or candidate task id.
+    inputSchema:
+      type: object
+      properties:
+        taskId:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required: [taskId]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: task.run
     type: builtIn
     description: Run one policy-defined local task by taskId. No free-form command input.

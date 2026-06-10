@@ -65,6 +65,7 @@ describe("default policies", () => {
       "manual.resume",
       "file.change_apply",
       "task.list",
+      "task.explain",
       "task.run",
       "task.result",
       "git.status",
@@ -128,7 +129,7 @@ describe("default policies", () => {
         .filter((tool) => tool.name.startsWith("task."))
         .every((tool) => tool.outputSchema),
     ).toBe(true);
-    expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(3);
+    expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(4);
     expect(dev.tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining(["manual.prepare", "manual.status"]),
     );

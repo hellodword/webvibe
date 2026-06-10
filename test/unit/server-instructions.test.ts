@@ -10,7 +10,7 @@ const safetyBlock =
 
 describe("server instructions", () => {
   it("publishes a stable instruction contract version", () => {
-    expect(WEBVIBE_INSTRUCTION_VERSION).toBe("4.0.3");
+    expect(WEBVIBE_INSTRUCTION_VERSION).toBe("4.0.4");
     expect(webvibeServerInstructions.length).toBeGreaterThan(1000);
   });
 
@@ -19,6 +19,7 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("file.change_preview");
     expect(webvibeServerInstructions).toContain("file.change_apply");
     expect(webvibeServerInstructions).toContain("batch.change_preview");
+    expect(webvibeServerInstructions).toContain("task.explain");
     expect(webvibeServerInstructions).toContain("manual.prepare");
     expect(webvibeServerInstructions).toContain("manual.gate");
     expect(webvibeServerInstructions).toContain("manual.status");
