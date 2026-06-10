@@ -1,4 +1,4 @@
-import type { RelayPolicy, TaskPolicy } from "../policy/policy.js";
+import type { RelayPolicy, TaskBundlesPolicy, TaskPolicy } from "../policy/policy.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import { gitStatus } from "../workspace/inspect/git.js";
@@ -21,7 +21,7 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
   });
   const git = await gitStatus({}, { workspaceRoot: context.workspaceRoot, workspace: context.policy.workspace });
   const diagnostics = getDiagnostics(context);
-  const tasks = taskSummary(context.policy, env.webvibe.missingTasks);
+  const tasks = taskSummary(context.policy, env.webvibe.missingTasks, env.project, env.path.commands);
   const tools = Array.from(context.registry.keys());
   const toolSurfaceHash = sha256(Array.from(context.registry.values()).map((entry) => entry.descriptor));
   const policyHash = sha256(context.policy);
@@ -107,9 +107,12 @@ export function getDiagnostics(context: ContextToolContext): Record<string, unkn
 function taskSummary(
   policy: RelayPolicy,
   missingTasks: Array<{ taskId: string; executable: string; reason: string; executableCategory?: string }>,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
 ): {
   available: Array<Record<string, unknown>>;
   unavailable: Array<Record<string, unknown>>;
+  candidates: Array<Record<string, unknown>>;
 } {
   const missingById = new Map(missingTasks.map((task) => [task.taskId, task]));
   const available: Array<Record<string, unknown>> = [];
@@ -134,7 +137,11 @@ function taskSummary(
       }
     }
   }
-  return { available, unavailable };
+  return {
+    available,
+    unavailable,
+    candidates: taskCandidates(policy.taskBundles ?? {}, project, commands, available),
+  };
 }
 
 function taskInfo(taskId: string, task: TaskPolicy): Record<string, unknown> {
@@ -201,4 +208,141 @@ function capabilityLimitHostObservation(outputText: string): Record<string, stri
 
 function safeLogName(taskId: string): string {
   return taskId.replace(/[^A-Za-z0-9_.-]+/g, "-") || "task";
+}
+
+function taskCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  available: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const availableIds = new Set(available.map((task) => String(task.taskId)));
+  const candidates = [
+    ...nodeTaskCandidates(bundles, project, commands, availableIds),
+    ...languageTaskCandidates("go", bundles, project, ["test_all", "vet", "fmt"], availableIds),
+    ...languageTaskCandidates("rust", bundles, project, ["test", "check", "clippy", "fmt", "build"], availableIds),
+  ];
+  return candidates.slice(0, 200);
+}
+
+function nodeTaskCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  availableIds: Set<string>,
+): Array<Record<string, unknown>> {
+  const nodeBundle = bundleRecord(bundles.node);
+  const allowedScripts = stringList(nodeBundle.scripts, ["test", "lint", "typecheck", "build", "format"]);
+  const allowedPackageManagers = stringList(nodeBundle.packageManagers, ["npm", "pnpm", "yarn", "bun"]);
+  const candidates: Array<Record<string, unknown>> = [];
+  for (const manifest of project.manifests.filter((item) => item.type === "npm")) {
+    const cwd = dirnameOrDot(manifest.path);
+    const packageManager = packageManagerForManifest(manifest, project.lockfiles, commands, allowedPackageManagers);
+    for (const script of manifest.scripts ?? []) {
+      if (!allowedScripts.includes(script)) continue;
+      const staticTaskId = `${packageManager}_${script === "typecheck" ? "typecheck" : script}`;
+      candidates.push({
+        taskId: `candidate:${cwd}:${script}`,
+        family: "node",
+        cwd,
+        source: manifest.path,
+        script,
+        packageManager,
+        command: [packageManager, "run", script],
+        runnable: availableIds.has(staticTaskId),
+        ...(availableIds.has(staticTaskId) ? { matchingTaskId: staticTaskId } : {}),
+      });
+    }
+  }
+  return candidates;
+}
+
+function languageTaskCandidates(
+  language: "go" | "rust",
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  defaultTasks: string[],
+  availableIds: Set<string>,
+): Array<Record<string, unknown>> {
+  const bundle = bundleRecord(bundles[language]);
+  const allowedTasks = stringList(bundle.tasks, defaultTasks);
+  const prefix = language === "go" ? "go" : "cargo";
+  const manifestType = language;
+  return project.manifests
+    .filter((manifest) => manifest.type === manifestType)
+    .flatMap((manifest) => {
+      const cwd = dirnameOrDot(manifest.path);
+      return allowedTasks.map((task) => {
+        const staticTaskId = language === "go" ? goStaticTaskId(task) : cargoStaticTaskId(task);
+        return {
+          taskId: `candidate:${cwd}:${language}:${task}`,
+          family: language,
+          cwd,
+          source: manifest.path,
+          task,
+          command: commandForLanguageTask(language, task),
+          runnable: staticTaskId ? availableIds.has(staticTaskId) : false,
+          ...(staticTaskId && availableIds.has(staticTaskId) ? { matchingTaskId: staticTaskId } : {}),
+          executable: prefix,
+        };
+      });
+    });
+}
+
+function packageManagerForManifest(
+  manifest: Awaited<ReturnType<typeof inspectEnvironment>>["project"]["manifests"][number],
+  lockfiles: Awaited<ReturnType<typeof inspectEnvironment>>["project"]["lockfiles"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  allowed: string[],
+): string {
+  const cwd = dirnameOrDot(manifest.path);
+  const byLock = lockfiles.find((lockfile) => dirnameOrDot(lockfile.path) === cwd && allowed.includes(lockfile.type));
+  if (byLock) return byLock.type;
+  if (manifest.packageManager && allowed.includes(manifest.packageManager)) return manifest.packageManager;
+  const available = commands.find((command) => allowed.includes(command.command) && command.status === "available");
+  return available?.command ?? (allowed.includes("npm") ? "npm" : allowed[0] ?? "npm");
+}
+
+function commandForLanguageTask(language: "go" | "rust", task: string): string[] {
+  if (language === "go") {
+    if (task === "test_all") return ["go", "test", "./..."];
+    if (task === "vet") return ["go", "vet", "./..."];
+    if (task === "fmt") return ["go", "fmt", "./..."];
+    if (task === "mod_download") return ["go", "mod", "download"];
+    if (task === "mod_tidy") return ["go", "mod", "tidy"];
+    return ["go", task];
+  }
+  if (task === "fmt") return ["cargo", "fmt", "--check"];
+  if (task === "clippy") return ["cargo", "clippy", "--all-targets", "--all-features"];
+  return ["cargo", task];
+}
+
+function goStaticTaskId(task: string): string | undefined {
+  if (task === "test_all") return "go_test";
+  if (task === "vet") return "go_vet";
+  if (task === "fmt") return "go_fmt";
+  if (task === "mod_download") return "go_mod_download";
+  if (task === "mod_tidy") return "go_mod_tidy";
+  return undefined;
+}
+
+function cargoStaticTaskId(task: string): string | undefined {
+  if (task === "fmt") return "cargo_fmt";
+  return `cargo_${task}`;
+}
+
+function bundleRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function dirnameOrDot(filePath: string): string {
+  const dir = filePath.includes("/") ? filePath.slice(0, filePath.lastIndexOf("/")) : ".";
+  return dir || ".";
 }

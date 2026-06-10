@@ -57,6 +57,25 @@ workspace:
     - "dist/**"
     - "build/**"
 
+taskBundles:
+  node:
+    packageManagers: [npm, pnpm, yarn, bun]
+    scripts: [test, lint, typecheck, build, format]
+    allowInstall: true
+  go:
+    tasks: [test_all, vet, fmt, mod_download, mod_tidy]
+  rust:
+    tasks: [test, check, clippy, fmt, build, fetch]
+  flutter:
+    tasks: [pub_get, analyze, test, dart_format]
+  frontend:
+    tasks: [playwright_test, cypress_run, vitest, jest, eslint, biome, prettier, tsc_noemit]
+  codegen:
+    tasks: [openapi_generate, prisma_generate, drizzle_generate, sqlc_generate, buf_lint, buf_generate]
+  project:
+    taskFiles: [make, just, task]
+    allowedTargets: []
+
 upstreams:
   tasks:
     transport: local-task-runner

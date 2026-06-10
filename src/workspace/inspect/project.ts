@@ -12,6 +12,7 @@ type ProjectManifest = {
   type: "npm" | "go" | "rust" | "python" | "requirements" | "unknown";
   name?: string;
   scripts?: string[];
+  packageManager?: string;
 };
 
 const MANIFEST_TYPES: Record<string, ProjectManifest["type"]> = {
@@ -24,6 +25,10 @@ const MANIFEST_TYPES: Record<string, ProjectManifest["type"]> = {
 
 const LOCKFILE_TYPES: Record<string, string> = {
   "package-lock.json": "npm",
+  "pnpm-lock.yaml": "pnpm",
+  "yarn.lock": "yarn",
+  "bun.lockb": "bun",
+  "bun.lock": "bun",
   "npm-shrinkwrap.json": "npm",
   "go.sum": "go",
   "Cargo.lock": "rust",
@@ -108,6 +113,9 @@ async function readManifest(
         path: relativePath,
         type,
         ...(typeof parsed.name === "string" ? { name: parsed.name } : {}),
+        ...(typeof parsed.packageManager === "string"
+          ? { packageManager: parsed.packageManager.split("@")[0] }
+          : {}),
         ...(parsed.scripts && typeof parsed.scripts === "object"
           ? { scripts: Object.keys(parsed.scripts).sort() }
           : {}),

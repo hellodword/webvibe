@@ -435,6 +435,74 @@ describe("workspace inspection built-ins", () => {
       ]),
     );
   });
+
+  it("synthesizes task candidates from hybrid project manifests", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-task-candidates-"));
+    await mkdir(path.join(root, "web"));
+    await mkdir(path.join(root, "api"));
+    await mkdir(path.join(root, "crates"));
+    await writeFile(
+      path.join(root, "web", "package.json"),
+      JSON.stringify({
+        name: "web",
+        packageManager: "pnpm@9.0.0",
+        scripts: { test: "vitest", lint: "eslint .", deploy: "ignored" },
+      }),
+    );
+    await writeFile(path.join(root, "web", "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    await writeFile(path.join(root, "api", "go.mod"), "module example.test/api\n");
+    await writeFile(path.join(root, "crates", "Cargo.toml"), "[package]\nname = \"demo\"\n");
+    const policy = policyFor(root);
+    policy.taskBundles = {
+      node: { packageManagers: ["npm", "pnpm"], scripts: ["test", "lint"] },
+      go: { tasks: ["test_all", "vet"] },
+      rust: { tasks: ["test", "check"] },
+    };
+    const registry = new Map([
+      ["workspace.context", {} as any],
+      ["task.run", {} as any],
+    ]);
+
+    const context = await getContext({
+      registry,
+      policy,
+      upstreams: { listHealth: () => [] } as any,
+      workspaceRoot: root,
+    });
+
+    expect((context.tasks as any).candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          family: "node",
+          cwd: "web",
+          script: "test",
+          packageManager: "pnpm",
+          command: ["pnpm", "run", "test"],
+        }),
+        expect.objectContaining({
+          family: "node",
+          cwd: "web",
+          script: "lint",
+          command: ["pnpm", "run", "lint"],
+        }),
+        expect.objectContaining({
+          family: "go",
+          cwd: "api",
+          task: "test_all",
+          command: ["go", "test", "./..."],
+        }),
+        expect.objectContaining({
+          family: "rust",
+          cwd: "crates",
+          task: "check",
+          command: ["cargo", "check"],
+        }),
+      ]),
+    );
+    expect((context.tasks as any).candidates).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ script: "deploy" })]),
+    );
+  });
 });
 
 function policyFor(root: string): RelayPolicy {
@@ -466,7 +534,11 @@ function policyFor(root: string): RelayPolicy {
         taskBundles: {},
       },
     },
-    taskBundles: {},
+    taskBundles: {
+      node: { packageManagers: ["npm", "pnpm", "yarn", "bun"], scripts: ["test", "lint", "typecheck", "build", "format"] },
+      go: { tasks: ["test_all", "vet", "fmt"] },
+      rust: { tasks: ["test", "check", "clippy", "fmt", "build"] },
+    },
     limits: limitsPolicySchema.parse(defaultLimits),
     audit: {
       enabled: true,
