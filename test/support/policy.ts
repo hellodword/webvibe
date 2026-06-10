@@ -127,6 +127,20 @@ tools:
         mode:
           type: string
           enum: [foreground, background]
+        extra:
+          type: object
+          properties:
+            packages:
+              type: array
+              items:
+                type: string
+            modules:
+              type: array
+              items:
+                type: string
+            dev:
+              type: boolean
+          additionalProperties: false
       required: [taskId]
       additionalProperties: false
   - name: task.explain

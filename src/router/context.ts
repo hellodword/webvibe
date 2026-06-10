@@ -204,6 +204,7 @@ function taskInfo(
     maxTimeoutSeconds: task.maxTimeoutSeconds,
     acceptsCwd: true,
     acceptsExtraArgs: task.allowExtraArgs === true,
+    extraInput: task.allowExtraArgs === true ? "typed-extra-object" : "none",
     maxExtraArgs: task.maxExtraArgs,
     allowedExtraArgs: task.allowedExtraArgs,
     extraArgPattern: task.extraArgPattern,

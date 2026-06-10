@@ -149,6 +149,8 @@ describe("default policies", () => {
       minLength: 1,
       maxLength: 500,
     });
+    expect((taskRun.inputSchema as any).properties.extraArgs).toBeUndefined();
+    expect((taskRun.inputSchema as any).properties.extra.type).toBe("object");
     expect(dev.limits.output).toMatchObject({
       preferredToolOutputBytes: 12000,
       maxToolOutputBytes: 60000,

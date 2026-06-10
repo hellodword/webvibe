@@ -29,6 +29,14 @@ export type TaskRunRecord = {
   stdout: TaskOutputSummary;
   stderr: TaskOutputSummary;
   diagnostics: TaskDiagnostic[];
+  effectiveCommand?: {
+    executable: string;
+    args: string[];
+    cwd: string;
+  };
+  checks?: Array<Record<string, unknown>>;
+  hostRisk?: "low" | "medium" | "high";
+  next?: Record<string, unknown>;
   unavailableReason?: string;
   manualRequired?: ManualRequired;
 };

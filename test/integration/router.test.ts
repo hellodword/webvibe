@@ -350,8 +350,15 @@ describe("tool router", () => {
         data: {
           status: "unavailable",
           unavailableReason: "Candidate task target is not allowed by policy",
+          effectiveCommand: { executable: "make", args: ["blocked"], cwd: "." },
+          checks: [expect.objectContaining({ kind: "candidatePolicy", ok: false })],
+          hostRisk: "medium",
+          next: { tool: "manual.prepare", reason: "resolver_check_failed", taskId: "candidate:.:make:blocked" },
         },
       });
+      await expect(
+        setup.router.call("task.run", { taskId: "candidate:.:make:print", extra: { packages: ["x"] } }, caller),
+      ).rejects.toThrow("Candidate task does not accept extra");
     } finally {
       await setup.close();
     }

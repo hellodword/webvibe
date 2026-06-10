@@ -106,10 +106,10 @@ empty successful runs. The caller may pass a workspace-relative cwd for
 monorepos. The model asks for a named task instead of sending free-form command
 text.
 
-For package/module installation tasks, policy may allow bounded `extraArgs`.
-Those arguments are validated by count and allowlist or regex before spawning;
-they are appended to fixed executable/argument pairs and are never interpreted as
-a shell command.
+For package/module installation tasks, policy may allow typed `extra` objects.
+Those values are validated by count and allowlist or regex before spawning; they
+are appended to fixed executable/argument pairs and are never interpreted as a
+shell command.
 
 ## Why Bounded Workspace Apply
 

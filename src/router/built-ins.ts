@@ -265,19 +265,15 @@ export async function callBuiltIn(
     if (!context.upstreams.isAvailable("tasks")) {
       const taskId = typeof args.taskId === "string" ? args.taskId : "";
       const reason = "Task upstream is unavailable";
-      return {
-        status: "unavailable",
-        runId: "",
-        taskId,
-        exitCode: null,
-        stdout: emptyTaskOutputSummary(),
-        stderr: taskOutputSummaryFromText(reason),
-        diagnostics: [],
-        durationMs: 0,
-        timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
-        unavailableReason: reason,
-        manualRequired: manualRequiredForUnavailableTask(taskId, reason),
-      };
+      const task = context.policy.upstreams.tasks?.tasks?.[taskId];
+      return unavailableTaskRunResult(args, reason, {
+        effectiveCommand: {
+          executable: task?.executable ?? "",
+          args: task?.args ?? [],
+          cwd: task?.cwd ?? context.policy.upstreams.tasks?.cwd ?? ".",
+        },
+        checks: [{ kind: "upstream", name: "tasks", ok: false, reason }],
+      });
     }
     return context.upstreams.call("tasks", "run_task", args);
   }
@@ -339,6 +335,7 @@ async function runProjectTaskCandidate(
   }
   if (args.cwd !== undefined) throw new ForbiddenError("Candidate task cwd is fixed by the candidate id");
   if (args.extraArgs !== undefined) throw new ForbiddenError("Candidate task does not accept extraArgs");
+  if (args.extra !== undefined) throw new ForbiddenError("Candidate task does not accept extra");
   const project = await inspectProject({}, {
     workspaceRoot: context.workspaceRoot,
     workspace: context.policy.workspace,
@@ -397,6 +394,25 @@ function parseProjectTaskCandidateId(taskId: string):
 
 function unavailableCandidateTask(args: Record<string, unknown>, reason: string): Record<string, unknown> {
   const taskId = typeof args.taskId === "string" ? args.taskId : "";
+  const parsed = parseProjectTaskCandidateId(taskId);
+  const effectiveCommand = parsed
+    ? { executable: executableForTaskFile(parsed.type), args: [parsed.target], cwd: parsed.cwd }
+    : { executable: "", args: [], cwd: "." };
+  return unavailableTaskRunResult(args, reason, {
+    effectiveCommand,
+    checks: [{ kind: "candidatePolicy", ok: false, reason }],
+  });
+}
+
+function unavailableTaskRunResult(
+  args: Record<string, unknown>,
+  reason: string,
+  metadata: {
+    effectiveCommand: { executable: string; args: string[]; cwd: string };
+    checks: Array<Record<string, unknown>>;
+  },
+): Record<string, unknown> {
+  const taskId = typeof args.taskId === "string" ? args.taskId : "";
   return {
     status: "unavailable",
     runId: "",
@@ -407,6 +423,10 @@ function unavailableCandidateTask(args: Record<string, unknown>, reason: string)
     diagnostics: [],
     durationMs: 0,
     timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
+    effectiveCommand: metadata.effectiveCommand,
+    checks: metadata.checks,
+    hostRisk: "medium",
+    next: { tool: "manual.prepare", reason: "resolver_check_failed", taskId },
     unavailableReason: reason,
     manualRequired: manualRequiredForUnavailableTask(taskId, reason),
   };

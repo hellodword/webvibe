@@ -101,6 +101,10 @@ describe("local task runner upstream", () => {
             "diagnostics",
             "durationMs",
             "timeoutSeconds",
+            "effectiveCommand",
+            "checks",
+            "hostRisk",
+            "next",
           ],
         }),
       }),
@@ -108,7 +112,9 @@ describe("local task runner upstream", () => {
     const descriptor = (await runner.listTools())[0] as any;
     expect(descriptor.inputSchema.properties).toMatchObject({
       mode: { type: "string", enum: ["foreground", "background"] },
+      extra: { type: "object" },
     });
+    expect(descriptor.inputSchema.properties.extraArgs).toBeUndefined();
     await expect(runner.callTool("run_task", { taskId: "unknown" })).rejects.toThrow("Unknown");
     const ok = (await runner.callTool("run_task", { taskId: "ok" })) as any;
     expect(ok).toMatchObject({
@@ -121,6 +127,14 @@ describe("local task runner upstream", () => {
         truncated: false,
         logPath: expect.stringContaining(".webvibe/task-logs/"),
       }),
+      effectiveCommand: {
+        executable: path.basename(process.execPath),
+        args: ["-e", "console.log('ok')"],
+        cwd: ".",
+      },
+      checks: expect.arrayContaining([expect.objectContaining({ kind: "executable", ok: true })]),
+      hostRisk: "medium",
+      next: { tool: "task.result", when: "background", taskId: "ok" },
     });
     expect(await readFile(path.join(root, ok.stdout.logPath), "utf8")).toBe("ok\n");
     await expect(runner.callTool("run_task", { taskId: "noManifestGate" })).resolves.toMatchObject({
@@ -152,12 +166,15 @@ describe("local task runner upstream", () => {
     });
     await expect(
       runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["alpha", "beta"] }),
+    ).rejects.toThrow("extraArgs is not accepted");
+    await expect(
+      runner.callTool("run_task", { taskId: "dynamic", extra: { packages: ["alpha", "beta"] } }),
     ).resolves.toMatchObject({
       status: "ok",
       stdout: expect.objectContaining({ head: "alpha|beta" }),
     });
     await expect(
-      runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["bad arg"] }),
+      runner.callTool("run_task", { taskId: "dynamic", extra: { packages: ["bad arg"] } }),
     ).rejects.toThrow("not allowed");
     await expect(runner.callTool("run_task", { taskId: "missingExecutable" })).resolves.toMatchObject(
       {
@@ -185,6 +202,10 @@ describe("local task runner upstream", () => {
       status: "unavailable",
       unavailableReason: "Missing package script: missing",
       stderr: expect.objectContaining({ head: expect.stringContaining("Missing package script") }),
+      checks: expect.arrayContaining([
+        expect.objectContaining({ kind: "packageScript", name: "missing", ok: false }),
+      ]),
+      next: { tool: "manual.prepare", reason: "resolver_check_failed", taskId: "missingScript" },
     });
   });
 

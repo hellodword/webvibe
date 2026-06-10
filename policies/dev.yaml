@@ -862,11 +862,22 @@ tools:
           type: integer
           minimum: 1
           maximum: 36000
-        extraArgs:
-          type: array
-          maxItems: 20
-          items:
-            type: string
+        extra:
+          type: object
+          properties:
+            packages:
+              type: array
+              maxItems: 20
+              items:
+                type: string
+            modules:
+              type: array
+              maxItems: 20
+              items:
+                type: string
+            dev:
+              type: boolean
+          additionalProperties: false
         cwd:
           type: string
           minLength: 1
@@ -928,6 +939,42 @@ tools:
           type: integer
         timeoutSeconds:
           type: integer
+        effectiveCommand:
+          type: object
+          properties:
+            executable:
+              type: string
+            args:
+              type: array
+              items:
+                type: string
+            cwd:
+              type: string
+          required: [executable, args, cwd]
+          additionalProperties: false
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                type: string
+              name:
+                type: string
+              path:
+                type: string
+              ok:
+                type: boolean
+              reason:
+                type: string
+            required: [kind, ok]
+            additionalProperties: false
+        hostRisk:
+          type: string
+          enum: [medium]
+        next:
+          type: object
+          additionalProperties: true
         unavailableReason:
           type: string
         manualRequired:
@@ -952,7 +999,7 @@ tools:
               additionalProperties: false
           required: [nextTool, reason, userInstructions, hostObservation]
           additionalProperties: false
-      required: [status, runId, taskId, exitCode, stdout, stderr, diagnostics, durationMs, timeoutSeconds]
+      required: [status, runId, taskId, exitCode, stdout, stderr, diagnostics, durationMs, timeoutSeconds, effectiveCommand, checks, hostRisk, next]
       additionalProperties: false
     annotations:
       readOnlyHint: false

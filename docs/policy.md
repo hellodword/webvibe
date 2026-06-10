@@ -126,6 +126,8 @@ timeout defaults, cwd support, extra argument rules, and unavailable reasons
 are returned by `workspace.context`.
 Use `task.explain` when a task or candidate route is unclear; it reports
 available, unavailable, candidate, or manual-first decisions with the next tool.
+Tasks that need user-selected packages/modules use typed `extra` input, for
+example `extra.packages` and `extra.dev`; raw `extraArgs` arrays are rejected.
 
 The default dev policy configures Node/npm, Go, Rust, and Python tasks through
 `local-task-runner`. Node script tasks require the matching `package.json`
@@ -144,8 +146,9 @@ targets are listed by default but remain non-runnable unless policy explicitly
 allows a target.
 
 Task results store stdout/stderr in `.webvibe/task-logs/` and return bounded
-head/tail/sha256/log-path summaries plus parsed diagnostics for common
-TypeScript, ESLint, Vitest/Jest, Go, Rust, and Dart output.
+head/tail/sha256/log-path summaries plus `effectiveCommand`, resolver `checks`,
+`hostRisk`, `next`, and parsed diagnostics for common TypeScript, ESLint,
+Vitest/Jest, Go, Rust, and Dart output.
 
 If a required command has no matching task ID or needs a capability outside the
 fixed task/tool surface, the model must use the manual fallback flow instead of

@@ -27,8 +27,26 @@ type TaskResult = {
   diagnostics: TaskDiagnostic[];
   durationMs: number;
   timeoutSeconds: number;
+  effectiveCommand: EffectiveCommand;
+  checks: TaskCheck[];
+  hostRisk: "medium";
+  next: Record<string, unknown>;
   unavailableReason?: string;
   manualRequired?: ManualRequired;
+};
+
+type EffectiveCommand = {
+  executable: string;
+  args: string[];
+  cwd: string;
+};
+
+type TaskCheck = {
+  kind: string;
+  name?: string;
+  path?: string;
+  ok: boolean;
+  reason?: string;
 };
 
 export type ManualRequired = {
@@ -82,10 +100,22 @@ export class LocalTaskRunnerClient implements UpstreamClient {
               minimum: 1,
               maximum: Math.max(...taskIds.map((taskId) => this.maxTimeoutSeconds(taskId)), 1),
             },
-            extraArgs: {
-              type: "array",
-              items: { type: "string" },
-              maxItems: 20,
+            extra: {
+              type: "object",
+              properties: {
+                packages: {
+                  type: "array",
+                  items: { type: "string" },
+                  maxItems: 20,
+                },
+                modules: {
+                  type: "array",
+                  items: { type: "string" },
+                  maxItems: 20,
+                },
+                dev: { type: "boolean" },
+              },
+              additionalProperties: false,
             },
             cwd: {
               type: "string",
@@ -113,6 +143,10 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             diagnostics: taskDiagnosticsSchema(),
             durationMs: { type: "integer" },
             timeoutSeconds: { type: "integer" },
+            effectiveCommand: effectiveCommandSchema(),
+            checks: taskChecksSchema(),
+            hostRisk: { type: "string", enum: ["medium"] },
+            next: { type: "object", additionalProperties: true },
             unavailableReason: { type: "string" },
             manualRequired: {
               type: "object",
@@ -144,6 +178,10 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             "diagnostics",
             "durationMs",
             "timeoutSeconds",
+            "effectiveCommand",
+            "checks",
+            "hostRisk",
+            "next",
           ],
           additionalProperties: false,
         },
@@ -175,7 +213,15 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     const startedAt = Date.now();
     const timeoutSeconds = this.effectiveTimeoutSeconds(taskId, args.timeoutSeconds);
     const cwd = await this.resolveTaskCwd(task, args.cwd);
-    const extraArgs = this.extraArgsForTask(task, args.extraArgs);
+    const extraArgs = this.extraArgsForTask(task, args);
+    const cwdRelative = toWorkspaceRelative(this.workspaceRoot, cwd) || ".";
+    const effectiveCommand: EffectiveCommand = {
+      executable: displayExecutable(task.executable),
+      args: [...(task.args ?? []), ...extraArgs],
+      cwd: cwdRelative,
+    };
+    const checks = await this.resolveTaskChecks(task, cwd);
+    const next = nextForTaskResult(taskId, checks);
     const background = args.mode === "background";
     const store = new TaskLogStore(this.workspaceRoot, this.outputLimits);
     const runId = store.newRunId();
@@ -191,6 +237,9 @@ export class LocalTaskRunnerClient implements UpstreamClient {
       startedAtIso,
       cwd,
       extraArgs,
+      effectiveCommand,
+      checks,
+      next,
       store,
       stdoutCapture,
       stderrCapture,
@@ -202,10 +251,13 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           runId,
           taskId,
           timeoutSeconds,
-          cwd: toWorkspaceRelative(this.workspaceRoot, cwd) || ".",
+          cwd: cwdRelative,
           startedAt: startedAtIso,
           stdoutLogPath: stdoutCapture.logPath,
           stderrLogPath: stderrCapture.logPath,
+          effectiveCommand,
+          checks,
+          next,
         })
       : undefined;
     if (running) await store.writeRecord(running);
@@ -254,11 +306,15 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           diagnostics,
           durationMs: Date.now() - startedAt,
           timeoutSeconds,
+          effectiveCommand,
+          checks,
+          hostRisk: "medium",
+          next,
           ...(input.unavailableReason ? { unavailableReason: input.unavailableReason } : {}),
           ...(input.manualRequired ? { manualRequired: input.manualRequired } : {}),
         };
         await store.writeRecord(
-          recordFromResult(result, toWorkspaceRelative(this.workspaceRoot, cwd) || ".", startedAtIso),
+          recordFromResult(result, cwdRelative, startedAtIso),
         );
         resolve(result);
       };
@@ -315,42 +371,29 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     startedAtIso: string,
     cwd: string,
     extraArgs: string[],
+    effectiveCommand: EffectiveCommand,
+    checks: TaskCheck[],
+    next: Record<string, unknown>,
     store: TaskLogStore,
     stdoutCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
     stderrCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
   ): Promise<TaskResult | undefined> {
-    const env = { ...process.env, ...this.policy.env, ...task.env };
-    const executable = await findExecutable(task.executable, env, this.workspaceRoot);
-    if (executable.status === "missing") {
+    const failed = checks.find((check) => !check.ok);
+    if (failed) {
       return unavailable(
         runId,
         taskId,
         timeoutSeconds,
         startedAt,
         startedAtIso,
-        `Missing executable: ${displayExecutable(task.executable)}`,
+        failed.reason ?? "Task resolver check failed",
         task,
         cwd,
         this.workspaceRoot,
         extraArgs,
-        store,
-        stdoutCapture,
-        stderrCapture,
-      );
-    }
-    const requirementReason = await this.checkTaskRequirements(task, cwd);
-    if (requirementReason) {
-      return unavailable(
-        runId,
-        taskId,
-        timeoutSeconds,
-        startedAt,
-        startedAtIso,
-        requirementReason,
-        task,
-        cwd,
-        this.workspaceRoot,
-        extraArgs,
+        effectiveCommand,
+        checks,
+        next,
         store,
         stdoutCapture,
         stderrCapture,
@@ -359,28 +402,68 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     return undefined;
   }
 
-  private async checkTaskRequirements(task: TaskPolicy, cwd: string): Promise<string | undefined> {
+  private async resolveTaskChecks(task: TaskPolicy, cwd: string): Promise<TaskCheck[]> {
+    const env = { ...process.env, ...this.policy.env, ...task.env };
+    const executable = await findExecutable(task.executable, env, this.workspaceRoot);
+    const checks: TaskCheck[] = [
+      {
+        kind: "executable",
+        name: displayExecutable(task.executable),
+        ok: executable.status !== "missing",
+        ...(executable.status === "missing"
+          ? { reason: `Missing executable: ${displayExecutable(task.executable)}` }
+          : {}),
+      },
+    ];
     if (task.requiredPackageScript) {
       const packageJson = path.join(cwd, "package.json");
       const stat = await safeLstat(packageJson);
-      if (!stat?.isFile()) return `Missing package.json for script '${task.requiredPackageScript}'`;
-      try {
-        const parsed = JSON.parse(await readFile(packageJson, "utf8")) as any;
-        if (!parsed.scripts || typeof parsed.scripts !== "object" || !(task.requiredPackageScript in parsed.scripts)) {
-          return `Missing package script: ${task.requiredPackageScript}`;
+      let ok = false;
+      let reason: string | undefined;
+      if (!stat?.isFile()) {
+        reason = `Missing package.json for script '${task.requiredPackageScript}'`;
+      } else {
+        try {
+          const parsed = JSON.parse(await readFile(packageJson, "utf8")) as any;
+          ok = Boolean(
+            parsed.scripts &&
+              typeof parsed.scripts === "object" &&
+              task.requiredPackageScript in parsed.scripts,
+          );
+          if (!ok) reason = `Missing package script: ${task.requiredPackageScript}`;
+        } catch {
+          reason = `Cannot read package.json for script '${task.requiredPackageScript}'`;
         }
-      } catch {
-        return `Cannot read package.json for script '${task.requiredPackageScript}'`;
       }
+      checks.push({
+        kind: "packageScript",
+        name: task.requiredPackageScript,
+        ok,
+        ...(reason ? { reason } : {}),
+      });
     }
     for (const requiredFile of task.requiredFiles ?? []) {
       const absolutePath = path.resolve(cwd, requiredFile);
+      let ok = true;
+      let reason: string | undefined;
       if (!isInside(this.workspaceRoot, absolutePath)) {
-        return `Required file is outside workspace: ${requiredFile}`;
+        ok = false;
+        reason = `Required file is outside workspace: ${requiredFile}`;
+      } else {
+        const stat = await safeLstat(absolutePath);
+        if (!stat?.isFile()) {
+          ok = false;
+          reason = `Missing required file: ${requiredFile}`;
+        }
       }
-      if (!(await safeLstat(absolutePath))) return `Missing required file: ${requiredFile}`;
+      checks.push({
+        kind: "requiredFile",
+        path: requiredFile,
+        ok,
+        ...(reason ? { reason } : {}),
+      });
     }
-    return undefined;
+    return checks;
   }
 
   private async resolveTaskCwd(task: TaskPolicy, rawCwd: unknown): Promise<string> {
@@ -422,23 +505,41 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     return this.policy.tasks ?? {};
   }
 
-  private extraArgsForTask(task: TaskPolicy, raw: unknown): string[] {
+  private extraArgsForTask(task: TaskPolicy, args: Record<string, unknown>): string[] {
+    if (args.extraArgs !== undefined) {
+      throw new BadRequestError("extraArgs is not accepted; use typed extra");
+    }
+    const raw = args.extra;
     if (raw === undefined || raw === null) return [];
-    if (!task.allowExtraArgs) throw new BadRequestError("Task does not accept extraArgs");
-    if (!Array.isArray(raw)) throw new BadRequestError("extraArgs must be an array");
+    if (!task.allowExtraArgs) throw new BadRequestError("Task does not accept extra");
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      throw new BadRequestError("extra must be an object");
+    }
+    const extra = raw as {
+      packages?: unknown;
+      modules?: unknown;
+      dev?: unknown;
+    };
+    const rawItems = extra.packages ?? extra.modules ?? [];
+    if (!Array.isArray(rawItems)) throw new BadRequestError("extra packages/modules must be an array");
+    const items = rawItems.slice();
+    if (extra.dev === true) items.unshift("--save-dev");
+    if (extra.dev !== undefined && typeof extra.dev !== "boolean") {
+      throw new BadRequestError("extra.dev must be boolean");
+    }
     const maxArgs = task.maxExtraArgs ?? 20;
-    if (raw.length > maxArgs) throw new BadRequestError("extraArgs has too many items");
+    if (items.length > maxArgs) throw new BadRequestError("extra has too many items");
     const pattern = task.extraArgPattern ? new RegExp(task.extraArgPattern) : undefined;
     const allowed = new Set(task.allowedExtraArgs ?? []);
-    return raw.map((item) => {
-      if (typeof item !== "string") throw new BadRequestError("extraArgs items must be string");
+    return items.map((item) => {
+      if (typeof item !== "string") throw new BadRequestError("extra items must be string");
       if (item.length === 0 || item.length > 200 || item.includes("\0")) {
-        throw new BadRequestError("extraArgs item is invalid");
+        throw new BadRequestError("extra item is invalid");
       }
       if (!allowed.has(item) && pattern && !pattern.test(item)) {
-        throw new BadRequestError(`extraArgs item is not allowed: ${item}`);
+        throw new BadRequestError(`extra item is not allowed: ${item}`);
       }
-      if (!allowed.has(item) && !pattern) throw new BadRequestError("extraArgs are not allowed by pattern");
+      if (!allowed.has(item) && !pattern) throw new BadRequestError("extra values are not allowed by pattern");
       return item;
     });
   }
@@ -446,6 +547,13 @@ export class LocalTaskRunnerClient implements UpstreamClient {
 
 function displayExecutable(executable: string): string {
   return executable.includes("/") || executable.includes("\\") ? path.basename(executable) : executable;
+}
+
+function nextForTaskResult(taskId: string, checks: TaskCheck[]): Record<string, unknown> {
+  if (checks.every((check) => check.ok)) {
+    return { tool: "task.result", when: "background", taskId };
+  }
+  return { tool: "manual.prepare", reason: "resolver_check_failed", taskId };
 }
 
 function taskOutputSummarySchema(): Record<string, unknown> {
@@ -482,6 +590,37 @@ function taskDiagnosticsSchema(): Record<string, unknown> {
   };
 }
 
+function effectiveCommandSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      executable: { type: "string" },
+      args: { type: "array", items: { type: "string" } },
+      cwd: { type: "string" },
+    },
+    required: ["executable", "args", "cwd"],
+    additionalProperties: false,
+  };
+}
+
+function taskChecksSchema(): Record<string, unknown> {
+  return {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        kind: { type: "string" },
+        name: { type: "string" },
+        path: { type: "string" },
+        ok: { type: "boolean" },
+        reason: { type: "string" },
+      },
+      required: ["kind", "ok"],
+      additionalProperties: false,
+    },
+  };
+}
+
 async function safeLstat(filePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
   try {
     return await lstat(filePath);
@@ -502,6 +641,9 @@ async function unavailable(
   cwd: string,
   workspaceRoot: string,
   extraArgs: string[],
+  effectiveCommand: EffectiveCommand,
+  checks: TaskCheck[],
+  next: Record<string, unknown>,
   store: TaskLogStore,
   stdoutCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
   stderrCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
@@ -519,6 +661,10 @@ async function unavailable(
     diagnostics: parseTaskDiagnostics([stdout, stderr]),
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
+    effectiveCommand,
+    checks,
+    hostRisk: "medium",
+    next,
     unavailableReason: reason,
     manualRequired: manualRequiredForTask(taskId, reason, task, cwd, workspaceRoot, extraArgs),
   };
@@ -546,6 +692,10 @@ function recordFromResult(
     stdout: result.stdout,
     stderr: result.stderr,
     diagnostics: result.diagnostics,
+    effectiveCommand: result.effectiveCommand,
+    checks: result.checks,
+    hostRisk: result.hostRisk,
+    next: result.next,
     ...(result.unavailableReason ? { unavailableReason: result.unavailableReason } : {}),
     ...(result.manualRequired ? { manualRequired: result.manualRequired } : {}),
   };
@@ -559,7 +709,10 @@ function runningResult(input: {
   startedAt: string;
   stdoutLogPath: string;
   stderrLogPath: string;
-}): TaskRunRecord {
+  effectiveCommand: EffectiveCommand;
+  checks: TaskCheck[];
+  next: Record<string, unknown>;
+}): TaskRunRecord & TaskResult {
   return {
     runId: input.runId,
     taskId: input.taskId,
@@ -572,6 +725,10 @@ function runningResult(input: {
     stdout: emptySummary(input.stdoutLogPath),
     stderr: emptySummary(input.stderrLogPath),
     diagnostics: [],
+    effectiveCommand: input.effectiveCommand,
+    checks: input.checks,
+    hostRisk: "medium",
+    next: input.next,
   };
 }
 
