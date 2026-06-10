@@ -18,6 +18,14 @@ const editSchema = z
   })
   .strict();
 
+const jsonPatchOperationSchema = z
+  .object({
+    op: z.enum(["add", "replace", "remove"]),
+    path: z.string().min(1),
+    value: z.unknown().optional(),
+  })
+  .strict();
+
 export const changeSchema = z.discriminatedUnion("op", [
   z
     .object({
@@ -56,6 +64,14 @@ export const changeSchema = z.discriminatedUnion("op", [
       path: z.string().min(1),
       expectedSha256: z.string().regex(sha256Pattern),
       edits: z.array(editSchema).min(1),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("json_patch"),
+      path: z.string().min(1),
+      expectedSha256: z.string().regex(sha256Pattern),
+      patch: z.array(jsonPatchOperationSchema).min(1),
     })
     .strict(),
   z

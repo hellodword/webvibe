@@ -179,6 +179,33 @@ describe("workspace changesets", () => {
     });
   });
 
+  it("applies JSON patch changes through preview hash", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-json-patch-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "old" }, deps: ["a"] }, null, 2));
+    const before = JSON.stringify({ scripts: { test: "old" }, deps: ["a"] }, null, 2);
+    const changes = [
+      {
+        op: "json_patch" as const,
+        path: "package.json",
+        expectedSha256: sha256(before),
+        patch: [
+          { op: "replace" as const, path: "/scripts/test", value: "vitest run" },
+          { op: "add" as const, path: "/deps/-", value: "b" },
+        ],
+      },
+    ];
+    const preview = await previewChangeset({ changes }, context);
+    expect(preview.valid).toBe(true);
+    expect(preview.diff).toContain("vitest run");
+
+    await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+    expect(JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))).toEqual({
+      scripts: { test: "vitest run" },
+      deps: ["a", "b"],
+    });
+  });
+
   it("rejects ambiguous plans before writing", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-plan-guards-"));
     const context = testContext(root);
