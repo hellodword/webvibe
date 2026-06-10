@@ -20,8 +20,10 @@ Important fields:
 - `tools`: ChatGPT-facing tools. Types are `builtIn`, `passThrough`, and
   `workflow`.
 - `workspace.protected`: generic path deny patterns.
-- `limits`: output byte limit, tool-call timeout, per-client call rate, and
-  batch change size limits.
+- `limits`: output, HTTP body, tree/search/read/change/task/manual, and rate
+  limits.
+- `taskBundles`: controls which discovered project task families are reported as
+  candidates.
 - `audit`: JSONL audit logging switch and rotation size.
 
 ## Default Tool Surface
@@ -116,8 +118,20 @@ returned by `workspace.context`.
 The default dev policy configures npm, Go, Rust, and Python tasks through
 `local-task-runner`. Task availability changes do not change the public tool
 list, so ChatGPT Web does not need a manual tool refresh when a command is
-missing. Project manifests and package scripts are environment facts reported by
-`workspace.context`; they do not gate task availability.
+missing.
+
+`taskBundles` controls candidate discovery. `workspace.context` and `task.list`
+report candidates from package scripts, Go and Rust manifests, Dart/Flutter
+`pubspec.yaml`, frontend test/lint/typecheck configs, Prisma/Drizzle/buf/sqlc/
+OpenAPI configs, and Make/just/Taskfile targets. Candidates are not arbitrary
+shell execution: they are reported as fixed argv shapes, and `task.run` can only
+run a candidate when there is a matching policy-defined task ID. Make/just/task
+targets are listed by default but remain non-runnable unless policy explicitly
+allows a target.
+
+Task results store stdout/stderr in `.webvibe/task-logs/` and return bounded
+head/tail/sha256/log-path summaries plus parsed diagnostics for common
+TypeScript, ESLint, Vitest/Jest, Go, Rust, and Dart output.
 
 If a required command has no matching task ID or needs arbitrary shell/Node,
 the model must use the manual fallback flow instead of ending with an inability
@@ -137,8 +151,9 @@ and commits only the named pathspecs so unrelated dirty files are not included.
 ## Diagnostics
 
 `diagnostics.health` is for connector diagnostics, not coding preflight. It
-returns relay mode, tool surface version, policy/tool hashes, and upstream
-health.
+returns relay mode, server version, active profile, policy hash, effective
+limits, tool surface version/hash, instruction version/hash, upstream health,
+and recent tool error summaries.
 
 ## Stable Tool Registration
 

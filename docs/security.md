@@ -18,13 +18,16 @@ Security model:
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
 - Redaction: common bearer tokens, API keys, cloud secrets, and private keys are
   removed from output/audit material.
+- HTTP body limits: OAuth and MCP request bodies are capped by policy and return
+  `REQUEST_BODY_TOO_LARGE` with HTTP 413 when exceeded.
 - Context preflight: `workspace.context` returns sanitized ENV/PATH categories,
   not raw secret values or raw PATH entries.
 - Audit: in dev mode, audit is optimized for reproducibility and records
   redacted full inputs, raw tool outputs, client-visible outputs, manual gate
   events, host observations supplied by the model, manual resume events, and
-  artifact downloads. Download tokens are never logged in plaintext. Audit
-  logs rotate to `audit.log.1` at `audit.maxLogBytes`.
+  artifact downloads. Large audit payloads are reduced to size, sha256, head,
+  and tail after redaction. Download tokens are never logged in plaintext.
+  Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
 The relay intentionally does not expose raw arbitrary shell, command strings,
 stdin, kill process, Git mutation tools, or raw filesystem write tools in
@@ -65,9 +68,13 @@ strings: policy must enable `allowExtraArgs`, set a maximum argument count, and
 provide an allowlist or regular expression. Invalid arguments fail before a
 process is spawned.
 
-The default named tasks cover npm, Go, Rust, and Python only. The default policy
-does not expose pnpm, bun, yarn, Poetry, JVM, .NET, Ruby, PHP, raw shell,
-process control, `git push`, `git reset --hard`, or arbitrary checkout tools.
+The default runnable task IDs cover npm, Go, Rust, and Python. The context
+preflight may report additional non-runnable candidates for pnpm/yarn/bun
+scripts, Dart/Flutter, frontend configs, codegen configs, and project task
+files, but those candidates do not become executable unless policy maps them to
+a fixed task ID. The default policy does not expose Poetry, JVM, .NET, Ruby,
+PHP, raw shell, process control, `git push`, `git reset --hard`, or arbitrary
+checkout tools.
 
 ## Batch Changes
 
@@ -155,7 +162,8 @@ model must stop and wait for human completion followed by `/resume`.
 In dev mode, audit is reproducibility-oriented. It records redacted full tool
 inputs, raw tool outputs, client-visible outputs, manual gate lifecycle events,
 artifact downloads, host observations supplied by the model, and manual resume
-events. Download tokens are never logged in plaintext.
+events. Large payload fields are summarized after redaction instead of being
+written wholesale. Download tokens are never logged in plaintext.
 
 ## Context Preflight
 

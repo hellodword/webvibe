@@ -27,13 +27,23 @@ Default `dev` mode uses complete batch file changes and fixed policy-defined
 tasks. It does not expose arbitrary shell execution, raw per-file write tools,
 or hidden prepared-payload application.
 
+`workspace.context` reports available tasks plus task candidates discovered from
+npm/pnpm/yarn/bun scripts, Go, Rust, Dart/Flutter, Playwright/Cypress/Vitest/
+Jest/ESLint/TypeScript configs, Prisma/Drizzle/buf/sqlc/OpenAPI configs, and
+Make/just/Taskfile targets. Candidates are informational unless policy maps them
+to a fixed task ID.
+
+`diagnostics.health` reports server version, policy hash, effective limits, tool
+surface version/hash, instruction version/hash, upstream health, and recent tool
+errors.
+
 ## Development
 
 ```bash
 npm test
 npm run build
 npm run lint
-npx tsc -p tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters
+npx tsc -p tsconfig.json --noEmit
 ```
 
 ## Documents

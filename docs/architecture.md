@@ -68,6 +68,11 @@ signals, PATH categories, command availability, project manifests, lockfiles,
 npm scripts, current webvibe tools, upstream health, missing task reasons, and
 guidance.
 
+The same context also reports task candidates from project shape: package
+scripts, Go/Rust manifests, Dart/Flutter manifests, frontend and codegen config
+files, and Make/just/Taskfile targets. Candidate reporting is separate from
+execution; `task.run` still accepts only policy-defined task IDs.
+
 The module deliberately returns categorized and bounded data. ENV values are
 redacted except a small safe allowlist, PATH entries are categories rather than
 raw directories, and container/editor detection returns sanitized evidence labels
@@ -110,3 +115,11 @@ boundary instead of many small per-file confirmations.
 
 Batch changes also give the relay one place to enforce hash guards, protected
 paths, symlink guards, UTF-8 checks, size limits, and rollback.
+
+## Runtime State
+
+Workspace-local runtime files live under `.webvibe/`, including task logs and
+manual logs. Server-private state such as OAuth tokens, pending manual actions,
+prepared manual metadata, artifact metadata, and audit logs lives in `stateDir`.
+Large task output stays in `.webvibe/task-logs/`; audit records store redacted
+payloads and summarize large fields by size, hash, head, and tail.

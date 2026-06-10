@@ -102,8 +102,10 @@ defaults, cwd support, extra argument rules, and manual fallback guidance. If
 there is no matching task ID for a required command, the model uses the same
 manual gate flow instead of ending with an inability statement.
 
-`diagnostics.health` is for connector diagnostics. It reports relay mode, tool
-surface version, hashes, and upstream health. It is not the coding preflight.
+`diagnostics.health` is for connector diagnostics. It reports relay mode,
+server version, active profile, effective limits, tool surface version/hash,
+instruction version/hash, upstream health, and recent tool errors. It is not the
+coding preflight.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, `webvibe` cannot
 directly observe that blocked request. The model first retries the same tool
