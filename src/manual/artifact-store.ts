@@ -15,6 +15,7 @@ import {
 
 export type ManualArtifactRecord = {
   artifactId: string;
+  kind: "diff" | "task-log" | "manual" | "generic";
   filename: string;
   label: string;
   mimeType: string;
@@ -35,6 +36,7 @@ export class ManualArtifactStore {
   }
 
   async create(input: {
+    kind?: ManualArtifactRecord["kind"];
     label: string;
     filename: string;
     mimeType: string;
@@ -51,6 +53,7 @@ export class ManualArtifactStore {
     const data = typeof input.content === "string" ? Buffer.from(input.content, "utf8") : input.content;
     const record: ManualArtifactRecord = {
       artifactId,
+      kind: input.kind ?? "manual",
       filename: sanitizeFilename(input.filename),
       label: input.label,
       mimeType: supportedMimeType(input.mimeType),
@@ -72,6 +75,7 @@ export class ManualArtifactStore {
       downloadToken,
       ref: {
         artifactId,
+        kind: record.kind,
         label: record.label,
         filename: record.filename,
         mimeType: record.mimeType,

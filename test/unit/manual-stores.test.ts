@@ -51,6 +51,8 @@ describe("manual action stores", () => {
       operationId: "op",
       publicBaseUrl: "http://localhost",
     });
+    expect(artifact.record.kind).toBe("manual");
+    expect(artifact.ref.kind).toBe("manual");
     expect((await stat(artifactStore.dir)).mode & 0o777).toBe(0o700);
     expect((await stat(artifactStore.dataPath(artifact.record.artifactId))).mode & 0o777).toBe(
       0o600,

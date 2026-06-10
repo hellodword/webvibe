@@ -240,6 +240,7 @@ async function buildDiffPreview(
   if (context.stateDir && context.publicBaseUrl) {
     artifact = (
       await new ManualArtifactStore(context.stateDir).create({
+        kind: "diff",
         label: "Workspace change preview diff",
         filename: "workspace-change-preview.diff",
         mimeType: "text/x-diff",

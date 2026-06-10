@@ -20,6 +20,7 @@ export type ManualOperation = {
 
 export type ManualArtifactRef = {
   artifactId: string;
+  kind: "diff" | "task-log" | "manual" | "generic";
   label: string;
   filename: string;
   mimeType: string;

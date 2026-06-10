@@ -124,6 +124,7 @@ describe("change.preview", () => {
         artifactUrl.searchParams.get("t"),
       );
       expect(opened.record.createdByTool).toBe("change.preview");
+      expect(opened.record.kind).toBe("diff");
       expect(opened.data.toString("utf8")).toContain("+line 20");
     } finally {
       await upstreams.close();
