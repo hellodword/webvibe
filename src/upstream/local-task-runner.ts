@@ -1,4 +1,4 @@
-import { lstat } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -338,6 +338,48 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         stderrCapture,
       );
     }
+    const requirementReason = await this.checkTaskRequirements(task, cwd);
+    if (requirementReason) {
+      return unavailable(
+        runId,
+        taskId,
+        timeoutSeconds,
+        startedAt,
+        startedAtIso,
+        requirementReason,
+        task,
+        cwd,
+        this.workspaceRoot,
+        extraArgs,
+        store,
+        stdoutCapture,
+        stderrCapture,
+      );
+    }
+    return undefined;
+  }
+
+  private async checkTaskRequirements(task: TaskPolicy, cwd: string): Promise<string | undefined> {
+    if (task.requiredPackageScript) {
+      const packageJson = path.join(cwd, "package.json");
+      const stat = await safeLstat(packageJson);
+      if (!stat?.isFile()) return `Missing package.json for script '${task.requiredPackageScript}'`;
+      try {
+        const parsed = JSON.parse(await readFile(packageJson, "utf8")) as any;
+        if (!parsed.scripts || typeof parsed.scripts !== "object" || !(task.requiredPackageScript in parsed.scripts)) {
+          return `Missing package script: ${task.requiredPackageScript}`;
+        }
+      } catch {
+        return `Cannot read package.json for script '${task.requiredPackageScript}'`;
+      }
+    }
+    for (const requiredFile of task.requiredFiles ?? []) {
+      const absolutePath = path.resolve(cwd, requiredFile);
+      if (!isInside(this.workspaceRoot, absolutePath)) {
+        return `Required file is outside workspace: ${requiredFile}`;
+      }
+      if (!(await safeLstat(absolutePath))) return `Missing required file: ${requiredFile}`;
+    }
     return undefined;
   }
 
@@ -574,8 +616,8 @@ function manualRequiredForTask(
       "printf '%s\\n' \"$LOG\"\n" +
       "exit \"$STATUS\"\n" +
       "```\n\n" +
-      `Reply in the next ChatGPT message with /resume ${logPath}.\n\n` +
-      "Do not paste this command, stdout/stderr, or log contents into manual.gate; the gate call must use only v1 proof fields, reason, and the low-risk hostObservation.",
+      `Reply in the next ChatGPT message with /resume ${safeLogName(taskId)} ${logPath}.\n\n` +
+      "Do not paste this command, stdout/stderr, or log contents into manual.prepare or manual.gate; the gate call must use only v1 proof fields, optional preparedId, reason, and the low-risk hostObservation.",
     hostObservation: {
       toolName: "capability.limit",
       outputText: "manual step required because configured task is unavailable",

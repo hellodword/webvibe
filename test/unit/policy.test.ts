@@ -132,9 +132,16 @@ describe("default policies", () => {
     expect(dev.tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining(["manual.prepare", "manual.status"]),
     );
-    const defaultTasks = Object.values(dev.upstreams.tasks.tasks ?? {}) as Array<Record<string, unknown>>;
-    expect(defaultTasks.every((task) => !("requiredFiles" in task))).toBe(true);
-    expect(defaultTasks.every((task) => !("requiredPackageScript" in task))).toBe(true);
+    const taskIds = Object.keys(dev.upstreams.tasks.tasks ?? {});
+    expect(taskIds).toEqual(expect.arrayContaining(["node.test", "node.build", "node.lint", "node.typecheck"]));
+    expect(taskIds).not.toEqual(expect.arrayContaining(["npm_test", "npm_build", "npm_lint", "npm_typecheck"]));
+    expect(dev.upstreams.tasks.tasks?.["node.build"]).toMatchObject({
+      args: ["run", "build"],
+      requiredPackageScript: "build",
+    });
+    expect(Object.values(dev.upstreams.tasks.tasks ?? {}).flatMap((task) => task.args ?? [])).not.toContain(
+      "--if-present",
+    );
     const taskRun = normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!);
     expect((taskRun.inputSchema as any).properties.cwd).toEqual({
       type: "string",

@@ -578,9 +578,10 @@ function policyFor(root: string): RelayPolicy {
         transport: "local-task-runner",
         cwd: root,
         tasks: {
-          npm_test: {
+          "node.test": {
             executable: "npm",
             args: ["test"],
+            requiredPackageScript: "test",
           },
         },
       },

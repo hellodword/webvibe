@@ -165,8 +165,8 @@ function taskSummary(
   for (const upstream of Object.values(policy.upstreams)) {
     if (upstream.transport !== "local-task-runner") continue;
     for (const [taskId, task] of Object.entries(upstream.tasks ?? {})) {
-      const summary = taskInfo(taskId, task);
       const missing = missingById.get(taskId);
+      const summary = taskInfo(taskId, task, missing);
       if (missing) {
         unavailable.push({
           ...summary,
@@ -189,11 +189,17 @@ function taskSummary(
   };
 }
 
-function taskInfo(taskId: string, task: TaskPolicy): Record<string, unknown> {
+function taskInfo(
+  taskId: string,
+  task: TaskPolicy,
+  missing?: { reason: string; executableCategory?: string },
+): Record<string, unknown> {
   return {
     taskId,
     description: task.description,
     executable: displayExecutable(task.executable),
+    checks: taskChecks(task, missing),
+    hostRisk: "medium",
     defaultTimeoutSeconds: task.defaultTimeoutSeconds,
     maxTimeoutSeconds: task.maxTimeoutSeconds,
     acceptsCwd: true,
@@ -202,6 +208,39 @@ function taskInfo(taskId: string, task: TaskPolicy): Record<string, unknown> {
     allowedExtraArgs: task.allowedExtraArgs,
     extraArgPattern: task.extraArgPattern,
   };
+}
+
+function taskChecks(
+  task: TaskPolicy,
+  missing?: { reason: string; executableCategory?: string },
+): Array<Record<string, unknown>> {
+  const checks: Array<Record<string, unknown>> = [
+    {
+      kind: "executable",
+      name: displayExecutable(task.executable),
+      ok: missing?.reason !== "missing executable",
+      ...(missing?.reason === "missing executable" ? { reason: missing.reason } : {}),
+    },
+  ];
+  if (task.requiredPackageScript) {
+    const missingScript = missing?.reason === `missing package script: ${task.requiredPackageScript}`;
+    checks.push({
+      kind: "packageScript",
+      name: task.requiredPackageScript,
+      ok: !missingScript,
+      ...(missingScript ? { reason: missing.reason } : {}),
+    });
+  }
+  for (const requiredFile of task.requiredFiles ?? []) {
+    const missingFile = missing?.reason === `missing required file: ${requiredFile}`;
+    checks.push({
+      kind: "requiredFile",
+      path: requiredFile,
+      ok: !missingFile,
+      ...(missingFile ? { reason: missing.reason } : {}),
+    });
+  }
+  return checks;
 }
 
 function displayExecutable(executable: string): string {
@@ -291,7 +330,7 @@ function nodeTaskCandidates(
     const packageManager = packageManagerForManifest(manifest, project.lockfiles, commands, allowedPackageManagers);
     for (const script of manifest.scripts ?? []) {
       if (!allowedScripts.includes(script)) continue;
-      const staticTaskId = `${packageManager}_${script === "typecheck" ? "typecheck" : script}`;
+      const staticTaskId = `node.${script}`;
       candidates.push({
         taskId: `candidate:${cwd}:${script}`,
         family: "node",
@@ -579,9 +618,9 @@ function flutterStaticTaskId(task: string): string | undefined {
 }
 
 function frontendStaticTaskId(task: string): string | undefined {
-  if (task === "tsc_noemit") return "npm_typecheck";
-  if (task === "eslint") return "npm_lint";
-  if (task === "prettier") return "npm_format";
+  if (task === "tsc_noemit") return "node.typecheck";
+  if (task === "eslint") return "node.lint";
+  if (task === "prettier") return "node.format";
   return undefined;
 }
 

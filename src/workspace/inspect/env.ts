@@ -128,9 +128,54 @@ async function taskAvailability(
         });
         continue;
       }
+      const requirementReason = await taskRequirementReason(task, upstream.cwd, workspaceRoot);
+      if (requirementReason) {
+        missing.push({
+          taskId,
+          executable: displayExecutable(task.executable),
+          reason: requirementReason,
+          executableCategory: resolution.pathCategory,
+        });
+        continue;
+      }
     }
   }
   return missing.slice(0, 100);
+}
+
+async function taskRequirementReason(
+  task: { cwd?: string; requiredPackageScript?: string; requiredFiles?: string[] },
+  upstreamCwd: string | undefined,
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  const cwd = taskCwdForAvailability(task.cwd, upstreamCwd, workspaceRoot);
+  if (task.requiredPackageScript) {
+    try {
+      const parsed = JSON.parse(await readFile(path.join(cwd, "package.json"), "utf8")) as any;
+      if (!parsed.scripts || typeof parsed.scripts !== "object" || !(task.requiredPackageScript in parsed.scripts)) {
+        return `missing package script: ${task.requiredPackageScript}`;
+      }
+    } catch {
+      return `missing package script: ${task.requiredPackageScript}`;
+    }
+  }
+  for (const requiredFile of task.requiredFiles ?? []) {
+    try {
+      await access(path.resolve(cwd, requiredFile));
+    } catch {
+      return `missing required file: ${requiredFile}`;
+    }
+  }
+  return undefined;
+}
+
+function taskCwdForAvailability(
+  taskCwd: string | undefined,
+  upstreamCwd: string | undefined,
+  workspaceRoot: string,
+): string {
+  const raw = taskCwd ?? upstreamCwd ?? workspaceRoot;
+  return path.isAbsolute(raw) ? raw : path.resolve(workspaceRoot, raw);
 }
 
 async function detectContainer(): Promise<Detection> {

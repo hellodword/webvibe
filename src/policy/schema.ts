@@ -145,6 +145,8 @@ export const taskPolicySchema = z
     defaultTimeoutSeconds: z.number().int().positive().optional(),
     maxTimeoutSeconds: z.number().int().positive().optional(),
     failOnStdout: z.boolean().optional(),
+    requiredPackageScript: z.string().optional(),
+    requiredFiles: z.array(z.string()).optional(),
     allowExtraArgs: z.boolean().optional(),
     maxExtraArgs: z.number().int().positive().optional(),
     extraArgPattern: z.string().optional(),

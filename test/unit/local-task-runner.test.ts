@@ -13,6 +13,10 @@ describe("local task runner upstream", () => {
     await mkdir(path.join(root, "backend"));
     await mkdir(path.join(root, "secret"));
     await writeFile(path.join(root, "not-dir"), "not a directory\n");
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ scripts: { check: "node check.js" } }),
+    );
     const policy: UpstreamPolicy = {
       transport: "local-task-runner",
       cwd: root,
@@ -56,6 +60,18 @@ describe("local task runner upstream", () => {
         missingExecutable: {
           executable: "webvibe-missing-executable",
           args: ["--version"],
+          defaultTimeoutSeconds: 2,
+        },
+        scriptGate: {
+          executable: process.execPath,
+          args: ["-e", "console.log('script-gated')"],
+          requiredPackageScript: "check",
+          defaultTimeoutSeconds: 2,
+        },
+        missingScript: {
+          executable: process.execPath,
+          args: ["-e", "console.log('should-not-run')"],
+          requiredPackageScript: "missing",
           defaultTimeoutSeconds: 2,
         },
       },
@@ -161,6 +177,15 @@ describe("local task runner upstream", () => {
         },
       },
     );
+    await expect(runner.callTool("run_task", { taskId: "scriptGate" })).resolves.toMatchObject({
+      status: "ok",
+      stdout: expect.objectContaining({ head: "script-gated" }),
+    });
+    await expect(runner.callTool("run_task", { taskId: "missingScript" })).resolves.toMatchObject({
+      status: "unavailable",
+      unavailableReason: "Missing package script: missing",
+      stderr: expect.objectContaining({ head: expect.stringContaining("Missing package script") }),
+    });
   });
 
   it("stores large task output as head and tail summaries", async () => {

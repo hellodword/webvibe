@@ -213,6 +213,8 @@
         "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
         "failOnStdout": { "type": "boolean" },
+        "requiredPackageScript": { "type": "string" },
+        "requiredFiles": { "type": "array", "items": { "type": "string" } },
         "allowExtraArgs": { "type": "boolean" },
         "maxExtraArgs": { "type": "integer", "minimum": 1 },
         "extraArgPattern": { "type": "string" },

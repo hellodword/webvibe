@@ -100,9 +100,11 @@ ChatGPT Web host limits.
 
 `local-task-runner` exposes one narrow tool, `run_task`, and only executes task
 IDs defined by policy. Each task has fixed executable/arguments, bounded
-timeout, and a workspace-contained cwd. The caller may pass a workspace-relative
-cwd for monorepos. The model asks for a named task instead of sending
-free-form command text.
+timeout, resolver checks, and a workspace-contained cwd. Node script tasks
+declare required package scripts so missing scripts are unavailable instead of
+empty successful runs. The caller may pass a workspace-relative cwd for
+monorepos. The model asks for a named task instead of sending free-form command
+text.
 
 For package/module installation tasks, policy may allow bounded `extraArgs`.
 Those arguments are validated by count and allowlist or regex before spawning;

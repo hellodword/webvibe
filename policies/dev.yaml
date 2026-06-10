@@ -86,42 +86,48 @@ upstreams:
     transport: local-task-runner
     cwd: "${workspaceRoot}"
     tasks:
-      npm_test:
+      node.test:
         executable: npm
         args: ["test"]
+        requiredPackageScript: test
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_build:
+      node.build:
         executable: npm
-        args: ["run", "build", "--if-present"]
+        args: ["run", "build"]
+        requiredPackageScript: build
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_lint:
+      node.lint:
         executable: npm
-        args: ["run", "lint", "--if-present"]
+        args: ["run", "lint"]
+        requiredPackageScript: lint
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
-      npm_typecheck:
+      node.typecheck:
         executable: npm
-        args: ["run", "typecheck", "--if-present"]
+        args: ["run", "typecheck"]
+        requiredPackageScript: typecheck
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
-      npm_start:
+      node.start:
         executable: npm
         args: ["start"]
+        requiredPackageScript: start
         defaultTimeoutSeconds: 300
         maxTimeoutSeconds: 36000
-      npm_install:
+      node.install:
         executable: npm
         args: ["install"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_ci:
+      node.ci:
         executable: npm
         args: ["ci"]
+        requiredFiles: ["package-lock.json"]
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_add_package:
+      node.add_package:
         executable: npm
         args: ["install"]
         allowExtraArgs: true
@@ -130,7 +136,7 @@ upstreams:
         extraArgPattern: '^(?:@[-A-Za-z0-9_.]+/)?[-A-Za-z0-9_.]+(?:@[-A-Za-z0-9_.*~^<>!=+:/]+)?$'
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_remove_package:
+      node.remove_package:
         executable: npm
         args: ["uninstall"]
         allowExtraArgs: true
@@ -138,14 +144,16 @@ upstreams:
         extraArgPattern: '^(?:@[-A-Za-z0-9_.]+/)?[-A-Za-z0-9_.]+$'
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
-      npm_format:
+      node.format:
         executable: npm
         args: ["run", "format"]
+        requiredPackageScript: format
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
-      npm_lint_fix:
+      node.lint_fix:
         executable: npm
         args: ["run", "lint", "--", "--fix"]
+        requiredPackageScript: lint
         defaultTimeoutSeconds: 1800
         maxTimeoutSeconds: 36000
       cargo_test:

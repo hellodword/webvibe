@@ -38,11 +38,13 @@ default surface does not expose free-form
 process execution, raw per-file write tools, or hidden prepared-payload
 application.
 
-`workspace.context` reports available tasks plus task candidates discovered from
+`workspace.context` reports available capability-style tasks plus task candidates discovered from
 npm/pnpm/yarn/bun scripts, Go, Rust, Dart/Flutter, Playwright/Cypress/Vitest/
 Jest/ESLint/TypeScript configs, Prisma/Drizzle/buf/sqlc/OpenAPI configs, and
 Make/just/Taskfile targets. Candidates are informational unless policy maps them
-to a fixed task ID.
+to a fixed task ID. Default Node task IDs such as `node.test` and `node.build`
+require matching package scripts, so missing scripts do not produce empty
+successful runs.
 
 `diagnostics.health` reports server version, policy hash, effective limits, tool
 surface version/hash, instruction version/hash, upstream health, and recent tool

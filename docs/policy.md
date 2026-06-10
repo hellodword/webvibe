@@ -117,16 +117,19 @@ model continue the original interrupted request.
 
 ## Tasks
 
-`task.run` runs one policy-defined task by `taskId`. It does not accept
-free-form command text or stdin. Callers may pass a workspace-relative `cwd`
-to run a fixed task in a nested package or module. Available task IDs, timeout
-defaults, cwd support, extra argument rules, and unavailable reasons are
-returned by `workspace.context`.
+`task.run` runs one policy-defined task by capability-style `taskId`, such as
+`node.test`, `node.build`, or `node.typecheck`. It does not accept free-form
+command text or stdin. Callers may pass a workspace-relative `cwd` to run a
+fixed task in a nested package or module. Available task IDs, resolver checks,
+timeout defaults, cwd support, extra argument rules, and unavailable reasons
+are returned by `workspace.context`.
 
-The default dev policy configures npm, Go, Rust, and Python tasks through
-`local-task-runner`. Task availability changes do not change the public tool
-list, so ChatGPT Web does not need a manual tool refresh when a command is
-missing.
+The default dev policy configures Node/npm, Go, Rust, and Python tasks through
+`local-task-runner`. Node script tasks require the matching `package.json`
+script and do not use `--if-present`, so missing scripts are reported as
+unavailable instead of succeeding as empty runs. Task availability changes do
+not change the public tool list, so ChatGPT Web does not need a manual tool
+refresh when a command is missing.
 
 `taskBundles` controls candidate discovery. `workspace.context` and `task.list`
 report candidates from package scripts, Go and Rust manifests, Dart/Flutter

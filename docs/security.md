@@ -70,7 +70,9 @@ strings: policy must enable `allowExtraArgs`, set a maximum argument count, and
 provide an allowlist or regular expression. Invalid arguments fail before a
 process is spawned.
 
-The default runnable task IDs cover npm, Go, Rust, and Python. The context
+The default runnable task IDs cover Node/npm, Go, Rust, and Python. Node script
+tasks require matching package scripts before they are considered available, so
+missing scripts do not become successful no-op runs. The context
 preflight may report additional non-runnable candidates for pnpm/yarn/bun
 scripts, Dart/Flutter, frontend configs, codegen configs, and project task
 files, but those candidates do not become executable unless policy maps them to
