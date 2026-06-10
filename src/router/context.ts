@@ -221,6 +221,7 @@ function taskCandidates(
     ...nodeTaskCandidates(bundles, project, commands, availableIds),
     ...languageTaskCandidates("go", bundles, project, ["test_all", "vet", "fmt"], availableIds),
     ...languageTaskCandidates("rust", bundles, project, ["test", "check", "clippy", "fmt", "build"], availableIds),
+    ...projectTaskFileCandidates(bundles, project),
   ];
   return candidates.slice(0, 200);
 }
@@ -329,6 +330,36 @@ function goStaticTaskId(task: string): string | undefined {
 function cargoStaticTaskId(task: string): string | undefined {
   if (task === "fmt") return "cargo_fmt";
   return `cargo_${task}`;
+}
+
+function projectTaskFileCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+): Array<Record<string, unknown>> {
+  const projectBundle = bundleRecord(bundles.project);
+  const enabledTypes = new Set(stringList(projectBundle.taskFiles, ["make", "just", "task"]));
+  const allowedTargets = new Set(stringList(projectBundle.allowedTargets, []));
+  return project.taskFiles
+    .filter((taskFile) => enabledTypes.has(taskFile.type))
+    .flatMap((taskFile) =>
+      taskFile.targets.map((target) => ({
+        taskId: `candidate:${dirnameOrDot(taskFile.path)}:${taskFile.type}:${target}`,
+        family: "project",
+        taskFile: taskFile.type,
+        source: taskFile.path,
+        cwd: dirnameOrDot(taskFile.path),
+        target,
+        command: commandForTaskFile(taskFile.type, target),
+        runnable: allowedTargets.has(target),
+        ...(allowedTargets.has(target) ? { allowedByPolicy: true } : {}),
+      })),
+    );
+}
+
+function commandForTaskFile(type: string, target: string): string[] {
+  if (type === "make") return ["make", target];
+  if (type === "just") return ["just", target];
+  return ["task", target];
 }
 
 function bundleRecord(value: unknown): Record<string, unknown> {

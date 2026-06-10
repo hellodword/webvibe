@@ -15,6 +15,12 @@ type ProjectManifest = {
   packageManager?: string;
 };
 
+type TaskFile = {
+  path: string;
+  type: "make" | "just" | "task";
+  targets: string[];
+};
+
 const MANIFEST_TYPES: Record<string, ProjectManifest["type"]> = {
   "package.json": "npm",
   "go.mod": "go",
@@ -46,6 +52,7 @@ export async function inspectProject(
   npmScripts: Array<{ manifest: string; name: string; command: string }>;
   packageManagers: string[];
   languages: string[];
+  taskFiles: TaskFile[];
   truncated: boolean;
 }> {
   const maxDepth = clampInteger(args.maxDepth, 3, 0, 8);
@@ -53,6 +60,7 @@ export async function inspectProject(
   const manifests: ProjectManifest[] = [];
   const lockfiles: Array<{ path: string; type: string }> = [];
   const npmScripts: Array<{ manifest: string; name: string; command: string }> = [];
+  const taskFiles: TaskFile[] = [];
   let truncated = false;
 
   const visit = async (absoluteDir: string, relativeDir: string, depth: number): Promise<void> => {
@@ -76,6 +84,10 @@ export async function inspectProject(
         if (entry.name in LOCKFILE_TYPES) {
           lockfiles.push({ path: relativePath, type: LOCKFILE_TYPES[entry.name] });
         }
+        const taskFileType = taskFileTypeForName(entry.name);
+        if (taskFileType) {
+          taskFiles.push(await readTaskFile(absolutePath, relativePath, taskFileType));
+        }
         if (manifests.length >= maxManifests) {
           truncated = true;
           return;
@@ -95,7 +107,7 @@ export async function inspectProject(
   await visit(context.workspaceRoot, ".", 0);
   const packageManagers = sortedUnique(lockfiles.map((lockfile) => lockfile.type));
   const languages = sortedUnique(manifests.map((manifest) => manifest.type).filter((type) => type !== "unknown"));
-  return { status: "ok", root: ".", manifests, lockfiles, npmScripts, packageManagers, languages, truncated };
+  return { status: "ok", root: ".", manifests, lockfiles, npmScripts, packageManagers, languages, taskFiles, truncated };
 }
 
 async function readManifest(
@@ -155,6 +167,46 @@ async function readNpmScripts(
   } catch {
     return [];
   }
+}
+
+async function readTaskFile(
+  absolutePath: string,
+  relativePath: string,
+  type: TaskFile["type"],
+): Promise<TaskFile> {
+  const stat = await safeLstat(absolutePath);
+  if (!stat || stat.size > 512 * 1024) return { path: relativePath, type, targets: [] };
+  try {
+    const text = await readFile(absolutePath, "utf8");
+    return {
+      path: relativePath,
+      type,
+      targets: taskTargets(text, type),
+    };
+  } catch {
+    return { path: relativePath, type, targets: [] };
+  }
+}
+
+function taskFileTypeForName(name: string): TaskFile["type"] | undefined {
+  if (name === "Makefile" || name === "makefile") return "make";
+  if (name === "justfile" || name === "Justfile") return "just";
+  if (name === "Taskfile.yml" || name === "Taskfile.yaml") return "task";
+  return undefined;
+}
+
+function taskTargets(text: string, type: TaskFile["type"]): string[] {
+  const targets = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    const match =
+      type === "task"
+        ? /^\s{2}([A-Za-z0-9_.-]+):\s*$/.exec(line)
+        : /^([A-Za-z0-9_.-]+)\s*:/.exec(line);
+    const target = match?.[1];
+    if (!target || target.startsWith(".")) continue;
+    targets.add(target);
+  }
+  return Array.from(targets).sort();
 }
 
 function sortedUnique(values: string[]): string[] {

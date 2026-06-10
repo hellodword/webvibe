@@ -452,11 +452,13 @@ describe("workspace inspection built-ins", () => {
     await writeFile(path.join(root, "web", "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
     await writeFile(path.join(root, "api", "go.mod"), "module example.test/api\n");
     await writeFile(path.join(root, "crates", "Cargo.toml"), "[package]\nname = \"demo\"\n");
+    await writeFile(path.join(root, "Makefile"), "build:\n\ttrue\nsecret-deploy:\n\ttrue\n");
     const policy = policyFor(root);
     policy.taskBundles = {
       node: { packageManagers: ["npm", "pnpm"], scripts: ["test", "lint"] },
       go: { tasks: ["test_all", "vet"] },
       rust: { tasks: ["test", "check"] },
+      project: { taskFiles: ["make"], allowedTargets: ["build"] },
     };
     const registry = new Map([
       ["workspace.context", {} as any],
@@ -496,6 +498,19 @@ describe("workspace inspection built-ins", () => {
           cwd: "crates",
           task: "check",
           command: ["cargo", "check"],
+        }),
+        expect.objectContaining({
+          family: "project",
+          taskFile: "make",
+          target: "build",
+          command: ["make", "build"],
+          runnable: true,
+        }),
+        expect.objectContaining({
+          family: "project",
+          taskFile: "make",
+          target: "secret-deploy",
+          runnable: false,
         }),
       ]),
     );
