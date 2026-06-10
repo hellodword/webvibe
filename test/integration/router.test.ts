@@ -39,7 +39,7 @@ describe("tool router", () => {
           hostRisk: "low",
           truncated: false,
           next: { tool: "task.list" },
-          toolSurface: { version: "4.0.4" },
+          toolSurface: { version: "5.0.0" },
           policy: { profile: "chatgptWebDefault" },
           capabilities: { editMode: "single" },
           hostConstraints: {
@@ -87,12 +87,12 @@ describe("tool router", () => {
             effectiveLimits: expect.any(Object),
           },
           toolSurface: {
-            version: "4.0.4",
+            version: "5.0.0",
             hash: expect.any(String),
             toolCount: setup.registry.size,
           },
           instructions: {
-            version: "4.0.4",
+            version: "5.0.0",
             hash: sha256(webvibeServerInstructions),
           },
           upstreams: expect.any(Array),

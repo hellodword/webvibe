@@ -36,7 +36,6 @@ const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 type ReadFileRequest = {
   path: unknown;
   byteOffset?: unknown;
-  offsetBytes?: unknown;
   maxBytes?: unknown;
   range?: unknown;
   format?: unknown;
@@ -86,7 +85,7 @@ type TreeOptions = {
   respectGitignore: boolean;
   includeHidden: boolean;
   includeIgnored: boolean;
-  depth: number;
+  maxDepth: number;
   maxEntries: number;
   cursorOffset: number;
 };
@@ -122,9 +121,7 @@ export async function searchCode(
   const caseMode =
     args.case === "sensitive" || args.case === "insensitive" || args.case === "smart"
       ? args.case
-      : args.caseSensitive === true
-        ? "sensitive"
-        : "smart";
+      : "smart";
   const maxResults = clampInteger(
     args.maxResults,
     limits.search.defaultMaxResults,
@@ -134,7 +131,7 @@ export async function searchCode(
   const maxColumns = clampInteger(args.maxColumns, limits.search.maxColumns, 1, limits.search.maxColumns);
   const contextLines = clampInteger(args.contextLines, 0, 0, limits.search.maxContextLines);
   const caseSensitive = caseMode === "sensitive" || (caseMode === "smart" && /[A-Z]/.test(query));
-  const include = globList(args.include, typeof args.glob === "string" ? [args.glob] : []);
+  const include = globList(args.include);
   const exclude = globList(args.exclude);
   const cursorOffset = decodeCursor(args.cursor, "fs.search");
   const options: SearchOptions = {
@@ -529,7 +526,7 @@ export async function fileTree(
     includeHidden: args.includeHidden === true,
     includeIgnored: args.includeIgnored === true,
     cursorOffset: decodeCursor(args.cursor, "fs.tree"),
-    depth: clampInteger(args.depth, 3, 0, limits.tree.maxDepth),
+    maxDepth: clampInteger(args.maxDepth, 3, 0, limits.tree.maxDepth),
     maxEntries: clampInteger(
       args.maxEntries,
       limits.tree.defaultMaxEntries,
@@ -585,7 +582,7 @@ export async function fileTree(
         }
       }
     }
-    if (!stat.isDirectory() || stat.isSymbolicLink() || currentDepth >= options.depth) return;
+    if (!stat.isDirectory() || stat.isSymbolicLink() || currentDepth >= options.maxDepth) return;
     const children = await readdir(absolutePath, { withFileTypes: true });
     children.sort((left, right) => {
       if (left.isDirectory() !== right.isDirectory()) return left.isDirectory() ? -1 : 1;
@@ -658,7 +655,7 @@ function treeEffectiveOptions(options: TreeOptions): EffectiveOptions {
     respectGitignore: options.respectGitignore,
     includeHidden: options.includeHidden,
     includeIgnored: options.includeIgnored,
-    depth: options.depth,
+    maxDepth: options.maxDepth,
     maxEntries: options.maxEntries,
     cursorOffset: options.cursorOffset,
   };
@@ -819,10 +816,9 @@ export async function readFiles(
       files.push(readLineRange(resolved.relativePath, stat.size, sha256, text, range, format));
       continue;
     }
-    const offsetField = request.byteOffset === undefined ? "offsetBytes" : "byteOffset";
     const requestedOffset = boundedInteger(
-      request.byteOffset ?? request.offsetBytes,
-      offsetField,
+      request.byteOffset,
+      "byteOffset",
       0,
       0,
       Number.MAX_SAFE_INTEGER,
@@ -875,7 +871,8 @@ function readRequests(args: Record<string, unknown>): ReadFileRequest[] {
     if (args.paths.length === 0) throw new BadRequestError("paths must be a non-empty array");
     return args.paths.map((item) => ({
       path: item,
-      offsetBytes: args.offsetBytes,
+      byteOffset: args.byteOffset,
+      range: args.range,
       maxBytes: args.maxBytes,
       format: args.format,
     }));

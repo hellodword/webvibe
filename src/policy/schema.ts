@@ -127,6 +127,16 @@ export const workflowStepSchema = z
   })
   .strict();
 
+export const toolExampleSchema = z
+  .object({
+    name: z.string(),
+    args: z.record(z.string(), z.unknown()),
+    mode: modeSchema.optional(),
+    fixture: z.string().optional(),
+    expect: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
 export const workflowToolSchema = z
   .object({
     name: z.string(),
@@ -134,7 +144,8 @@ export const workflowToolSchema = z
     optional: z.boolean().optional(),
     description: z.string(),
     inputSchema: z.record(z.string(), z.unknown()),
-    outputSchema: z.record(z.string(), z.unknown()).optional(),
+    outputSchema: z.record(z.string(), z.unknown()),
+    examples: z.array(toolExampleSchema).min(1),
     annotations: annotationsSchema.optional(),
     _meta: metaSchema.optional(),
     timeoutSeconds: z

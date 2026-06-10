@@ -295,8 +295,8 @@ describe("workspace inspection built-ins", () => {
     const policy = policyFor(root);
     const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
 
-    await expect(readFiles({ paths: ["big.txt"], offsetBytes: -1 }, context)).rejects.toThrow(
-      "offsetBytes is below minimum",
+    await expect(readFiles({ paths: ["big.txt"], byteOffset: -1 }, context)).rejects.toThrow(
+      "byteOffset is below minimum",
     );
     await expect(readFiles({ paths: ["big.txt"], maxBytes: 131073 }, context)).rejects.toThrow(
       "maxBytes is above maximum",
@@ -342,7 +342,7 @@ describe("workspace inspection built-ins", () => {
     expect(Buffer.byteLength(first.files[0]!.content ?? "", "utf8")).toBe(12000);
 
     const second = await readFiles(
-      { paths: ["big.txt"], offsetBytes: first.files[0]!.nextOffsetBytes, maxBytes: 10 },
+      { paths: ["big.txt"], byteOffset: first.files[0]!.nextOffsetBytes, maxBytes: 10 },
       context,
     );
 
@@ -367,7 +367,7 @@ describe("workspace inspection built-ins", () => {
     });
 
     const unicodeSecond = await readFiles(
-      { paths: ["unicode.txt"], offsetBytes: unicodeFirst.files[0]!.nextOffsetBytes, maxBytes: 3 },
+      { paths: ["unicode.txt"], byteOffset: unicodeFirst.files[0]!.nextOffsetBytes, maxBytes: 3 },
       context,
     );
 
@@ -381,11 +381,11 @@ describe("workspace inspection built-ins", () => {
     });
 
     await expect(
-      readFiles({ paths: ["unicode.txt"], offsetBytes: 2, maxBytes: 10 }, context),
+      readFiles({ paths: ["unicode.txt"], byteOffset: 2, maxBytes: 10 }, context),
     ).resolves.toMatchObject({
       files: [{ offsetBytes: 3, returnedBytes: 2, truncated: false, content: "bc" }],
     });
-    const eof = await readFiles({ paths: ["unicode.txt"], offsetBytes: 999 }, context);
+    const eof = await readFiles({ paths: ["unicode.txt"], byteOffset: 999 }, context);
 
     expect(eof.files[0]).toMatchObject({
       offsetBytes: 999,

@@ -18,6 +18,8 @@
     "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.build.json",
     "policy:schema": "node scripts/generate-policy-schema.mjs",
+    "generate:tools": "tsx scripts/generate-tools-docs.ts",
+    "check:generated": "npm run policy:schema && npm run generate:tools && git diff --exit-code policies/schema.json docs/tools.md docs/generated/tool-contracts.json",
     "start": "node dist/main.js",
     "test": "vitest run",
     "audit": "npm audit --audit-level=high",

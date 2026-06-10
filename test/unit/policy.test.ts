@@ -116,14 +116,21 @@ describe("default policies", () => {
     const devReadMany = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.read_many")!);
     for (const descriptor of [readOnlyReadMany, devReadMany]) {
       const schema = descriptor.inputSchema as any;
-      expect(Object.keys(schema.properties)).toEqual(["files", "maxBytesPerFile"]);
-      expect(schema.properties.maxBytesPerFile).toEqual({
+      expect(schema.oneOf).toHaveLength(2);
+      expect(schema.oneOf[0].properties.paths).toMatchObject({ type: "array", minItems: 1, maxItems: 50 });
+      expect(schema.oneOf[0].properties.maxBytes).toEqual({
         type: "integer",
         minimum: 1,
         maximum: 131072,
       });
-      expect(schema.required).toEqual(["files"]);
-      expect(schema.additionalProperties).toBe(false);
+      expect(schema.oneOf[0].required).toEqual(["paths"]);
+      expect(schema.oneOf[1].properties.files).toMatchObject({ type: "array", minItems: 1, maxItems: 50 });
+      expect(schema.oneOf[1].properties.maxBytesPerFile).toEqual({
+        type: "integer",
+        minimum: 1,
+        maximum: 131072,
+      });
+      expect(schema.oneOf[1].required).toEqual(["files"]);
     }
     const devRead = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.read")!);
     expect((devRead.inputSchema as any).properties.byteOffset).toEqual({
@@ -133,12 +140,12 @@ describe("default policies", () => {
     expect(
       readOnly.tools
         .filter((tool) => tool.name.startsWith("git."))
-        .every((tool) => tool.type === "builtIn" && tool.outputSchema),
+        .every((tool) => tool.type === "builtIn" && normalizeDescriptor(tool).outputSchema),
     ).toBe(true);
     expect(
       dev.tools
         .filter((tool) => tool.name.startsWith("task."))
-        .every((tool) => tool.outputSchema),
+        .every((tool) => normalizeDescriptor(tool).outputSchema),
     ).toBe(true);
     expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(4);
     expect(dev.tools.map((tool) => tool.name)).toEqual(
@@ -189,7 +196,7 @@ describe("default policies", () => {
     expect(dev.audit.payloads).toBe("full-redacted");
 
     expect(dev.tools.find((tool) => tool.name === "manual.confirm")).toBeUndefined();
-    const manualResume = dev.tools.find((tool) => tool.name === "manual.resume")!;
+    const manualResume = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.resume")!);
     expect((manualResume._meta as any).ui).toBeUndefined();
     expect((manualResume._meta as any)["openai/widgetAccessible"]).toBeUndefined();
     expect((manualResume.inputSchema as any).properties.resumeMessage.maxLength).toBe(2000);
@@ -234,7 +241,7 @@ describe("default policies", () => {
       "WEBVIBE_MANUAL_REQUIRED v1",
     ]);
     expect((manualGate.inputSchema as any).properties.operation.required).toEqual(["id", "kind"]);
-    expect((manualGate.outputSchema as any).properties.reason.enum).toEqual([
+    expect((manualGate.outputSchema as any).properties.structuredContent.properties.reason.enum).toEqual([
       "openai_safety_block",
       "manual_review_requested",
       "external_manual_step",
@@ -244,28 +251,28 @@ describe("default policies", () => {
     expect((manualGate.outputSchema as any).properties.title).toBeUndefined();
     expect((manualGate.outputSchema as any).properties.detailUrl).toBeUndefined();
     expect(
-      (manualGate.outputSchema as any).properties.continuation.properties.mode.enum,
+      (manualGate.outputSchema as any).properties.structuredContent.properties.continuation.properties.mode.enum,
     ).toEqual(["await_resume_command"]);
     expect(
-      (manualGate.outputSchema as any).properties.continuation.properties.mustEndTurn.type,
+      (manualGate.outputSchema as any).properties.structuredContent.properties.continuation.properties.mustEndTurn.type,
     ).toBe("boolean");
     expect(
-      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+      (normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!).outputSchema as any).properties
         .manualRequired.properties.nextTool.enum,
     ).toEqual(["manual.gate"]);
     expect(
-      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+      (normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!).outputSchema as any).properties
         .manualRequired.properties.title,
     ).toBeUndefined();
     expect(
-      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+      (normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!).outputSchema as any).properties
         .manualRequired.properties.instructions,
     ).toBeUndefined();
     expect(
-      (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
+      (normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!).outputSchema as any).properties
         .manualRequired.properties.userInstructions.type,
     ).toBe("string");
-    const applySchema = dev.tools.find((tool) => tool.name === "file.change_apply")!.inputSchema as any;
+    const applySchema = normalizeDescriptor(dev.tools.find((tool) => tool.name === "file.change_apply")!).inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
     expect(applySchema.properties.changes.maxItems).toBe(1);
   });
@@ -281,9 +288,10 @@ describe("default policies", () => {
     const descriptor = normalizeDescriptor(preview!);
     const schema = descriptor.inputSchema as any;
     const editItem =
-      schema.properties.changes.items.properties.edits.items;
+      schema.properties.changes.items.oneOf.find((item: any) => item.properties?.op?.const === "edit")
+        .properties.edits.items;
 
-    expect(editItem.properties.oldText).toEqual({ type: "string" });
+    expect(editItem.properties.oldText).toEqual({ type: "string", minLength: 1 });
     expect(editItem.properties.newText).toEqual({ type: "string" });
     expect(editItem.required).toEqual(["oldText", "newText"]);
   });

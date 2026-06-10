@@ -111,6 +111,14 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     manualFallback: manualFallbackGuide(),
     upstreams: diagnostics.upstreams,
     warnings: env.guidance.slice(0, 5),
+    toolGuidance: {
+      recommendedFirstCalls: [
+        { tool: "workspace.context", args: {} },
+        { tool: "workspace.scan", args: { maxDepth: 6, maxEntries: 2000 } },
+        { tool: "fs.tree", args: { path: ".", maxDepth: 3, maxEntries: 500 } },
+        { tool: "fs.read_many", args: { paths: ["README.md", "package.json"], maxBytes: 60000 } },
+      ],
+    },
     next: {
       tool: "task.list",
       reason: "Use task.list for full task resolver details; use workspace.scan for full project details.",

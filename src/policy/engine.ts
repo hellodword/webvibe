@@ -1,6 +1,7 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 
 import type { ToolPolicy } from "./policy.js";
+import { contractForTool } from "../tools/contracts/index.js";
 import { BadRequestError } from "../util/errors.js";
 import { isJsonObject } from "../util/json-rpc.js";
 
@@ -36,7 +37,12 @@ export function validateJsonSchema(schema: unknown, value: unknown, path = "inpu
 
 export function assertToolInput(tool: ToolPolicy, args: unknown): Record<string, unknown> {
   const normalized = isJsonObject(args) ? args : {};
-  const schema = "inputSchema" in tool ? tool.inputSchema : undefined;
+  const schema =
+    tool.type === "builtIn"
+      ? contractForTool(tool.name)?.inputSchema
+      : "inputSchema" in tool
+        ? tool.inputSchema
+        : undefined;
   if (schema) validateJsonSchema(schema, normalized, "input");
   return normalized;
 }

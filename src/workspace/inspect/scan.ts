@@ -26,15 +26,40 @@ export async function workspaceScan(
   workspaceCandidates: string[];
   truncated: boolean;
   nextCursor: string | null;
+  effectiveOptions: {
+    maxDepth: number;
+    maxEntries: number;
+    includeManifests: boolean;
+    includeTaskFiles: boolean;
+    includeConfigFiles: boolean;
+    includeScripts: boolean;
+    includeFrontend: boolean;
+    includeCodegen: boolean;
+    includeDatabase: boolean;
+    includeWorkspaceCandidates: boolean;
+  };
   next: {
     tool: "task.list";
     reason: string;
   };
 }> {
-  const project = await inspectProject({ maxDepth: args.maxDepth ?? 6, maxManifests: 200 }, context);
+  const maxDepth = clampInteger(args.maxDepth, 6, 0, context.limits?.tree.maxDepth ?? 12);
+  const maxEntries = clampInteger(args.maxEntries, 2000, 1, context.limits?.tree.maxEntries ?? 5000);
+  const effectiveOptions = {
+    maxDepth,
+    maxEntries,
+    includeManifests: args.includeManifests !== false,
+    includeTaskFiles: args.includeTaskFiles !== false,
+    includeConfigFiles: args.includeConfigFiles !== false,
+    includeScripts: args.includeScripts !== false,
+    includeFrontend: args.includeFrontend !== false,
+    includeCodegen: args.includeCodegen !== false,
+    includeDatabase: args.includeDatabase !== false,
+    includeWorkspaceCandidates: args.includeWorkspaceCandidates !== false,
+  };
+  const project = await inspectProject({ maxDepth, maxManifests: 200 }, context);
   const detected: DetectedFile[] = [];
   let truncated = false;
-  const maxFiles = 2000;
 
   const visit = async (absoluteDir: string, relativeDir: string, depth: number): Promise<void> => {
     if (truncated) return;
@@ -46,13 +71,13 @@ export async function workspaceScan(
       if (entry.isFile()) {
         const kind = classifyFile(relativePath);
         if (kind) detected.push({ path: relativePath, kind });
-        if (detected.length >= maxFiles) {
+        if (detected.length >= maxEntries) {
           truncated = true;
           return;
         }
       }
     }
-    if (depth >= 6) return;
+    if (depth >= maxDepth) return;
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const relativePath = relativeDir === "." ? entry.name : `${relativeDir}/${entry.name}`;
@@ -72,19 +97,37 @@ export async function workspaceScan(
     ...project.languages,
     ...detected.filter((file) => file.kind.startsWith("language:")).map((file) => file.kind.slice(9)),
   ]);
+  const projectOutput = {
+    ...project,
+    manifests: effectiveOptions.includeManifests ? project.manifests : [],
+    npmScripts: effectiveOptions.includeScripts ? project.npmScripts : [],
+    taskFiles: effectiveOptions.includeTaskFiles ? project.taskFiles : [],
+    configFiles: effectiveOptions.includeConfigFiles ? project.configFiles : [],
+  };
   return {
     status: "ok",
     root: ".",
-    project,
+    project: projectOutput,
     packageManagers,
     languages,
-    frontend: detected.filter((file) => file.kind.startsWith("frontend:")),
-    codegen: detected.filter((file) => file.kind.startsWith("codegen:")),
-    taskFiles: detected.filter((file) => file.kind.startsWith("task:")),
-    database: detected.filter((file) => file.kind.startsWith("database:")),
-    workspaceCandidates: sortedUnique(project.manifests.map((manifest) => path.posix.dirname(manifest.path))),
+    frontend: effectiveOptions.includeFrontend
+      ? detected.filter((file) => file.kind.startsWith("frontend:"))
+      : [],
+    codegen: effectiveOptions.includeCodegen
+      ? detected.filter((file) => file.kind.startsWith("codegen:"))
+      : [],
+    taskFiles: effectiveOptions.includeTaskFiles
+      ? detected.filter((file) => file.kind.startsWith("task:"))
+      : [],
+    database: effectiveOptions.includeDatabase
+      ? detected.filter((file) => file.kind.startsWith("database:"))
+      : [],
+    workspaceCandidates: effectiveOptions.includeWorkspaceCandidates
+      ? sortedUnique(project.manifests.map((manifest) => path.posix.dirname(manifest.path)))
+      : [],
     truncated,
     nextCursor: null,
+    effectiveOptions,
     next: {
       tool: "task.list",
       reason: "Inspect runnable task capabilities after reviewing project shape.",
@@ -133,4 +176,10 @@ async function packageManagerFromPackageJson(workspaceRoot: string): Promise<str
 
 function sortedUnique(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value && value !== "."))).sort();
+}
+
+function clampInteger(value: unknown, defaultValue: number, minimum: number, maximum: number): number {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value !== "number" || !Number.isInteger(value)) return defaultValue;
+  return Math.min(Math.max(value, minimum), maximum);
 }

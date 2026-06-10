@@ -19,7 +19,7 @@ export function buildRegistry(
     }
     if (tool.type === "passThrough") {
       if (!upstreams.isAvailable(tool.upstream)) {
-        if (tool.optional) {
+        if (tool.optional && hasLocalWrapperSchema(tool)) {
           registry.set(tool.name, { policy: tool, descriptor: normalizeDescriptor(tool) });
           continue;
         }
@@ -38,6 +38,10 @@ export function buildRegistry(
     }
   }
   return registry;
+}
+
+function hasLocalWrapperSchema(tool: ToolPolicy): boolean {
+  return "inputSchema" in tool && Boolean(tool.inputSchema) && "outputSchema" in tool && Boolean(tool.outputSchema);
 }
 
 function workflowAvailable(tool: WorkflowToolPolicy, upstreams: UpstreamManager): boolean {

@@ -402,7 +402,7 @@ const schema = {
     },
     builtInTool: {
       type: "object",
-      description: "A webvibe built-in tool descriptor.",
+      description: "A webvibe built-in tool descriptor. Built-in input/output schemas are ignored at runtime; the contract registry is authoritative.",
       required: ["name", "type"],
       additionalProperties: true,
       properties: toolBase({ type: { const: "builtIn", description: "Built-in tool type." } }),
@@ -416,7 +416,7 @@ const schema = {
         type: { const: "passThrough", description: "Pass-through tool type." },
         upstream: { type: "string", description: "Configured upstream name." },
         upstreamTool: { type: "string", description: "Upstream tool name to call." },
-        optional: { type: "boolean", default: false, description: "Hide this tool if its upstream is unavailable." },
+        optional: { type: "boolean", default: false, description: "When true, publish while unavailable only if local inputSchema and outputSchema are declared." },
         inputPolicy: { $ref: "#/$defs/inputPolicy" },
         mapInput: true,
         mapOutput: true,
@@ -425,11 +425,28 @@ const schema = {
     workflowTool: {
       type: "object",
       description: "A fixed multi-step tool that calls upstream tools in policy-declared order.",
-      required: ["name", "type", "description", "inputSchema", "steps"],
+      required: ["name", "type", "description", "inputSchema", "outputSchema", "examples", "steps"],
       additionalProperties: true,
       properties: toolBase({
         type: { const: "workflow", description: "Workflow tool type." },
         optional: { type: "boolean", default: false, description: "Hide this workflow if required upstreams are unavailable." },
+        examples: {
+          type: "array",
+          description: "At least one local example used by docs and contract drift tests.",
+          minItems: 1,
+          items: {
+            type: "object",
+            required: ["name", "args"],
+            additionalProperties: true,
+            properties: {
+              name: { type: "string" },
+              args: { type: "object", additionalProperties: true },
+              mode: { enum: ["read-only", "dev"] },
+              fixture: { type: "string" },
+              expect: { type: "object", additionalProperties: true },
+            },
+          },
+        },
         timeoutSeconds: {
           type: "object",
           description: "Workflow timeout bounds.",

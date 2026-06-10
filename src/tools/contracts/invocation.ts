@@ -1,0 +1,40 @@
+export function builtInInvocationMeta(name: string): Record<string, string> {
+  const labels: Record<string, [string, string]> = {
+    "workspace.context": ["Loading workspace context", "Workspace context loaded"],
+    "workspace.scan": ["Scanning workspace", "Workspace scan complete"],
+    "workspace.symbols": ["Searching symbols", "Symbols returned"],
+    "diagnostics.health": ["Checking diagnostics", "Diagnostics checked"],
+    "fs.tree": ["Reading file tree", "File tree returned"],
+    "fs.search": ["Searching files", "File search complete"],
+    "fs.read": ["Reading file", "File read complete"],
+    "fs.read_many": ["Reading files", "Files read complete"],
+    "fs.stat": ["Inspecting paths", "Path metadata returned"],
+    "fs.manifest": ["Hashing paths", "Path manifest returned"],
+    "file.change_preview": ["Previewing change", "Change preview ready"],
+    "batch.change_preview": ["Previewing batch change", "Batch preview ready"],
+    "change.preview": ["Previewing change", "Change preview ready"],
+    "file.change_apply": ["Applying change", "Change applied"],
+    "batch.change_apply": ["Applying batch change", "Batch change applied"],
+    "change.apply": ["Applying change", "Change applied"],
+    "task.list": ["Listing tasks", "Tasks listed"],
+    "task.explain": ["Explaining task", "Task explained"],
+    "task.run": ["Running task", "Task finished"],
+    "task.result": ["Reading task result", "Task result returned"],
+    "manual.prepare": ["Preparing manual action", "Manual action prepared"],
+    "manual.gate": ["Opening manual gate", "Manual gate opened"],
+    "manual.status": ["Checking manual status", "Manual status checked"],
+    "manual.resume": ["Resuming manual action", "Manual action resumed"],
+    "git.status": ["Checking git status", "Git status returned"],
+    "git.changed": ["Listing changed files", "Changed files returned"],
+    "git.diff": ["Reading git diff", "Git diff returned"],
+    "git.show": ["Reading git object", "Git object returned"],
+    "git.blame": ["Reading git blame", "Git blame returned"],
+    "git.commit_preview": ["Previewing commit", "Commit preview ready"],
+    "git.commit": ["Creating commit", "Commit created"],
+  };
+  const [invoking, invoked] = labels[name] ?? ["Calling tool", "Tool call complete"];
+  return {
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+  };
+}

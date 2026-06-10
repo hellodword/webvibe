@@ -176,6 +176,35 @@ tools:
     upstream: missing
     upstreamTool: read
     optional: true
+    inputSchema:
+      type: object
+      properties:
+        path:
+          type: string
+      required: [path]
+      additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [unavailable]
+        hostRisk:
+          type: string
+          enum: [low, medium, high]
+        toolName:
+          type: string
+        upstream:
+          type: string
+        upstreamTool:
+          type: string
+        unavailableReason:
+          type: string
+        next:
+          type: object
+          additionalProperties: true
+      required: [status, hostRisk, toolName, upstream, upstreamTool, unavailableReason, next]
+      additionalProperties: false
     inputPolicy:
       pathFields: ["path"]
   - name: x.edit_preview
@@ -212,6 +241,13 @@ tools:
         timeoutSeconds:
           type: integer
       additionalProperties: false
+    outputSchema:
+      type: object
+      additionalProperties: true
+    examples:
+      - name: run workflow
+        args:
+          timeoutSeconds: 2
     steps:
       - call:
           upstream: main
@@ -225,6 +261,12 @@ tools:
     inputSchema:
       type: object
       additionalProperties: false
+    outputSchema:
+      type: object
+      additionalProperties: true
+    examples:
+      - name: optional failure workflow
+        args: {}
     steps:
       - optional: true
         call:
@@ -242,6 +284,12 @@ tools:
     inputSchema:
       type: object
       additionalProperties: false
+    outputSchema:
+      type: object
+      additionalProperties: true
+    examples:
+      - name: required failure workflow
+        args: {}
     steps:
       - call:
           upstream: main
@@ -257,6 +305,13 @@ tools:
           type: integer
       required: ["delayMs"]
       additionalProperties: false
+    outputSchema:
+      type: object
+      additionalProperties: true
+    examples:
+      - name: slow workflow
+        args:
+          delayMs: 10
     timeoutSeconds:
       default: 1
       maximum: 1

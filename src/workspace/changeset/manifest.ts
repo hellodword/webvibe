@@ -10,7 +10,7 @@ import type { ManifestEntry, ResolvedWorkspacePath, WorkspaceContext } from "./t
 export async function fileManifest(
   rawArgs: unknown,
   context: WorkspaceContext,
-): Promise<{ files: ManifestEntry[] }> {
+): Promise<{ status: "ok"; files: ManifestEntry[] }> {
   const input = parseInput(manifestInputSchema, rawArgs);
   const limits = effectiveLimits(context.limits);
   if (input.paths.length > limits.maxChangesetFiles) {
@@ -21,7 +21,7 @@ export async function fileManifest(
     const resolved = await resolveWorkspacePath(item, context);
     files.push(await manifestEntry(resolved, limits.maxChangesetFileBytes));
   }
-  return { files };
+  return { status: "ok", files };
 }
 
 async function manifestEntry(

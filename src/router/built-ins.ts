@@ -266,10 +266,20 @@ export async function callBuiltIn(
   if (name === "task.run") {
     const dynamicProjectTask = await runProjectTaskCandidate(args, context);
     if (dynamicProjectTask) return dynamicProjectTask;
+    const taskId = typeof args.taskId === "string" ? args.taskId : "";
+    const task = context.policy.upstreams.tasks?.tasks?.[taskId];
+    if (!task) {
+      return unavailableTaskRunResult(args, "Task id is not configured by policy", {
+        effectiveCommand: {
+          executable: "",
+          args: [],
+          cwd: context.policy.upstreams.tasks?.cwd ?? ".",
+        },
+        checks: [{ kind: "taskPolicy", ok: false, reason: "Task id is not configured by policy" }],
+      });
+    }
     if (!context.upstreams.isAvailable("tasks")) {
-      const taskId = typeof args.taskId === "string" ? args.taskId : "";
       const reason = "Task upstream is unavailable";
-      const task = context.policy.upstreams.tasks?.tasks?.[taskId];
       return unavailableTaskRunResult(args, reason, {
         effectiveCommand: {
           executable: task?.executable ?? "",
