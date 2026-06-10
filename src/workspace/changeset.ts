@@ -2,9 +2,11 @@ import { ManualArtifactStore } from "../manual/artifact-store.js";
 import { PreparedManualActionStore } from "../manual/prepared-store.js";
 import type { ManualArtifactRef, ManualCheck } from "../manual/types.js";
 import type { AuditLog } from "../state/audit.js";
+import { BadRequestError } from "../util/errors.js";
 import { randomToken, sha256 } from "../util/hash.js";
 import { applyPlan } from "./changeset/apply.js";
 import { buildChangesetPlan } from "./changeset/plan.js";
+import { parseInput, changesetInputSchema } from "./changeset/schema.js";
 import { fileManifest } from "./changeset/manifest.js";
 import type {
   ChangesetSummary,
@@ -26,8 +28,11 @@ export async function previewChangeset(
   files: PlannedFile[];
   diff: string;
   conflicts: Conflict[];
+  previewHash: string;
+  changeHash: string;
 }> {
   const plan = await buildChangesetPlan(rawArgs, context);
+  const hashes = previewHashes(rawArgs, plan);
   return {
     valid: plan.conflicts.length === 0,
     baseRevision: plan.baseRevision,
@@ -35,6 +40,7 @@ export async function previewChangeset(
     files: plan.files,
     diff: plan.diff,
     conflicts: plan.conflicts,
+    ...hashes,
   };
 }
 
@@ -47,8 +53,17 @@ export async function applyChangeset(
   summary: ChangesetSummary;
   files: PlannedFile[];
   conflicts: Conflict[];
+  previewHash?: string;
 }> {
+  const input = parseInput(changesetInputSchema, rawArgs);
+  if (!input.previewHash) {
+    throw new BadRequestError("previewHash is required");
+  }
   const plan = await buildChangesetPlan(rawArgs, context);
+  const hashes = previewHashes(rawArgs, plan);
+  if (input.previewHash !== hashes.previewHash) {
+    throw new BadRequestError("previewHash mismatch");
+  }
   if (plan.conflicts.length > 0) {
     return {
       applied: false,
@@ -56,6 +71,7 @@ export async function applyChangeset(
       summary: plan.summary,
       files: plan.files,
       conflicts: plan.conflicts,
+      previewHash: hashes.previewHash,
     };
   }
 
@@ -66,6 +82,7 @@ export async function applyChangeset(
     summary: plan.summary,
     files: plan.files,
     conflicts: [],
+    previewHash: hashes.previewHash,
   };
 }
 
@@ -175,6 +192,28 @@ export async function prepareChangeset(
       expiresAt: prepared.expiresAt,
       nextTool: "manual.gate",
     },
+  };
+}
+
+function previewHashes(rawArgs: unknown, plan: {
+  baseRevision?: string;
+  summary: ChangesetSummary;
+  files: PlannedFile[];
+  diff: string;
+  conflicts: Conflict[];
+}): { previewHash: string; changeHash: string } {
+  const input = parseInput(changesetInputSchema, rawArgs);
+  const material = {
+    baseRevision: input.baseRevision,
+    changes: input.changes,
+    summary: plan.summary,
+    files: plan.files,
+    diff: plan.diff,
+    conflicts: plan.conflicts,
+  };
+  return {
+    previewHash: `sha256:${sha256(material)}`,
+    changeHash: `sha256:${sha256({ baseRevision: input.baseRevision, changes: input.changes })}`,
   };
 }
 

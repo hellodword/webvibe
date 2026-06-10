@@ -491,6 +491,8 @@ tools:
       properties:
         baseRevision:
           type: string
+        previewHash:
+          type: string
         changes:
           type: array
           minItems: 1
@@ -499,7 +501,7 @@ tools:
             properties:
               op:
                 type: string
-                enum: [create, replace, edit, delete, mkdir]
+                enum: [write, replace, text_edit, create, edit, delete, mkdir]
               path:
                 type: string
               expectedSha256:

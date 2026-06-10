@@ -21,9 +21,9 @@ describe("workspace changesets", () => {
       {
         changes: [
           { op: "mkdir", path: "src" },
-          { op: "create", path: "src/new.ts", content: "export const value = 1;\n" },
+          { op: "write", path: "src/new.ts", content: "export const value = 1;\n" },
           {
-            op: "edit",
+            op: "text_edit",
             path: "a.txt",
             expectedSha256: currentHash,
             edits: [{ oldText: "alpha", newText: "gamma" }],
@@ -34,6 +34,7 @@ describe("workspace changesets", () => {
     );
 
     expect(preview.valid).toBe(true);
+    expect(preview.previewHash).toMatch(/^sha256:/);
     expect(preview.diff).toContain("+++ b/src/new.ts");
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("alpha\nbeta\n");
 
@@ -41,14 +42,15 @@ describe("workspace changesets", () => {
       {
         changes: [
           { op: "mkdir", path: "src" },
-          { op: "create", path: "src/new.ts", content: "export const value = 1;\n" },
+          { op: "write", path: "src/new.ts", content: "export const value = 1;\n" },
           {
-            op: "edit",
+            op: "text_edit",
             path: "a.txt",
             expectedSha256: currentHash,
             edits: [{ oldText: "alpha", newText: "gamma" }],
           },
         ],
+        previewHash: preview.previewHash,
       },
       context,
     );
@@ -63,8 +65,7 @@ describe("workspace changesets", () => {
   it("returns conflicts without partial writes on stale hashes", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-conflict-"));
     await writeFile(path.join(root, "a.txt"), "one\n");
-
-    const result = await applyChangeset(
+    const preview = await previewChangeset(
       {
         changes: [
           {
@@ -73,7 +74,23 @@ describe("workspace changesets", () => {
             expectedSha256: "0".repeat(64),
             content: "two\n",
           },
-          { op: "create", path: "created.txt", content: "new\n" },
+          { op: "write", path: "created.txt", content: "new\n" },
+        ],
+      },
+      testContext(root),
+    );
+
+    const result = await applyChangeset(
+      {
+        previewHash: preview.previewHash,
+        changes: [
+          {
+            op: "replace",
+            path: "a.txt",
+            expectedSha256: "0".repeat(64),
+            content: "two\n",
+          },
+          { op: "write", path: "created.txt", content: "new\n" },
         ],
       },
       testContext(root),
@@ -101,6 +118,7 @@ describe("workspace changesets", () => {
     await expect(
       applyChangeset(
         {
+          previewHash: "sha256:" + "0".repeat(64),
           changes: [
             {
               op: "delete",
@@ -113,7 +131,7 @@ describe("workspace changesets", () => {
       ),
     ).rejects.toThrow("binary");
     await expect(
-      applyChangeset(
+      previewChangeset(
         {
           changes: [
             {
@@ -134,6 +152,31 @@ describe("workspace changesets", () => {
       { path: "missing.txt", exists: false, type: "missing" },
       { path: "link.txt", exists: true, type: "symlink" },
     ]);
+  });
+
+  it("requires matching previewHash before applying", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-preview-hash-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "a.txt"), "one\n");
+    const changes = [
+      {
+        op: "replace" as const,
+        path: "a.txt",
+        expectedSha256: sha256("one\n"),
+        content: "two\n",
+      },
+    ];
+    const preview = await previewChangeset({ changes }, context);
+
+    await expect(applyChangeset({ changes }, context)).rejects.toThrow("previewHash is required");
+    await expect(
+      applyChangeset({ changes, previewHash: "sha256:" + "0".repeat(64) }, context),
+    ).rejects.toThrow("previewHash mismatch");
+
+    await expect(applyChangeset({ changes, previewHash: preview.previewHash }, context)).resolves.toMatchObject({
+      applied: true,
+      previewHash: preview.previewHash,
+    });
   });
 
   it("rejects ambiguous plans before writing", async () => {

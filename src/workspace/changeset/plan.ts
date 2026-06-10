@@ -83,7 +83,7 @@ async function planAction(
     return undefined;
   }
 
-  if (change.op === "create") {
+  if (change.op === "create" || change.op === "write") {
     assertContent(change.content, resolved.relativePath, limits);
     if (info) {
       conflicts.push({ path: resolved.relativePath, reason: "Path already exists" });
@@ -162,8 +162,8 @@ function plannedFile(action: PlannedAction): PlannedFile {
 function summarize(changes: ParsedChange[]): ChangesetSummary {
   return {
     total: changes.length,
-    creates: changes.filter((change) => change.op === "create").length,
-    edits: changes.filter((change) => change.op === "edit").length,
+    creates: changes.filter((change) => change.op === "create" || change.op === "write").length,
+    edits: changes.filter((change) => change.op === "edit" || change.op === "text_edit").length,
     replaces: changes.filter((change) => change.op === "replace").length,
     deletes: changes.filter((change) => change.op === "delete").length,
     mkdirs: changes.filter((change) => change.op === "mkdir").length,

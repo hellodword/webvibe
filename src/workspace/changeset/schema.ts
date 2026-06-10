@@ -28,6 +28,14 @@ export const changeSchema = z.discriminatedUnion("op", [
     .strict(),
   z
     .object({
+      op: z.literal("write"),
+      path: z.string().min(1),
+      content: z.string(),
+      mode: z.enum(["text"]).optional(),
+    })
+    .strict(),
+  z
+    .object({
       op: z.literal("replace"),
       path: z.string().min(1),
       expectedSha256: z.string().regex(sha256Pattern),
@@ -37,6 +45,14 @@ export const changeSchema = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("edit"),
+      path: z.string().min(1),
+      expectedSha256: z.string().regex(sha256Pattern),
+      edits: z.array(editSchema).min(1),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("text_edit"),
       path: z.string().min(1),
       expectedSha256: z.string().regex(sha256Pattern),
       edits: z.array(editSchema).min(1),
@@ -60,6 +76,7 @@ export const changeSchema = z.discriminatedUnion("op", [
 export const changesetInputSchema = z
   .object({
     baseRevision: z.string().min(1).optional(),
+    previewHash: z.string().startsWith("sha256:").optional(),
     changes: z.array(changeSchema).min(1),
   })
   .strict();
