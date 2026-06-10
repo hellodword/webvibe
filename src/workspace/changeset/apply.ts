@@ -6,6 +6,23 @@ import { safeLstat } from "./path-guard.js";
 import { decodeUtf8 } from "./text.js";
 import type { ChangesetPlan, PlannedAction, Snapshot } from "./types.js";
 
+export class ChangesetRollbackError extends Error {
+  readonly code = "CHANGE_ROLLBACK_FAILED";
+  readonly rollbackErrors: string[];
+  readonly applyError: string;
+
+  constructor(applyError: unknown, rollbackErrors: string[]) {
+    const applyMessage = errorMessage(applyError);
+    super(
+      `Changeset apply failed and rollback had ${rollbackErrors.length} error(s): ${rollbackErrors.join("; ")}; original error: ${applyMessage}`,
+      { cause: applyError },
+    );
+    this.name = "ChangesetRollbackError";
+    this.rollbackErrors = rollbackErrors;
+    this.applyError = applyMessage;
+  }
+}
+
 export async function applyPlan(plan: ChangesetPlan): Promise<void> {
   const snapshots = (await Promise.all(plan.actions.map((action) => snapshotPaths(action)))).flat();
   try {
@@ -13,7 +30,10 @@ export async function applyPlan(plan: ChangesetPlan): Promise<void> {
       await applyAction(action);
     }
   } catch (error) {
-    await rollback(snapshots);
+    const rollbackErrors = await rollback(snapshots);
+    if (rollbackErrors.length > 0) {
+      throw new ChangesetRollbackError(error, rollbackErrors);
+    }
     throw error;
   }
 }
@@ -73,7 +93,7 @@ async function snapshotOnePath(
   };
 }
 
-async function rollback(snapshots: Snapshot[]): Promise<void> {
+async function rollback(snapshots: Snapshot[]): Promise<string[]> {
   const errors: string[] = [];
   for (const snapshot of snapshots.slice().reverse()) {
     try {
@@ -91,7 +111,9 @@ async function rollback(snapshots: Snapshot[]): Promise<void> {
       errors.push(error instanceof Error ? error.message : String(error));
     }
   }
-  if (errors.length > 0) {
-    throw new Error(`Changeset rollback failed: ${errors.join("; ")}`);
-  }
+  return errors;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

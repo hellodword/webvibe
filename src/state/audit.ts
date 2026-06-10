@@ -10,6 +10,8 @@ export type AuditRecord = {
     | "tool.call"
     | "tool.blocked"
     | "tool.error"
+    | "change.apply.failed"
+    | "change.apply.rollback_failed"
     | "manual.prepared.created"
     | "manual.gate.created"
     | "manual.gate.expired"

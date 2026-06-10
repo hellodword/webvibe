@@ -177,6 +177,7 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      audit: context.audit,
     });
   }
   if (name === "manual.gate") {

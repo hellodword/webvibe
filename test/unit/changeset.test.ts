@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { applyChangeset, fileManifest, previewChangeset } from "../../src/workspace/changeset.js";
-import { applyPlan } from "../../src/workspace/changeset/apply.js";
+import { applyPlan, ChangesetRollbackError } from "../../src/workspace/changeset/apply.js";
 import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../../src/policy/policy.js";
 
@@ -412,6 +412,65 @@ describe("workspace changesets", () => {
     ).rejects.toThrow();
 
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("old\n");
+  });
+
+  it("surfaces rollback failures separately from apply failures", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-rollback-failure-"));
+    await mkdir(path.join(root, "dir"));
+    await writeFile(path.join(root, "dir/a.txt"), "old\n");
+    await mkdir(path.join(root, "target-dir"));
+
+    await expect(
+      applyPlan({
+        summary: {
+          total: 3,
+          creates: 0,
+          edits: 0,
+          replaces: 2,
+          deletes: 0,
+          renames: 1,
+          mkdirs: 0,
+        },
+        files: [],
+        diff: "",
+        conflicts: [],
+        actions: [
+          {
+            op: "replace",
+            path: "dir/a.txt",
+            absolutePath: path.join(root, "dir/a.txt"),
+            before: {
+              content: "old\n",
+              sha256: sha256("old\n"),
+              sizeBytes: 4,
+              mode: 0o666,
+              mtimeMs: 0,
+            },
+            afterContent: "new\n",
+            afterSha256: sha256("new\n"),
+          },
+          {
+            op: "rename",
+            path: "dir",
+            absolutePath: path.join(root, "dir"),
+            toPath: "dir-moved",
+            toAbsolutePath: path.join(root, "dir-moved"),
+          },
+          {
+            op: "replace",
+            path: "target-dir",
+            absolutePath: path.join(root, "target-dir"),
+            afterContent: "not a directory\n",
+            afterSha256: sha256("not a directory\n"),
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      name: "ChangesetRollbackError",
+      code: "CHANGE_ROLLBACK_FAILED",
+      applyError: expect.stringContaining("directory"),
+      rollbackErrors: expect.arrayContaining([expect.stringContaining("dir-moved")]),
+    } satisfies Partial<ChangesetRollbackError>);
   });
 });
 

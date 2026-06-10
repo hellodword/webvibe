@@ -1,8 +1,9 @@
 import { ManualArtifactStore } from "../manual/artifact-store.js";
 import type { ManualArtifactRef } from "../manual/types.js";
+import type { AuditLog } from "../state/audit.js";
 import { BadRequestError } from "../util/errors.js";
 import { randomToken, sha256 } from "../util/hash.js";
-import { applyPlan } from "./changeset/apply.js";
+import { applyPlan, ChangesetRollbackError } from "./changeset/apply.js";
 import { buildChangesetPlan } from "./changeset/plan.js";
 import { parseInput, changesetInputSchema } from "./changeset/schema.js";
 import { fileManifest } from "./changeset/manifest.js";
@@ -116,7 +117,9 @@ export async function previewChangeset(
 
 export async function applyChangeset(
   rawArgs: unknown,
-  context: WorkspaceContext,
+  context: WorkspaceContext & {
+    audit?: AuditLog;
+  },
 ): Promise<{
   applied: boolean;
   verified: boolean;
@@ -151,7 +154,12 @@ export async function applyChangeset(
     };
   }
 
-  await applyPlan(plan);
+  try {
+    await applyPlan(plan);
+  } catch (error) {
+    await auditApplyFailure(rawArgs, plan, hashes.previewHash, error, context.audit);
+    throw error;
+  }
   const verification = await verifyApplied(plan, context);
   return {
     applied: true,
@@ -164,6 +172,45 @@ export async function applyChangeset(
     conflicts: [],
     previewHash: hashes.previewHash,
   };
+}
+
+async function auditApplyFailure(
+  rawArgs: unknown,
+  plan: { summary: ChangesetSummary; files: PlannedFile[]; conflicts: Conflict[] },
+  previewHash: string,
+  error: unknown,
+  audit?: AuditLog,
+): Promise<void> {
+  if (!audit) return;
+  const err = error instanceof Error ? error : new Error(String(error));
+  await audit.write({
+    timestamp: new Date().toISOString(),
+    event:
+      error instanceof ChangesetRollbackError ? "change.apply.rollback_failed" : "change.apply.failed",
+    tool: "change.apply",
+    type: "builtIn",
+    status: "error",
+    inputHash: sha256(rawArgs),
+    input: rawArgs,
+    rawOutput: {
+      previewHash,
+      summary: plan.summary,
+      files: plan.files,
+      conflicts: plan.conflicts,
+      ...(error instanceof ChangesetRollbackError
+        ? { rollbackErrors: error.rollbackErrors, applyError: error.applyError }
+        : {}),
+    },
+    rawOutputHash: sha256({ previewHash, files: plan.files, conflicts: plan.conflicts }),
+    error: err.message,
+    errorCode:
+      error instanceof ChangesetRollbackError
+        ? error.code
+        : "code" in err && typeof (err as any).code === "string"
+          ? (err as any).code
+          : undefined,
+    errorStack: err.stack,
+  });
 }
 
 async function buildDiffPreview(
