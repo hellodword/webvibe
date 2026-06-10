@@ -12,8 +12,8 @@ import { AuditLog } from "../../src/state/audit.js";
 import { UpstreamManager } from "../../src/upstream/manager.js";
 import { buildRegistry } from "../../src/upstream/registry.js";
 
-describe("change.preview", () => {
-  it("previews a batch change without writing and rejects stale tool names", async () => {
+describe("file.change_preview", () => {
+  it("previews one logical change without writing and rejects stale tool names", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-change-preview-"));
     const stateDir = path.join(root, "state");
     await writeFile(path.join(root, "code.txt"), "old\n");
@@ -34,7 +34,7 @@ describe("change.preview", () => {
       await router.call("workspace.context", {}, caller);
 
       const preview = (await router.call(
-        "change.preview",
+        "file.change_preview",
         {
           changes: [
             {
@@ -61,6 +61,21 @@ describe("change.preview", () => {
       await expect(router.call("change.prepare", {}, caller)).rejects.toThrow(
         "UNKNOWN_TOOL_SURFACE",
       );
+      await expect(router.call("change.preview", { changes: [] }, caller)).rejects.toThrow(
+        "UNKNOWN_TOOL_SURFACE",
+      );
+      await expect(
+        router.call(
+          "file.change_preview",
+          {
+            changes: [
+              { op: "create", path: "a.txt", content: "a\n" },
+              { op: "create", path: "b.txt", content: "b\n" },
+            ],
+          },
+          caller,
+        ),
+      ).rejects.toThrow("too many items");
     } finally {
       await upstreams.close();
     }
@@ -90,7 +105,7 @@ describe("change.preview", () => {
 
       const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
       const preview = (await router.call(
-        "change.preview",
+        "file.change_preview",
         {
           changes: [
             {
@@ -123,7 +138,7 @@ describe("change.preview", () => {
         artifact.artifactId,
         artifactUrl.searchParams.get("t"),
       );
-      expect(opened.record.createdByTool).toBe("change.preview");
+      expect(opened.record.createdByTool).toBe("file.change_preview");
       expect(opened.record.kind).toBe("diff");
       expect(opened.data.toString("utf8")).toContain("+line 20");
     } finally {

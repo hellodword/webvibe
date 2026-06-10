@@ -40,12 +40,12 @@ The built-in ChatGPT Web tool surface is intentionally compact:
 - `fs.read_many`
 - `fs.stat`
 - `fs.manifest`
-- `change.preview` in dev mode
+- `file.change_preview` in dev mode
 - `manual.prepare` in dev mode
 - `manual.gate` in dev mode
 - `manual.status` in dev mode
 - `manual.resume` in dev mode
-- `change.apply` in dev mode
+- `file.change_apply` in dev mode
 - `task.list` in dev mode
 - `task.run` in dev mode
 - `task.result` in dev mode
@@ -84,15 +84,16 @@ not split across chunk boundaries.
 Default dev mode exposes read-only preview and write tools for bounded workspace
 changes:
 
-- `change.preview`: validate a proposed workspace change, detect conflicts, return
+- `file.change_preview`: validate one logical workspace file change, detect conflicts, return
   a bounded diff, and save oversized diffs as artifacts without writing.
-- `change.apply`: apply the requested file change in one write
+- `file.change_apply`: apply one logical workspace file change in one write
   call after matching `previewHash`.
 
 This matches ChatGPT Web's host constraints. The default `editMode` is `single`,
 so models should prefer one logical file operation per preview/apply pair.
-Policy can opt into batch edit mode for multi-file changes when the user accepts
-the larger payload and confirmation tradeoff. Known confirmation limitations
+Policy can opt into batch edit mode by exposing `batch.change_preview` and
+`batch.change_apply` for multi-file changes when the user accepts the larger
+payload and confirmation tradeoff. Known confirmation limitations
 are tracked in [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
 Change limits default to policy `limits.change` values. Mutating

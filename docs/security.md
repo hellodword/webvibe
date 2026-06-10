@@ -82,9 +82,9 @@ checkout tools.
 
 Default dev workspace edits go through:
 
-- `change.preview`: validate and diff a proposed workspace change without
+- `file.change_preview`: validate and diff one logical workspace file change without
   writing. Oversized diffs are saved as tokenized artifacts.
-- `change.apply`: apply the reviewed change in one write operation after
+- `file.change_apply`: apply the reviewed logical file change in one write operation after
   matching `previewHash`.
 
 `replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
@@ -122,10 +122,10 @@ adapts by blocking local tools while manual work is pending and requiring
 
 Boundaries:
 
-- `change.preview` does not write workspace files.
+- `file.change_preview` does not write workspace files.
 - `manual.gate` does not write workspace files.
 - `manual.resume` does not write workspace files.
-- `change.apply` remains the only default workspace write tool.
+- `file.change_apply` remains the only default workspace write tool.
 - There is no apply-by-id tool.
 - Pending, prepared manual-action state, and artifact state live in `stateDir`
   for audit, troubleshooting, and expiry control.
@@ -156,7 +156,7 @@ The `manual.gate` tool result is intentionally lightweight. ChatGPT Web shows
 manual details in chat before opening the gate: commands include stdout/stderr
 redirection to a workspace-relative manual log file, small preview diffs are
 shown inline, and large preview diffs use the tokenized artifact download URL
-from `change.preview`. Detailed manual instructions are not passed as
+from `file.change_preview`. Detailed manual instructions are not passed as
 `manual.gate` arguments. The gate accepts only `WEBVIBE_MANUAL_REQUIRED v1`
 proof fields, operation metadata, reason, and low-risk host observation. If
 ChatGPT Web blocks `manual.gate` itself, the model retries the same

@@ -507,9 +507,9 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: change.preview
+  - name: file.change_preview
     type: builtIn
-    description: Validate and diff one bounded workspace change.
+    description: Validate and diff one logical workspace file change.
     inputSchema: &changeInputSchema
       type: object
       properties:
@@ -520,6 +520,7 @@ tools:
         changes:
           type: array
           minItems: 1
+          maxItems: 1
           items:
             type: object
             properties:
@@ -804,9 +805,9 @@ tools:
       "openai/toolInvocation/invoking": "Resuming manual action"
       "openai/toolInvocation/invoked": "Manual action resumed"
 
-  - name: change.apply
+  - name: file.change_apply
     type: builtIn
-    description: Apply one bounded workspace change after preview.
+    description: Apply one logical workspace file change after preview.
     inputSchema: *changeInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations:

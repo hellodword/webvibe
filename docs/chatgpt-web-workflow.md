@@ -15,7 +15,7 @@ Recommended order:
    `workspace.context`
 4. Apply one small logical workspace change with matching `previewHash`; use
    batch edit mode only when policy explicitly enables it
-5. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
+5. If ChatGPT Web asks for secondary confirmation: retry the identical `file.change_apply` once
 6. If ChatGPT Web blocks with OpenAI safety checks: retry the identical tool call once with unchanged arguments
 7. If the identical retry is blocked again: call `manual.prepare` for low-risk continuation metadata, show manual instructions, then call `manual.gate` with observed host output only
 8. If the best next step needs a capability outside the fixed task/tool surface, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
@@ -97,7 +97,7 @@ stdout/stderr locally to a workspace-relative log file such as
 outside ChatGPT; ChatGPT Web must not send command text, stdout/stderr, or log
 contents through `manual.gate`. For workspace diffs, show diffs at most 12KB and
 200 lines in a code block; for larger diffs, provide the downloadable artifact
-URL returned by `change.preview`. The `manual.gate` tool call itself uses
+URL returned by `file.change_preview`. The `manual.gate` tool call itself uses
 only `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, `preparedId` when available, and optional `hostObservation`. For model-observed capability limits, use a low-risk
 `hostObservation` such as `toolName: "capability.limit"` and
 `outputText: "manual step required because required execution capability is unavailable"`.

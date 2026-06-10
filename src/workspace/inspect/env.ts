@@ -230,7 +230,7 @@ function buildGuidance(
   missingTasks: Array<{ taskId: string; executable: string; reason: string }>,
 ): string[] {
   const guidance = [
-    "Default tools use fixed task IDs and bounded workspace changes; use task.run and change.apply.",
+    "Default tools use fixed task IDs and bounded workspace changes; use task.run and file.change_apply.",
     "Tool lists are stable. If a fixed task cannot run, call result status will be unavailable with a reason.",
   ];
   if (!commands.find((command) => command.command === "make" && command.status === "available")) {

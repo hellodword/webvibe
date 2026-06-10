@@ -67,6 +67,7 @@ export async function previewChangeset(
   context: WorkspaceContext & {
     stateDir?: string;
     publicBaseUrl?: string;
+    toolName?: string;
   },
 ): Promise<{
   valid: boolean;
@@ -119,6 +120,7 @@ export async function applyChangeset(
   rawArgs: unknown,
   context: WorkspaceContext & {
     audit?: AuditLog;
+    toolName?: string;
   },
 ): Promise<{
   applied: boolean;
@@ -157,7 +159,7 @@ export async function applyChangeset(
   try {
     await applyPlan(plan);
   } catch (error) {
-    await auditApplyFailure(rawArgs, plan, hashes.previewHash, error, context.audit);
+    await auditApplyFailure(rawArgs, plan, hashes.previewHash, error, context.audit, context.toolName);
     throw error;
   }
   const verification = await verifyApplied(plan, context);
@@ -180,6 +182,7 @@ async function auditApplyFailure(
   previewHash: string,
   error: unknown,
   audit?: AuditLog,
+  toolName = "change.apply",
 ): Promise<void> {
   if (!audit) return;
   const err = error instanceof Error ? error : new Error(String(error));
@@ -187,7 +190,7 @@ async function auditApplyFailure(
     timestamp: new Date().toISOString(),
     event:
       error instanceof ChangesetRollbackError ? "change.apply.rollback_failed" : "change.apply.failed",
-    tool: "change.apply",
+    tool: toolName,
     type: "builtIn",
     status: "error",
     inputHash: sha256(rawArgs),
@@ -215,7 +218,7 @@ async function auditApplyFailure(
 
 async function buildDiffPreview(
   plan: { diff: string; files: PlannedFile[] },
-  context: WorkspaceContext & { stateDir?: string; publicBaseUrl?: string },
+  context: WorkspaceContext & { stateDir?: string; publicBaseUrl?: string; toolName?: string },
   previewId: string,
 ): Promise<DiffPreview> {
   const bytes = Buffer.byteLength(plan.diff, "utf8");
@@ -245,7 +248,7 @@ async function buildDiffPreview(
         filename: "workspace-change-preview.diff",
         mimeType: "text/x-diff",
         content: plan.diff,
-        createdByTool: "change.preview",
+        createdByTool: context.toolName ?? "change.preview",
         operationId: previewId,
         publicBaseUrl: context.publicBaseUrl,
       })

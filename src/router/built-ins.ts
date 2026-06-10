@@ -168,36 +168,46 @@ export async function callBuiltIn(
       workspace: context.policy.workspace,
     });
   }
-  if (name === "change.preview") {
+  if (name === "file.change_preview") {
+    assertSingleChangeInput(args);
     const preview = await previewChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
       stateDir: context.stateDir,
       publicBaseUrl: context.publicBaseUrl,
+      toolName: name,
     });
-    return {
-      ok: preview.status === "ok",
-      status: preview.status,
-      data: preview,
-      warnings: preview.warnings,
-      limits: {
-        requested: {},
-        effective: {
-          change: context.policy.limits.change,
-        },
-      },
-      truncated: preview.diffInfo.truncated,
-      nextCursor: null,
-      artifacts: preview.artifacts,
-    };
+    return changePreviewResponse(preview, context);
   }
-  if (name === "change.apply") {
+  if (name === "batch.change_preview" || name === "change.preview") {
+    const preview = await previewChangeset(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+      stateDir: context.stateDir,
+      publicBaseUrl: context.publicBaseUrl,
+      toolName: name,
+    });
+    return changePreviewResponse(preview, context);
+  }
+  if (name === "file.change_apply") {
+    assertSingleChangeInput(args);
     return applyChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
       audit: context.audit,
+      toolName: name,
+    });
+  }
+  if (name === "batch.change_apply" || name === "change.apply") {
+    return applyChangeset(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+      audit: context.audit,
+      toolName: name,
     });
   }
   if (name === "manual.gate") {
@@ -279,6 +289,34 @@ export async function callBuiltIn(
     return { ...record, diagnostics: record.diagnostics ?? [] };
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
+}
+
+function assertSingleChangeInput(args: Record<string, unknown>): void {
+  const changes = args.changes;
+  if (!Array.isArray(changes) || changes.length !== 1) {
+    throw new ForbiddenError("Single edit mode accepts exactly one logical file change per call");
+  }
+}
+
+function changePreviewResponse(
+  preview: Awaited<ReturnType<typeof previewChangeset>>,
+  context: BuiltInContext,
+): Record<string, unknown> {
+  return {
+    ok: preview.status === "ok",
+    status: preview.status,
+    data: preview,
+    warnings: preview.warnings,
+    limits: {
+      requested: {},
+      effective: {
+        change: context.policy.limits.change,
+      },
+    },
+    truncated: preview.diffInfo.truncated,
+    nextCursor: null,
+    artifacts: preview.artifacts,
+  };
 }
 
 async function runProjectTaskCandidate(
@@ -388,7 +426,13 @@ function dirnameOrDot(filePath: string): string {
   return dir || ".";
 }
 
-const readOnlyBlockedTools = new Set(["change.apply", "task.run", "git.commit"]);
+const readOnlyBlockedTools = new Set([
+  "file.change_apply",
+  "batch.change_apply",
+  "change.apply",
+  "task.run",
+  "git.commit",
+]);
 
 function unavailable(toolName: string, reason: string): {
   status: "unavailable";

@@ -26,14 +26,15 @@ directory, built-in mode or custom policy path, and pairing code.
 
 - `read-only`: `workspace.context`, read-only `workspace.*`, `fs.*`, Git
   inspection tools, and `diagnostics.health`.
-- `dev`: everything in `read-only`, plus `change.preview`, `change.apply`,
+- `dev`: everything in `read-only`, plus `file.change_preview`, `file.change_apply`,
   `manual.prepare`, `manual.gate`, `manual.status`, `manual.resume`, `task.*`,
   and `git.commit`.
 
-Default `dev` mode uses fixed policy-defined tasks and bounded workspace change
-tools. The configured `editMode` defaults to `single`, meaning models should
-prefer one logical file operation at a time; policy can later enable batch edit
-mode for multi-file changes. The default surface does not expose free-form
+Default `dev` mode uses fixed policy-defined tasks and single-edit workspace
+change tools. The configured `editMode` defaults to `single`, meaning models
+should use one logical file operation at a time; policy can later expose
+`batch.change_preview` / `batch.change_apply` for multi-file changes. The
+default surface does not expose free-form
 process execution, raw per-file write tools, or hidden prepared-payload
 application.
 

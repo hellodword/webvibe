@@ -58,12 +58,12 @@ describe("default policies", () => {
       "fs.read_many",
       "fs.stat",
       "fs.manifest",
-      "change.preview",
+      "file.change_preview",
       "manual.prepare",
       "manual.gate",
       "manual.status",
       "manual.resume",
-      "change.apply",
+      "file.change_apply",
       "task.list",
       "task.run",
       "task.result",
@@ -83,6 +83,10 @@ describe("default policies", () => {
         "read.search",
         "read.files",
         "read.stat",
+        "change.preview",
+        "change.apply",
+        "batch.change_preview",
+        "batch.change_apply",
         "change.plan",
         "change.prepare",
         "git.history",
@@ -231,8 +235,9 @@ describe("default policies", () => {
       (dev.tools.find((tool) => tool.name === "task.run")!.outputSchema as any).properties
         .manualRequired.properties.userInstructions.type,
     ).toBe("string");
-    const applySchema = dev.tools.find((tool) => tool.name === "change.apply")!.inputSchema as any;
+    const applySchema = dev.tools.find((tool) => tool.name === "file.change_apply")!.inputSchema as any;
     expect(applySchema.properties.preparedId).toBeUndefined();
+    expect(applySchema.properties.changes.maxItems).toBe(1);
   });
 
   it("keeps nested JSON schema required and primitive fields valid when capping depth", async () => {
@@ -241,7 +246,7 @@ describe("default policies", () => {
       workspaceRoot: root,
       stateDir: path.join(root, "state"),
     });
-    const preview = dev.tools.find((tool) => tool.name === "change.preview");
+    const preview = dev.tools.find((tool) => tool.name === "file.change_preview");
     expect(preview).toBeTruthy();
     const descriptor = normalizeDescriptor(preview!);
     const schema = descriptor.inputSchema as any;
