@@ -2,6 +2,7 @@ import { openManualGate } from "../manual/gate.js";
 import { resumeManualAction } from "../manual/resume.js";
 import type { RelayPolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
+import { LocalTaskRunnerClient } from "../upstream/local-task-runner.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import {
@@ -12,6 +13,7 @@ import {
 import { ForbiddenError } from "../util/errors.js";
 import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
+import { inspectProject } from "../workspace/inspect/project.js";
 import { workspaceScan } from "../workspace/inspect/scan.js";
 import { workspaceSymbols } from "../workspace/inspect/symbols.js";
 import {
@@ -224,6 +226,8 @@ export async function callBuiltIn(
     }).then((result) => ({ status: "ok", tasks: result.tasks }));
   }
   if (name === "task.run") {
+    const dynamicProjectTask = await runProjectTaskCandidate(args, context);
+    if (dynamicProjectTask) return dynamicProjectTask;
     if (!context.upstreams.isAvailable("tasks")) {
       const taskId = typeof args.taskId === "string" ? args.taskId : "";
       const reason = "Task upstream is unavailable";
@@ -259,6 +263,113 @@ export async function callBuiltIn(
     return { ...record, diagnostics: record.diagnostics ?? [] };
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
+}
+
+async function runProjectTaskCandidate(
+  args: Record<string, unknown>,
+  context: BuiltInContext,
+): Promise<unknown | undefined> {
+  const taskId = typeof args.taskId === "string" ? args.taskId : "";
+  if (!taskId.startsWith("candidate:")) return undefined;
+  const parsed = parseProjectTaskCandidateId(taskId);
+  if (!parsed) {
+    return unavailableCandidateTask(args, "Candidate task id is not runnable by policy");
+  }
+  if (args.cwd !== undefined) throw new ForbiddenError("Candidate task cwd is fixed by the candidate id");
+  if (args.extraArgs !== undefined) throw new ForbiddenError("Candidate task does not accept extraArgs");
+  const project = await inspectProject({}, {
+    workspaceRoot: context.workspaceRoot,
+    workspace: context.policy.workspace,
+  });
+  const taskFile = project.taskFiles.find(
+    (file) =>
+      file.type === parsed.type &&
+      dirnameOrDot(file.path) === parsed.cwd &&
+      file.targets.includes(parsed.target),
+  );
+  const allowedTargets = new Set(
+    stringList(bundleRecord(context.policy.taskBundles?.project).allowedTargets, []),
+  );
+  if (!taskFile || !allowedTargets.has(parsed.target)) {
+    return unavailableCandidateTask(args, "Candidate task target is not allowed by policy");
+  }
+
+  const runner = new LocalTaskRunnerClient(
+    "candidate-project-task",
+    {
+      transport: "local-task-runner",
+      cwd: context.workspaceRoot,
+      env: context.policy.upstreams.tasks?.env,
+      tasks: {
+        [taskId]: {
+          executable: executableForTaskFile(parsed.type),
+          args: [parsed.target],
+          cwd: parsed.cwd,
+          defaultTimeoutSeconds: context.policy.limits.task.defaultTimeoutSeconds,
+          maxTimeoutSeconds: context.policy.limits.task.maxTimeoutSeconds,
+        },
+      },
+    },
+    context.workspaceRoot,
+    context.policy.workspace,
+    context.policy.limits.task,
+  );
+  await runner.initialize();
+  return runner.callTool("run_task", {
+    ...args,
+    taskId,
+  });
+}
+
+function parseProjectTaskCandidateId(taskId: string):
+  | { cwd: string; type: "make" | "just" | "task"; target: string }
+  | undefined {
+  const match = /^candidate:(.*):(make|just|task):([A-Za-z0-9_.-]+)$/.exec(taskId);
+  if (!match) return undefined;
+  return {
+    cwd: match[1] || ".",
+    type: match[2] as "make" | "just" | "task",
+    target: match[3],
+  };
+}
+
+function unavailableCandidateTask(args: Record<string, unknown>, reason: string): Record<string, unknown> {
+  const taskId = typeof args.taskId === "string" ? args.taskId : "";
+  return {
+    status: "unavailable",
+    runId: "",
+    taskId,
+    exitCode: null,
+    stdout: emptyTaskOutputSummary(),
+    stderr: taskOutputSummaryFromText(reason),
+    diagnostics: [],
+    durationMs: 0,
+    timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
+    unavailableReason: reason,
+    manualRequired: manualRequiredForUnavailableTask(taskId, reason),
+  };
+}
+
+function executableForTaskFile(type: "make" | "just" | "task"): string {
+  if (type === "make") return "make";
+  if (type === "just") return "just";
+  return "task";
+}
+
+function bundleRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function dirnameOrDot(filePath: string): string {
+  const dir = filePath.includes("/") ? filePath.slice(0, filePath.lastIndexOf("/")) : ".";
+  return dir || ".";
 }
 
 const readOnlyBlockedTools = new Set(["change.apply", "task.run", "git.commit"]);

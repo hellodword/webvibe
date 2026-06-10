@@ -278,6 +278,50 @@ describe("tool router", () => {
       await setup.close();
     }
   });
+
+  it("runs allowed project task-file candidates through task.run", async () => {
+    const setup = await setupRouter("webvibe-router-project-task-");
+    try {
+      await writeFile(
+        path.join(setup.root, "Makefile"),
+        "print:\n\t@echo project-ok\nblocked:\n\t@echo blocked\n",
+      );
+      setup.policy.taskBundles = {
+        project: { taskFiles: ["make"], allowedTargets: ["print"] },
+      };
+      const caller = { clientId: "project-task-client" };
+      await setup.router.call("workspace.context", {}, caller);
+
+      const result = (await setup.router.call(
+        "task.run",
+        { taskId: "candidate:.:make:print" },
+        caller,
+      )) as any;
+
+      expect(result).toMatchObject({
+        data: {
+          taskId: "candidate:.:make:print",
+        },
+      });
+      expect(["ok", "unavailable"]).toContain(result.data.status);
+      if (result.data.status === "ok") {
+        expect(result.data.stdout).toMatchObject({ head: "project-ok" });
+      } else {
+        expect(result.data.unavailableReason).toContain("Missing executable: make");
+      }
+
+      await expect(
+        setup.router.call("task.run", { taskId: "candidate:.:make:blocked" }, caller),
+      ).resolves.toMatchObject({
+        data: {
+          status: "unavailable",
+          unavailableReason: "Candidate task target is not allowed by policy",
+        },
+      });
+    } finally {
+      await setup.close();
+    }
+  });
 });
 
 async function setupRouter(prefix: string) {
