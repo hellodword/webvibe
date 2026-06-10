@@ -28,72 +28,71 @@ Important fields:
 
 The built-in ChatGPT Web tool surface is intentionally compact:
 
-- `context.get`
-- `read.tree`
-- `read.search`
-- `read.files`
-- `read.stat`
-- `change.plan` in dev mode
-- `change.prepare` in dev mode
+- `workspace.context`
+- `workspace.scan`
+- `workspace.symbols`
+- `fs.tree`
+- `fs.search`
+- `fs.read`
+- `fs.read_many`
+- `fs.stat`
+- `fs.manifest`
+- `change.preview` in dev mode
 - `manual.gate` in dev mode
 - `manual.resume` in dev mode
 - `change.apply` in dev mode
+- `task.list` in dev mode
 - `task.run` in dev mode
+- `task.result` in dev mode
 - `git.status`
+- `git.changed`
 - `git.diff`
-- `git.history`
 - `git.show`
+- `git.blame`
+- `git.commit_preview`
 - `git.commit` in dev mode
 - `diagnostics.health`
 
-`context.get` is the first tool for coding work. It returns project manifests,
+`workspace.context` is the first tool for coding work. It returns project manifests,
 task availability, upstream health, tool surface version, warnings, and the
 recommended workflow. All workspace tools except `diagnostics.health` require a
-successful `context.get` call for the same caller and current tool surface.
+successful `workspace.context` call for the same caller and current tool surface.
 
 If a workspace tool is called too early, webvibe returns a normal blocked tool
-result with `code: "CONTEXT_REQUIRED"` and `nextTool: "context.get"`.
+result with `code: "CONTEXT_REQUIRED"` and `nextTool: "workspace.context"`.
 
 ## Reading
 
-`read.*` tools are relay built-ins. The default policies do not expose raw
+`fs.*` tools are relay built-ins. The default policies do not expose raw
 filesystem pass-through tools. This keeps path protection, output truncation,
 and result shape under webvibe control. Host-side output truncation is still
 possible; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
-`read.files` reads text in byte chunks. Inputs are `paths`, optional
-`offsetBytes` defaulting to `0`, and optional `maxBytes` defaulting to `10000`
-with a maximum of `10000`. `offsetBytes` and `maxBytes` apply to every path in
-the call; for large files, read one file at a time. File results include
+`fs.read` and `fs.read_many` read bounded UTF-8 byte chunks. Results include
 continuation metadata before `content`: `offsetBytes`, `returnedBytes`,
-optional `nextOffsetBytes`, and `truncated`. `size` remains the original file
-size in bytes. When `truncated` is true, call `read.files` again with
-`offsetBytes` set to `nextOffsetBytes`. If the ChatGPT Web host still truncates
-the tool result, retry the same offset with a smaller `maxBytes`. UTF-8
-characters are not split across chunk boundaries; an offset inside a multibyte
-character advances to the next character boundary.
+optional `nextOffsetBytes`, and `truncated`. When `truncated` is true, call
+`fs.read` again with `byteOffset` set to `nextOffsetBytes`. UTF-8 characters are
+not split across chunk boundaries.
 
 ## Batch Changes
 
-Default dev mode exposes one read-only planning tool and one write tool:
+Default dev mode exposes one read-only preview tool and one write tool:
 
-- `change.plan`: validate a complete batch change, detect conflicts, and return
-  a diff without writing.
-- `change.prepare`: validate the same complete batch change, save expiring
-  review state, and create manual fallback material without writing.
+- `change.preview`: validate a complete batch change, detect conflicts, return
+  a bounded diff, and save oversized diffs as artifacts without writing.
 - `change.apply`: apply the complete user-requested file change in one write
-  call.
+  call after matching `previewHash`.
 
 This matches ChatGPT Web's confirmation model. File operations require user
 confirmation, so the default policy puts confirmation at one batch change
 boundary instead of repeated per-file writes. Known confirmation limitations are
 tracked in [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
 
-Batch change limits default to 80 paths, 5 MiB per change, and 1 MiB per file.
-Update/delete operations require `expectedSha256` so stale model plans do not
-overwrite newer workspace edits.
+Batch change limits default to policy `limits.change` values. Mutating
+operations require `expectedSha256` where appropriate so stale model plans do
+not overwrite newer workspace edits.
 
-If ChatGPT Web blocks the write after `change.prepare` with the exact OpenAI
+If ChatGPT Web blocks the write with the exact OpenAI
 safety-check text, the model retries the same tool once with unchanged
 arguments. If the identical retry is blocked again, the model shows manual
 instructions in chat, calls `manual.gate` with minimal arguments, stops the
@@ -111,13 +110,13 @@ interrupted request.
 arbitrary shell commands or stdin. Callers may pass a workspace-relative `cwd`
 to run a fixed task in a nested package or module. Available task IDs, timeout
 defaults, cwd support, extra argument rules, and unavailable reasons are
-returned by `context.get`.
+returned by `workspace.context`.
 
 The default dev policy configures npm, Go, Rust, and Python tasks through
 `local-task-runner`. Task availability changes do not change the public tool
 list, so ChatGPT Web does not need a manual tool refresh when a command is
 missing. Project manifests and package scripts are environment facts reported by
-`context.get`; they do not gate task availability.
+`workspace.context`; they do not gate task availability.
 
 If a required command has no matching task ID or needs arbitrary shell/Node,
 the model must use the manual fallback flow instead of ending with an inability
@@ -128,8 +127,8 @@ the user's terminal to a workspace-relative log path. They are not sent through
 
 ## Git
 
-Read-only Git tools are `git.status`, `git.diff`, `git.history`, and
-`git.show`. `git.commit` is the only default Git mutation tool. It requires
+Read-only Git tools are `git.status`, `git.changed`, `git.diff`, `git.show`,
+and `git.blame`. `git.commit` is the only default Git mutation tool. It requires
 explicit `paths` and `message`, rejects protected paths, refuses empty commits,
 and commits only the named pathspecs so unrelated dirty files are not included.
 

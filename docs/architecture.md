@@ -62,7 +62,7 @@ upstreams fail startup.
 
 ## Environment Awareness
 
-`context.get` is the ChatGPT Web coding preflight. It collects the facts a
+`workspace.context` is the ChatGPT Web coding preflight. It collects the facts a
 coding model usually needs: OS/architecture, container/devcontainer/editor/CI
 signals, PATH categories, command availability, project manifests, lockfiles,
 npm scripts, current webvibe tools, upstream health, missing task reasons, and
@@ -80,8 +80,9 @@ over stale descriptors; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.
 Default webvibe policies keep the public tool list stable and gate execution
 inside tools. If a task executable such as `cargo`, `make`, or `pip` is missing,
 the named task returns `status: "unavailable"` with `unavailableReason`. Project
-manifests and package scripts are reported by `context.get`; they do not hide or
-disable task IDs. The public task tool remains `task.run`.
+manifests and package scripts are reported by `workspace.context`; they do not
+hide or disable task IDs. The public task tools remain `task.list`, `task.run`,
+and `task.result`.
 
 ## Why Local Task Runner
 
@@ -102,7 +103,7 @@ a shell command.
 
 ## Why Batch Workspace Apply
 
-Default dev mode uses `change.plan` and `change.apply` instead of raw
+Default dev mode uses `change.preview` and `change.apply` instead of raw
 filesystem write/edit tools. Because ChatGPT Web confirmation prompts cannot be
 reliably disabled, a complete batch change gives the user one reviewed write
 boundary instead of many small per-file confirmations.

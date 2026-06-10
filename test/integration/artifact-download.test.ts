@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -10,38 +9,24 @@ import { PairingManager } from "../../src/auth/pairing.js";
 import { loadPolicy } from "../../src/config/loader.js";
 import { ManualArtifactStore } from "../../src/manual/artifact-store.js";
 import { startHttpServer } from "../../src/server/http.js";
-import { AuditLog } from "../../src/state/audit.js";
 import { UpstreamManager } from "../../src/upstream/manager.js";
-import { prepareChangeset } from "../../src/workspace/changeset.js";
 
 describe("manual artifact downloads", () => {
-  it("serves prepared review material only with a valid unexpired token", async () => {
+  it("serves review artifacts only with a valid unexpired token", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-artifact-"));
     const stateDir = path.join(root, "state");
-    await writeFile(path.join(root, "code.txt"), "old\n");
     const policy = await loadPolicy("policies/dev.yaml", { workspaceRoot: root, stateDir });
-    const audit = new AuditLog(path.join(stateDir, "audit.log"), policy.audit);
-    const prepared = await prepareChangeset(
-      {
-        changes: [
-          {
-            op: "edit",
-            path: "code.txt",
-            expectedSha256: sha256("old\n"),
-            edits: [{ oldText: "old", newText: "new" }],
-          },
-        ],
-      },
-      {
-        workspaceRoot: root,
-        workspace: policy.workspace,
-        limits: policy.limits,
-        stateDir,
-        publicBaseUrl: "http://artifact.test",
-        audit,
-      },
-    );
-    const artifactUrl = new URL(prepared.manualGate!.artifacts[0].downloadUrl);
+    const artifactStore = new ManualArtifactStore(stateDir);
+    const artifact = await artifactStore.create({
+      label: "Workspace change preview diff",
+      filename: "workspace-change-preview.diff",
+      mimeType: "text/x-diff",
+      content: "--- a/code.txt\n+++ b/code.txt\n@@ -1 +1 @@\n-old\n+new\n",
+      createdByTool: "change.preview",
+      operationId: "op",
+      publicBaseUrl: "http://artifact.test",
+    });
+    const artifactUrl = new URL(artifact.ref.downloadUrl);
     const store = OAuthStore.atStateDir(stateDir);
     await store.load();
     const pairing = new PairingManager({ pairingCode: "123456" });
@@ -72,8 +57,7 @@ describe("manual artifact downloads", () => {
       const traversal = await fetch(`${base}/manual-artifacts/..%2Fbad?t=wrong`);
       expect(traversal.status).toBe(404);
 
-      const artifactId = prepared.manualGate!.artifacts[0].artifactId;
-      const artifactStore = new ManualArtifactStore(stateDir);
+      const artifactId = artifact.ref.artifactId;
       const metadata = (await artifactStore.readMetadata(artifactId))!;
       await artifactStore.saveMetadata({
         ...metadata,
@@ -95,8 +79,4 @@ describe("manual artifact downloads", () => {
 function baseUrl(address: ReturnType<import("node:http").Server["address"]>): string {
   if (typeof address !== "object" || !address) throw new Error("No server address");
   return `http://127.0.0.1:${address.port}`;
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
 }

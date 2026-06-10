@@ -18,7 +18,7 @@ Security model:
 - Rate limit: each client is bounded by `limits.maxCallsPerMinute`.
 - Redaction: common bearer tokens, API keys, cloud secrets, and private keys are
   removed from output/audit material.
-- Context preflight: `context.get` returns sanitized ENV/PATH categories,
+- Context preflight: `workspace.context` returns sanitized ENV/PATH categories,
   not raw secret values or raw PATH entries.
 - Audit: in dev mode, audit is optimized for reproducibility and records
   redacted full inputs, raw tool outputs, client-visible outputs, manual gate
@@ -57,7 +57,7 @@ control, wide file mutation, and session state. It also gives ChatGPT Web a
 narrow named task call instead of a raw shell request. Policy must define each
 task ID, executable, arguments, cwd, and timeout. A task call may pass a
 workspace-relative cwd, which is checked against workspace and protected-path
-rules before spawning. `context.get` reports available task IDs and argument
+rules before spawning. `workspace.context` reports available task IDs and argument
 rules.
 
 Some dependency tasks accept package/module names. Those are still not command
@@ -73,12 +73,10 @@ process control, `git push`, `git reset --hard`, or arbitrary checkout tools.
 
 Default dev workspace edits go through:
 
-- `change.plan`: validate and diff a complete proposed batch change without
-  writing.
-- `change.prepare`: validate the same complete batch change, create expiring
-  relay-side prepared state, and optionally create generic review artifacts
-  without writing workspace files.
-- `change.apply`: apply the complete batch change in one write operation.
+- `change.preview`: validate and diff a complete proposed batch change without
+  writing. Oversized diffs are saved as tokenized artifacts.
+- `change.apply`: apply the complete batch change in one write operation after
+  matching `previewHash`.
 
 `replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
 without partial writes. If an apply operation fails after writing starts, prior
@@ -112,13 +110,13 @@ adapts by blocking local tools while manual work is pending and requiring
 
 Boundaries:
 
-- `change.prepare` does not write workspace files.
+- `change.preview` does not write workspace files.
 - `manual.gate` does not write workspace files.
 - `manual.resume` does not write workspace files.
 - `change.apply` remains the only default workspace write tool.
 - There is no apply-by-id tool.
-- Pending, prepared, and artifact state live in `stateDir` for audit,
-  troubleshooting, and expiry control.
+- Pending, prepared manual-action state, and artifact state live in `stateDir`
+  for audit, troubleshooting, and expiry control.
 
 While a manual action is pending, the relay blocks follow-up tools with
 `MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`. This
@@ -145,9 +143,9 @@ to `manual.gate.hostObservation`.
 
 The `manual.gate` tool result is intentionally lightweight. ChatGPT Web shows
 manual details in chat before opening the gate: commands include stdout/stderr
-redirection to a workspace-relative manual log file, small prepared diffs are
-shown inline, and large prepared diffs use the tokenized artifact download URL
-from `change.prepare`. Detailed manual instructions are not passed as
+redirection to a workspace-relative manual log file, small preview diffs are
+shown inline, and large preview diffs use the tokenized artifact download URL
+from `change.preview`. Detailed manual instructions are not passed as
 `manual.gate` arguments. If ChatGPT Web blocks `manual.gate` itself, the model
 retries the same `manual.gate` call once with identical arguments. If it is still
 blocked, the model must stop and wait for human completion followed by
@@ -160,7 +158,7 @@ events. Download tokens are never logged in plaintext.
 
 ## Context Preflight
 
-`context.get` is read-only and intentionally lossy:
+`workspace.context` is read-only and intentionally lossy:
 
 - ENV values are not returned except a small safe allowlist such as `CI`,
   `NODE_ENV`, `TERM`, and locale keys.

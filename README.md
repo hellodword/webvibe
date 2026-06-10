@@ -18,10 +18,10 @@ directory, built-in mode or custom policy path, and pairing code.
 
 ## Default Modes
 
-- `read-only`: `context.get`, read-only file tools, read-only Git tools, and
-  `diagnostics.health`.
-- `dev`: everything in `read-only`, plus `change.plan`, `change.prepare`,
-  `change.apply`, `manual.gate`, `manual.resume`, `task.run`, and `git.commit`.
+- `read-only`: `workspace.context`, read-only `workspace.*`, `fs.*`, Git
+  inspection tools, and `diagnostics.health`.
+- `dev`: everything in `read-only`, plus `change.preview`, `change.apply`,
+  `manual.gate`, `manual.resume`, `task.*`, and `git.commit`.
 
 Default `dev` mode uses complete batch file changes and fixed policy-defined
 tasks. It does not expose arbitrary shell execution, raw per-file write tools,
