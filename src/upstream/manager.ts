@@ -71,7 +71,13 @@ export class UpstreamManager {
 
   private createClient(id: string, upstream: UpstreamPolicy): UpstreamClient {
     if (upstream.transport === "local-task-runner")
-      return new LocalTaskRunnerClient(id, upstream, this.workspaceRoot, this.policy.workspace);
+      return new LocalTaskRunnerClient(
+        id,
+        upstream,
+        this.workspaceRoot,
+        this.policy.workspace,
+        this.policy.limits.task,
+      );
     if (upstream.transport === "stdio")
       return new StdioUpstreamClient(id, upstream, this.workspaceRoot);
     return new StreamableHttpUpstreamClient(id, upstream);

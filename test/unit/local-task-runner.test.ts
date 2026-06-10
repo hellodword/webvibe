@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -77,6 +77,7 @@ describe("local task runner upstream", () => {
         outputSchema: expect.objectContaining({
           required: [
             "status",
+            "runId",
             "taskId",
             "exitCode",
             "stdout",
@@ -88,22 +89,30 @@ describe("local task runner upstream", () => {
       }),
     ]);
     await expect(runner.callTool("run_task", { taskId: "unknown" })).rejects.toThrow("Unknown");
-    await expect(runner.callTool("run_task", { taskId: "ok" })).resolves.toMatchObject({
+    const ok = (await runner.callTool("run_task", { taskId: "ok" })) as any;
+    expect(ok).toMatchObject({
       status: "ok",
-      stdout: "ok",
       timeoutSeconds: 2,
+      runId: expect.stringMatching(/^tr_/),
+      stdout: expect.objectContaining({
+        head: "ok",
+        tail: "ok",
+        truncated: false,
+        logPath: expect.stringContaining(".webvibe/task-logs/"),
+      }),
     });
+    expect(await readFile(path.join(root, ok.stdout.logPath), "utf8")).toBe("ok\n");
     await expect(runner.callTool("run_task", { taskId: "noManifestGate" })).resolves.toMatchObject({
       status: "ok",
-      stdout: "no-gate",
+      stdout: expect.objectContaining({ head: "no-gate" }),
     });
     await expect(runner.callTool("run_task", { taskId: "format" })).resolves.toMatchObject({
       status: "failed",
-      stdout: "needs-format",
+      stdout: expect.objectContaining({ head: "needs-format" }),
     });
     await expect(runner.callTool("run_task", { taskId: "cwd", cwd: "backend" })).resolves.toMatchObject({
       status: "ok",
-      stdout: "backend",
+      stdout: expect.objectContaining({ head: "backend" }),
     });
     await expect(runner.callTool("run_task", { taskId: "cwd", cwd: "../outside" })).rejects.toThrow(
       "outside workspace",
@@ -124,7 +133,7 @@ describe("local task runner upstream", () => {
       runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["alpha", "beta"] }),
     ).resolves.toMatchObject({
       status: "ok",
-      stdout: "alpha|beta",
+      stdout: expect.objectContaining({ head: "alpha|beta" }),
     });
     await expect(
       runner.callTool("run_task", { taskId: "dynamic", extraArgs: ["bad arg"] }),
@@ -133,6 +142,9 @@ describe("local task runner upstream", () => {
       {
         status: "unavailable",
         unavailableReason: "Missing executable: webvibe-missing-executable",
+        stderr: expect.objectContaining({
+          head: expect.stringContaining("Task unavailable"),
+        }),
         manualRequired: {
           nextTool: "manual.gate",
           reason: "external_manual_step",
@@ -144,5 +156,39 @@ describe("local task runner upstream", () => {
         },
       },
     );
+  });
+
+  it("stores large task output as head and tail summaries", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-task-logs-"));
+    const policy: UpstreamPolicy = {
+      transport: "local-task-runner",
+      cwd: root,
+      tasks: {
+        big: {
+          executable: process.execPath,
+          args: ["-e", "process.stdout.write('a'.repeat(5000) + 'z'.repeat(5000))"],
+          defaultTimeoutSeconds: 2,
+        },
+      },
+    };
+    const runner = new LocalTaskRunnerClient(
+      "tasks",
+      policy,
+      root,
+      { root, protected: [] },
+      { outputHeadBytes: 8, outputTailBytes: 8 },
+    );
+    await runner.initialize();
+
+    const result = (await runner.callTool("run_task", { taskId: "big" })) as any;
+
+    expect(result.stdout).toMatchObject({
+      head: "aaaaaaaa",
+      tail: "zzzzzzzz",
+      truncated: true,
+      bytes: 10000,
+      logPath: expect.stringContaining(".webvibe/task-logs/"),
+    });
+    expect((await readFile(path.join(root, result.stdout.logPath), "utf8")).length).toBe(10000);
   });
 });

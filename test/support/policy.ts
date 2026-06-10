@@ -22,6 +22,23 @@ upstreams:
     transport: stdio
     command: "__webvibe_missing_command__"
     optional: true
+  tasks:
+    transport: local-task-runner
+    cwd: "\${workspaceRoot}"
+    tasks:
+      echo:
+        executable: "${process.execPath}"
+        args:
+          - "-e"
+          - "console.log('task-ok')"
+        defaultTimeoutSeconds: 2
+      slow_task:
+        executable: "${process.execPath}"
+        args:
+          - "-e"
+          - "setTimeout(() => console.log('slow-task-ok'), 1200)"
+        defaultTimeoutSeconds: 2
+        maxTimeoutSeconds: 2
 tools:
   - name: workspace.context
     type: builtIn
@@ -100,6 +117,24 @@ tools:
       readOnlyHint: false
       destructiveHint: true
       openWorldHint: false
+  - name: task.run
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        taskId:
+          type: string
+      required: [taskId]
+      additionalProperties: false
+  - name: task.result
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        runId:
+          type: string
+      required: [runId]
+      additionalProperties: false
   - name: x.read
     type: passThrough
     upstream: main

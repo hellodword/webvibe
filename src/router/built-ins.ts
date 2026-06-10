@@ -4,6 +4,11 @@ import type { RelayPolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
+import {
+  emptyTaskOutputSummary,
+  taskOutputSummaryFromText,
+  TaskLogStore,
+} from "../upstream/task-log-store.js";
 import { ForbiddenError } from "../util/errors.js";
 import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
@@ -213,10 +218,11 @@ export async function callBuiltIn(
       const reason = "Task upstream is unavailable";
       return {
         status: "unavailable",
+        runId: "",
         taskId,
         exitCode: null,
-        stdout: "",
-        stderr: reason,
+        stdout: emptyTaskOutputSummary(),
+        stderr: taskOutputSummaryFromText(reason),
         durationMs: 0,
         timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
         unavailableReason: reason,
@@ -226,7 +232,19 @@ export async function callBuiltIn(
     return context.upstreams.call("tasks", "run_task", args);
   }
   if (name === "task.result") {
-    return unavailable(name, "task.result is not implemented in this phase");
+    const runId = typeof args.runId === "string" ? args.runId : "";
+    const record = await new TaskLogStore(
+      context.workspaceRoot,
+      context.policy.limits.task,
+    ).readRecord(runId);
+    if (!record) {
+      return {
+        status: "unavailable",
+        runId,
+        unavailableReason: "Task run not found",
+      };
+    }
+    return record;
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
 }

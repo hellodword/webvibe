@@ -736,12 +736,28 @@ tools:
           enum: [ok, failed, timeout, unavailable]
         taskId:
           type: string
+        runId:
+          type: string
         exitCode:
           type: ["integer", "null"]
-        stdout:
-          type: string
-        stderr:
-          type: string
+        stdout: &taskOutputSummarySchema
+          type: object
+          properties:
+            head:
+              type: string
+            tail:
+              type: string
+            truncated:
+              type: boolean
+            sha256:
+              type: string
+            bytes:
+              type: integer
+            logPath:
+              type: string
+          required: [head, tail, truncated, sha256, bytes, logPath]
+          additionalProperties: false
+        stderr: *taskOutputSummarySchema
         durationMs:
           type: integer
         timeoutSeconds:
@@ -770,7 +786,7 @@ tools:
               additionalProperties: false
           required: [nextTool, reason, userInstructions, hostObservation]
           additionalProperties: false
-      required: [status, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
+      required: [status, runId, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
       additionalProperties: false
     annotations:
       readOnlyHint: false
@@ -779,7 +795,7 @@ tools:
 
   - name: task.result
     type: builtIn
-    description: Read task run status/logs. Returns unavailable until background task support is enabled.
+    description: Read task run status and log summaries by runId.
     inputSchema:
       type: object
       properties:

@@ -9,20 +9,27 @@ import { isInside, toWorkspaceRelative } from "../util/paths.js";
 import { findExecutable } from "../workspace/inspect/command.js";
 import { normalizeWorkspacePath } from "../workspace/inspect/path.js";
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
+import {
+  TaskLogStore,
+  type TaskOutputLimits,
+  type TaskOutputSummary,
+  type TaskRunRecord,
+} from "./task-log-store.js";
 
 type TaskResult = {
   status: "ok" | "failed" | "timeout" | "unavailable";
+  runId: string;
   taskId: string;
   exitCode: number | null;
-  stdout: string;
-  stderr: string;
+  stdout: TaskOutputSummary;
+  stderr: TaskOutputSummary;
   durationMs: number;
   timeoutSeconds: number;
   unavailableReason?: string;
   manualRequired?: ManualRequired;
 };
 
-type ManualRequired = {
+export type ManualRequired = {
   nextTool: "manual.gate";
   reason: "external_manual_step";
   userInstructions: string;
@@ -41,6 +48,10 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     private readonly policy: UpstreamPolicy,
     private readonly workspaceRoot: string,
     private readonly workspace: WorkspacePolicy,
+    private readonly outputLimits: TaskOutputLimits = {
+      outputHeadBytes: 12000,
+      outputTailBytes: 12000,
+    },
   ) {}
 
   get optional(): boolean {
@@ -88,10 +99,11 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           type: "object",
           properties: {
             status: { type: "string", enum: ["ok", "failed", "timeout", "unavailable"] },
+            runId: { type: "string" },
             taskId: { type: "string" },
             exitCode: { type: ["integer", "null"] },
-            stdout: { type: "string" },
-            stderr: { type: "string" },
+            stdout: taskOutputSummarySchema(),
+            stderr: taskOutputSummarySchema(),
             durationMs: { type: "integer" },
             timeoutSeconds: { type: "integer" },
             unavailableReason: { type: "string" },
@@ -117,6 +129,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           },
           required: [
             "status",
+            "runId",
             "taskId",
             "exitCode",
             "stdout",
@@ -155,13 +168,23 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     const timeoutSeconds = this.effectiveTimeoutSeconds(taskId, args.timeoutSeconds);
     const cwd = await this.resolveTaskCwd(task, args.cwd);
     const extraArgs = this.extraArgsForTask(task, args.extraArgs);
+    const store = new TaskLogStore(this.workspaceRoot, this.outputLimits);
+    const runId = store.newRunId();
+    const stdoutCapture = await store.createCapture(runId, "stdout");
+    const stderrCapture = await store.createCapture(runId, "stderr");
+    const startedAtIso = new Date(startedAt).toISOString();
     const unavailable = await this.checkAvailability(
+      runId,
       taskId,
       task,
       timeoutSeconds,
       startedAt,
+      startedAtIso,
       cwd,
       extraArgs,
+      store,
+      stdoutCapture,
+      stderrCapture,
     );
     if (unavailable) return unavailable;
 
@@ -174,8 +197,6 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      let stdout = "";
-      let stderr = "";
       let timedOut = false;
       let settled = false;
       let killTimer: NodeJS.Timeout | undefined;
@@ -186,72 +207,105 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           if (!settled) child.kill("SIGKILL");
         }, 2000);
       }, timeoutSeconds * 1000);
-      const finish = (result: TaskResult) => {
+      const finish = async (input: {
+        status: TaskResult["status"];
+        exitCode: number | null;
+        errorMessage?: string;
+        unavailableReason?: string;
+        manualRequired?: ManualRequired;
+      }) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         if (killTimer) clearTimeout(killTimer);
+        if (input.errorMessage) stderrCapture.write(Buffer.from(input.errorMessage, "utf8"));
+        const stdout = await stdoutCapture.finish();
+        const stderr = await stderrCapture.finish();
+        const result: TaskResult = {
+          status: input.status,
+          runId,
+          taskId,
+          exitCode: input.exitCode,
+          stdout,
+          stderr,
+          durationMs: Date.now() - startedAt,
+          timeoutSeconds,
+          ...(input.unavailableReason ? { unavailableReason: input.unavailableReason } : {}),
+          ...(input.manualRequired ? { manualRequired: input.manualRequired } : {}),
+        };
+        await store.writeRecord(
+          recordFromResult(result, toWorkspaceRelative(this.workspaceRoot, cwd) || ".", startedAtIso),
+        );
         resolve(result);
       };
 
       child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
+        stdoutCapture.write(chunk);
       });
       child.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
+        stderrCapture.write(chunk);
       });
       child.on("error", (error: NodeJS.ErrnoException) => {
         this.lastError = error.message;
-        finish({
+        void finish({
           status: error.code === "ENOENT" ? "unavailable" : "failed",
-          taskId,
           exitCode: null,
-          stdout,
-          stderr: stderr || error.message,
-          durationMs: Date.now() - startedAt,
-          timeoutSeconds,
+          errorMessage: error.message,
           ...(error.code === "ENOENT"
-            ? { unavailableReason: `Missing executable: ${displayExecutable(task.executable)}` }
+            ? {
+                unavailableReason: `Missing executable: ${displayExecutable(task.executable)}`,
+                manualRequired: manualRequiredForTask(
+                  taskId,
+                  `Missing executable: ${displayExecutable(task.executable)}`,
+                  task,
+                  cwd,
+                  this.workspaceRoot,
+                  extraArgs,
+                ),
+              }
             : {}),
         });
       });
       child.on("close", (code) => {
-        const normalizedStdout = stdout.trimEnd();
-        const normalizedStderr = stderr.trimEnd();
-        const failedByStdout = task.failOnStdout === true && normalizedStdout.length > 0;
-        finish({
+        const failedByStdout = task.failOnStdout === true && stdoutCapture.hasOutput;
+        void finish({
           status: timedOut ? "timeout" : code === 0 && !failedByStdout ? "ok" : "failed",
-          taskId,
           exitCode: code,
-          stdout: normalizedStdout,
-          stderr: normalizedStderr,
-          durationMs: Date.now() - startedAt,
-          timeoutSeconds,
         });
       });
     });
   }
 
   private async checkAvailability(
+    runId: string,
     taskId: string,
     task: TaskPolicy,
     timeoutSeconds: number,
     startedAt: number,
+    startedAtIso: string,
     cwd: string,
     extraArgs: string[],
+    store: TaskLogStore,
+    stdoutCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
+    stderrCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
   ): Promise<TaskResult | undefined> {
     const env = { ...process.env, ...this.policy.env, ...task.env };
     const executable = await findExecutable(task.executable, env, this.workspaceRoot);
     if (executable.status === "missing") {
       return unavailable(
+        runId,
         taskId,
         timeoutSeconds,
         startedAt,
+        startedAtIso,
         `Missing executable: ${displayExecutable(task.executable)}`,
         task,
         cwd,
         this.workspaceRoot,
         extraArgs,
+        store,
+        stdoutCapture,
+        stderrCapture,
       );
     }
     return undefined;
@@ -322,6 +376,22 @@ function displayExecutable(executable: string): string {
   return executable.includes("/") || executable.includes("\\") ? path.basename(executable) : executable;
 }
 
+function taskOutputSummarySchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      head: { type: "string" },
+      tail: { type: "string" },
+      truncated: { type: "boolean" },
+      sha256: { type: "string" },
+      bytes: { type: "integer" },
+      logPath: { type: "string" },
+    },
+    required: ["head", "tail", "truncated", "sha256", "bytes", "logPath"],
+    additionalProperties: false,
+  };
+}
+
 async function safeLstat(filePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
   try {
     return await lstat(filePath);
@@ -331,26 +401,61 @@ async function safeLstat(filePath: string): Promise<Awaited<ReturnType<typeof ls
   }
 }
 
-function unavailable(
+async function unavailable(
+  runId: string,
   taskId: string,
   timeoutSeconds: number,
   startedAt: number,
+  startedAtIso: string,
   reason: string,
   task: TaskPolicy,
   cwd: string,
   workspaceRoot: string,
   extraArgs: string[],
-): TaskResult {
-  return {
+  store: TaskLogStore,
+  stdoutCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
+  stderrCapture: Awaited<ReturnType<TaskLogStore["createCapture"]>>,
+): Promise<TaskResult> {
+  stderrCapture.write(Buffer.from(`Task unavailable: ${reason}\n`, "utf8"));
+  const stdout = await stdoutCapture.finish();
+  const stderr = await stderrCapture.finish();
+  const result: TaskResult = {
     status: "unavailable",
+    runId,
     taskId,
     exitCode: null,
-    stdout: "",
-    stderr: `Task unavailable: ${reason}`,
+    stdout,
+    stderr,
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
     unavailableReason: reason,
     manualRequired: manualRequiredForTask(taskId, reason, task, cwd, workspaceRoot, extraArgs),
+  };
+  await store.writeRecord(
+    recordFromResult(result, toWorkspaceRelative(workspaceRoot, cwd) || ".", startedAtIso),
+  );
+  return result;
+}
+
+function recordFromResult(
+  result: TaskResult,
+  cwd: string,
+  startedAt: string,
+): TaskRunRecord {
+  return {
+    runId: result.runId,
+    taskId: result.taskId,
+    status: result.status,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    timeoutSeconds: result.timeoutSeconds,
+    cwd,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    stdout: result.stdout,
+    stderr: result.stderr,
+    ...(result.unavailableReason ? { unavailableReason: result.unavailableReason } : {}),
+    ...(result.manualRequired ? { manualRequired: result.manualRequired } : {}),
   };
 }
 

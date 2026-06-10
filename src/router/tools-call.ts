@@ -110,11 +110,7 @@ export class ToolRouter {
       args = assertToolInput(entry.policy, rawArgs);
       const output = await withToolTimeout(
         this.execute(entry.policy, args, caller),
-        toolTimeoutMs(
-          entry.policy,
-          args,
-          this.options.policy.limits.task.defaultTimeoutSeconds * 1000,
-        ),
+        this.toolCallTimeoutMs(entry.policy, args),
         name,
       );
       if (name === "workspace.context") {
@@ -226,6 +222,26 @@ export class ToolRouter {
       output: this.options.policy.limits.output,
       activeProfile: this.options.policy.activeProfile,
     };
+  }
+
+  private toolCallTimeoutMs(tool: ToolPolicy, args: Record<string, unknown>): number {
+    if (tool.type === "builtIn" && tool.name === "task.run") {
+      const taskId = typeof args.taskId === "string" ? args.taskId : "";
+      const task = this.options.policy.upstreams.tasks?.tasks?.[taskId];
+      const raw = args.timeoutSeconds;
+      const requested =
+        typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : undefined;
+      const defaultSeconds =
+        task?.defaultTimeoutSeconds ?? this.options.policy.limits.task.defaultTimeoutSeconds;
+      const maxSeconds = task?.maxTimeoutSeconds ?? this.options.policy.limits.task.maxTimeoutSeconds;
+      const seconds = Math.min(Math.max(requested ?? defaultSeconds, 1), maxSeconds);
+      return (seconds + 5) * 1000;
+    }
+    return toolTimeoutMs(
+      tool,
+      args,
+      this.options.policy.limits.task.defaultTimeoutSeconds * 1000,
+    );
   }
 
   private async execute(

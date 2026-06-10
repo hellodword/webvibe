@@ -59,6 +59,25 @@ describe("tool router", () => {
           timeout: 2000,
         },
       });
+      const taskRun = (await setup.router.call("task.run", { taskId: "echo" }, { clientId: "c1" })) as any;
+      expect(taskRun).toMatchObject({
+        ok: true,
+        data: {
+          status: "ok",
+          runId: expect.stringMatching(/^tr_/),
+          stdout: expect.objectContaining({ head: "task-ok" }),
+        },
+      });
+      await expect(
+        setup.router.call("task.result", { runId: taskRun.data.runId }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        data: {
+          status: "ok",
+          runId: taskRun.data.runId,
+          stdout: expect.objectContaining({ head: "task-ok" }),
+        },
+      });
       await expect(setup.router.call("read.files", {}, { clientId: "c1" })).rejects.toThrow(
         "UNKNOWN_TOOL_SURFACE",
       );
@@ -173,6 +192,18 @@ describe("tool router", () => {
       ).rejects.toThrow("Rate limit");
 
       setup.policy.limits.rate.maxCallsPerMinute = 120;
+      setup.policy.limits.task.defaultTimeoutSeconds = 1;
+      await setup.router.call("workspace.context", {}, { clientId: "task-timeout-client" });
+      await expect(
+        setup.router.call("task.run", { taskId: "slow_task" }, { clientId: "task-timeout-client" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        data: {
+          status: "ok",
+          stdout: expect.objectContaining({ head: "slow-task-ok" }),
+        },
+      });
+
       await setup.router.call("workspace.context", {}, { clientId: "timeout-client" });
       await expect(
         setup.router.call("x.slow", { delayMs: 7000 }, { clientId: "timeout-client" }),
