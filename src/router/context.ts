@@ -39,10 +39,27 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
   const tools = Array.from(context.registry.keys());
   const toolSurfaceHash = sha256(Array.from(context.registry.values()).map((entry) => entry.descriptor));
   const policyHash = sha256(context.policy);
+  const editPolicy = context.policy.editMode ?? { mode: "single", batch: { enabled: false } };
+  const editMode = editPolicy.mode;
+  const batchEditEnabled = editPolicy.batch.enabled;
+  const manualFallbackAvailable = tools.includes("manual.gate") && tools.includes("manual.resume");
+  const hostConstraints = {
+    avoidRawShellShape: true,
+    preferFixedTask: true,
+    preferSmallPayload: true,
+    manualFallbackAvailable,
+    editMode,
+  };
+  const hostRiskProfile = {
+    low: ["read", "search", "stat", "status", "symbols"],
+    medium: ["file.apply", "task.run", "git.commit"],
+    high: ["batch.apply", "large-payload", "delete-heavy", "unknown-task", "manual-first"],
+  };
   const capabilities = {
     rawShell: false,
     filesystemRead: tools.some((tool) => tool.startsWith("fs.")),
-    batchChange: tools.includes("change.apply"),
+    batchChange: batchEditEnabled && tools.includes("change.apply"),
+    editMode,
     namedTasks: tools.includes("task.run"),
     gitRead: tools.some((tool) => tool.startsWith("git.")),
     gitCommit: tools.includes("git.commit"),
@@ -51,13 +68,13 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     "Use workspace.context before workspace tools.",
     "Use fs.tree, fs.search, fs.read, and fs.read_many to inspect only relevant files.",
     "fs.read and fs.read_many return bounded content bytes; when truncated is true, continue the same file with nextOffsetBytes, and reduce maxBytes if the host still truncates the result.",
-    "Use change.preview to validate one complete batch workspace change.",
-    "Use change.apply after change.preview for the full requested file change.",
+    "Prefer small single-logical-change payloads; use the edit tools reported by the current policy.",
+    "Use change.preview before change.apply for the requested workspace file change.",
     "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",
     "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, show manual details in chat before calling manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
     "Use task.run only with taskIds reported by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
     "If task.run returns manualRequired, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
-    "If no taskId matches a required command or arbitrary shell/Node would be needed, use manualFallback instead of ending with an inability statement.",
+    "If no taskId matches a required command or the needed capability is outside the fixed tool surface, use manualFallback instead of ending with an inability statement.",
     "After manual.resume returns, verify current state and continue the original interrupted user request.",
     "Use git.status, git.changed, and git.diff after changes; use git.commit only with explicit paths.",
   ];
@@ -85,6 +102,8 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
       editor: env.summary.editor,
     },
     capabilities,
+    hostConstraints,
+    hostRiskProfile,
     project: env.project,
     git,
     tasks,
@@ -193,7 +212,7 @@ function manualFallbackGuide(): Record<string, unknown> {
     nextTool: "manual.gate",
     reason: "external_manual_step",
     when:
-      "Use when the required next step needs arbitrary shell/Node, has no matching taskId, or is blocked by an unavailable tool capability.",
+      "Use when the required next step is outside the fixed tool surface, has no matching taskId, or is blocked by an unavailable tool capability.",
     chatInstructions:
       "Show the exact manual command or step in ChatGPT Web chat only. Ask the user to run it outside ChatGPT, redirect stdout/stderr to a workspace-relative log file, and reply with /resume followed by that optional log file path.",
     suggestedLogPathPattern: ".webvibe/manual-logs/<slug>.log",

@@ -25,6 +25,7 @@
       "type": "object",
       "additionalProperties": true
     },
+    "editMode": { "$ref": "#/$defs/editMode" },
     "upstreams": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/upstream" }
@@ -89,6 +90,20 @@
         "taskBundles": {
           "type": "object",
           "additionalProperties": true
+        }
+      }
+    },
+    "editMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["single", "batch"] },
+        "batch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
         }
       }
     },

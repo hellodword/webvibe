@@ -2,6 +2,11 @@ version: 2
 mode: dev
 profile: chatgptWebDefault
 
+editMode:
+  mode: single
+  batch:
+    enabled: false
+
 profiles:
   chatgptWebDefault:
     limits:
@@ -504,7 +509,7 @@ tools:
 
   - name: change.preview
     type: builtIn
-    description: Validate and diff one complete batch workspace change.
+    description: Validate and diff one bounded workspace change.
     inputSchema: &changeInputSchema
       type: object
       properties:
@@ -732,7 +737,7 @@ tools:
 
   - name: change.apply
     type: builtIn
-    description: Apply one complete batch workspace change after preview.
+    description: Apply one bounded workspace change after preview.
     inputSchema: *changeInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations:
@@ -752,7 +757,7 @@ tools:
 
   - name: task.run
     type: builtIn
-    description: Run one policy-defined local task by taskId. Does not accept arbitrary shell.
+    description: Run one policy-defined local task by taskId. No free-form command input.
     inputSchema:
       type: object
       properties:

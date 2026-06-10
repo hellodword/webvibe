@@ -2,6 +2,11 @@ version: 2
 mode: read-only
 profile: chatgptWebDefault
 
+editMode:
+  mode: single
+  batch:
+    enabled: false
+
 profiles:
   chatgptWebDefault:
     limits:

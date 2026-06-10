@@ -35,8 +35,21 @@ describe("tool router", () => {
         status: "ok",
         data: {
           status: "ok",
-          toolSurface: { version: "4.0.0" },
+          toolSurface: { version: "4.0.1" },
           policy: { profile: "chatgptWebDefault" },
+          capabilities: { editMode: "single" },
+          hostConstraints: {
+            avoidRawShellShape: true,
+            preferFixedTask: true,
+            preferSmallPayload: true,
+            manualFallbackAvailable: false,
+            editMode: "single",
+          },
+          hostRiskProfile: {
+            low: expect.arrayContaining(["read", "search", "stat", "status"]),
+            medium: expect.arrayContaining(["task.run", "git.commit"]),
+            high: expect.arrayContaining(["large-payload", "manual-first"]),
+          },
         },
       });
       await expect(setup.router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
@@ -55,12 +68,12 @@ describe("tool router", () => {
             effectiveLimits: expect.any(Object),
           },
           toolSurface: {
-            version: "4.0.0",
+            version: "4.0.1",
             hash: expect.any(String),
             toolCount: setup.registry.size,
           },
           instructions: {
-            version: "4.0.0",
+            version: "4.0.1",
             hash: sha256(webvibeServerInstructions),
           },
           upstreams: expect.any(Array),

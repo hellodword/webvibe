@@ -388,6 +388,18 @@ export const taskBundlesSchema = z
   .record(z.string(), z.unknown())
   .default({});
 
+export const editModeSchema = z
+  .object({
+    mode: z.enum(["single", "batch"]).default("single"),
+    batch: z
+      .object({
+        enabled: z.boolean().default(false),
+      })
+      .strict()
+      .default({ enabled: false }),
+  })
+  .strict();
+
 export const profileSchema = z
   .object({
     limits: limitsOverrideSchema.optional(),
@@ -409,6 +421,7 @@ export const policyInputSchema = z
       .default({ root: "${workspaceRoot}", protected: [] }),
     profiles: z.record(z.string(), profileSchema).default({}),
     taskBundles: taskBundlesSchema.optional(),
+    editMode: editModeSchema.default({ mode: "single", batch: { enabled: false } }),
     upstreams: z
       .record(
         z.string(),
@@ -471,6 +484,7 @@ export const policySchema = z
       .default({ root: "${workspaceRoot}", protected: [] }),
     profiles: z.record(z.string(), profileSchema),
     taskBundles: taskBundlesSchema.optional(),
+    editMode: editModeSchema.default({ mode: "single", batch: { enabled: false } }),
     upstreams: z
       .record(
         z.string(),

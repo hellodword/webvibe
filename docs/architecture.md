@@ -17,7 +17,7 @@ The relay owns:
 - Tool call routing, timeout, rate limit, output truncation, redaction, and
   audit logging.
 - Built-in environment, project, code, and Git inspection tools.
-- Built-in batch workspace changeset tools.
+- Built-in bounded workspace changeset tools.
 - Stdio, streamable HTTP, and local task runner upstream clients.
 
 Default server commands and task commands live in `policies/*.yaml`, not `src/`.
@@ -29,8 +29,9 @@ workspace changeset semantics.
 The root constraint is ChatGPT Web, not local code. This project exists to make
 ChatGPT Web usable for vibecoding, but ChatGPT Web is not Codex. It has OpenAI
 host-side safety review and UI confirmation in front of MCP calls. Those
-black-box limits are described in [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
-webvibe treats them as constraints, not as targets to bypass.
+black-box limits are described in
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md). webvibe
+treats them as constraints to adapt to, not as a local-runtime problem to solve.
 
 Codex owns model runtime behavior, shell semantics, sandboxing, approval flow,
 patch application, and command execution. Forking or imitating Codex would not
@@ -43,7 +44,7 @@ stable ChatGPT OAuth/MCP surface
 policy allowlist
 external upstream tools
 sanitized environment inspection
-batch workspace apply
+bounded workspace apply
 fixed local tasks
 ```
 
@@ -81,7 +82,8 @@ instead of hostnames, user paths, container IDs, or pod names.
 ## Stable Tool Registration
 
 ChatGPT Web tool refresh is host-controlled and may leave the model reasoning
-over stale descriptors; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+over stale descriptors; see
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 Default webvibe policies keep the public tool list stable and gate execution
 inside tools. If a task executable such as `cargo`, `make`, or `pip` is missing,
 the named task returns `status: "unavailable"` with `unavailableReason`. Project
@@ -99,21 +101,23 @@ ChatGPT Web host limits.
 `local-task-runner` exposes one narrow tool, `run_task`, and only executes task
 IDs defined by policy. Each task has fixed executable/arguments, bounded
 timeout, and a workspace-contained cwd. The caller may pass a workspace-relative
-cwd for monorepos. The model asks for a named task instead of sending raw shell.
+cwd for monorepos. The model asks for a named task instead of sending
+free-form command text.
 
 For package/module installation tasks, policy may allow bounded `extraArgs`.
 Those arguments are validated by count and allowlist or regex before spawning;
 they are appended to fixed executable/argument pairs and are never interpreted as
 a shell command.
 
-## Why Batch Workspace Apply
+## Why Bounded Workspace Apply
 
-Default dev mode uses `change.preview` and `change.apply` instead of raw
-filesystem write/edit tools. Because ChatGPT Web confirmation prompts cannot be
-reliably disabled, a complete batch change gives the user one reviewed write
-boundary instead of many small per-file confirmations.
+Default dev mode uses reviewed change tools instead of raw filesystem write/edit
+tools. Because ChatGPT Web confirmation prompts cannot be reliably disabled,
+the configured edit mode controls the write boundary: `single` prefers one
+logical file operation, while opt-in batch mode can group multi-file payloads
+when the user accepts that tradeoff.
 
-Batch changes also give the relay one place to enforce hash guards, protected
+Change tools also give the relay one place to enforce hash guards, protected
 paths, symlink guards, UTF-8 checks, size limits, and rollback.
 
 ## Runtime State

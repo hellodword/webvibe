@@ -3,19 +3,22 @@
 ChatGPT Web coding starts with `workspace.context`.
 
 For observed black-box host behavior, see
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md). webvibe adapts to
-those limits under OpenAI's Terms of Service; it does not try to bypass them.
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md). webvibe
+adapts to those limits to keep coding work moving through confirmation prompts,
+risk blocks, and output truncation.
 
 Recommended order:
 
 1. `workspace.context`
 2. `fs.tree` / `fs.search` / `fs.read` / `fs.read_many` / `fs.stat`
-3. `change.preview` for every workspace write
-4. `change.apply` as one complete batch write with matching `previewHash`
+3. Preview every workspace write with the edit tool reported by
+   `workspace.context`
+4. Apply one small logical workspace change with matching `previewHash`; use
+   batch edit mode only when policy explicitly enables it
 5. If ChatGPT Web asks for secondary confirmation: retry the identical `change.apply` once
 6. If ChatGPT Web blocks with OpenAI safety checks: retry the identical tool call once with unchanged arguments
 7. If the identical retry is blocked again: show manual instructions, then call `manual.gate` with observed host output only
-8. If the best next step requires unavailable arbitrary shell/Node, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
+8. If the best next step needs a capability outside the fixed task/tool surface, has no matching task ID, or uses an unavailable task: show manual instructions in chat, then call `manual.gate` with `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
 9. Stop the assistant turn immediately after `manual.gate`, even if other work remains
 10. User completes the manual step outside ChatGPT
 11. The next user message must start with `/resume`
@@ -26,9 +29,9 @@ Recommended order:
 `fs.read` and `fs.read_many` return bounded text chunks. A truncated file result
 includes `nextOffsetBytes`; continue that file by passing the value as
 `byteOffset`. If the ChatGPT Web host still truncates the result, retry the same
-offset with a smaller `maxBytes`. This is output sizing for a relay result, not
-a bypass of OpenAI restrictions. Host-side truncation examples are tracked in
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+offset with a smaller `maxBytes`. This is output sizing for a relay result.
+Host-side truncation examples are tracked in
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
 `webvibe` does not suspend an in-flight JSON-RPC `tools/call` or force
 ChatGPT Web to hard-pend the current assistant turn. Because UI widget pending
@@ -96,8 +99,8 @@ only `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, and opti
 `hostObservation` such as `toolName: "capability.limit"` and
 `outputText: "manual step required because required execution capability is unavailable"`.
 
-`task.run` runs only preconfigured task IDs. It does not accept arbitrary shell
-commands. `workspace.context` returns available task IDs, unavailable reasons, timeout
+`task.run` runs only preconfigured task IDs. It does not accept free-form
+command text. `workspace.context` returns available task IDs, unavailable reasons, timeout
 defaults, cwd support, extra argument rules, and manual fallback guidance. If
 there is no matching task ID for a required command, the model uses the same
 manual gate flow instead of ending with an inability statement.
@@ -120,7 +123,7 @@ the assistant turn and wait for the user to complete the manual work. The next
 user message should still start with `/resume`; after `manual.resume`, the model
 verifies state and resumes the original interrupted task.
 
-After changing tool descriptors, annotations, or `_meta` fields, refresh
-connector tools in ChatGPT Web settings and start a new chat. Tool refresh and
-memory caching limits are tracked in
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+After changing tool descriptors, annotations, `_meta` fields, or edit mode,
+refresh connector tools in ChatGPT Web settings and start a new chat. Tool
+refresh and memory caching limits are tracked in
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).

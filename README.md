@@ -4,6 +4,12 @@
 local MCP/OAuth surface, connects configured upstream MCP servers, and publishes
 only the tools allowed by policy.
 
+The project goal is coding completion inside ChatGPT Web's real host
+constraints: review prompts, black-box risk blocks, output truncation, and stale
+tool descriptors. Default tools are shaped to reduce host friction, and manual
+completion with `/resume` is a recovery path for finishing work when the host
+refuses a tool call.
+
 ## Run
 
 ```bash
@@ -23,9 +29,12 @@ directory, built-in mode or custom policy path, and pairing code.
 - `dev`: everything in `read-only`, plus `change.preview`, `change.apply`,
   `manual.gate`, `manual.resume`, `task.*`, and `git.commit`.
 
-Default `dev` mode uses complete batch file changes and fixed policy-defined
-tasks. It does not expose arbitrary shell execution, raw per-file write tools,
-or hidden prepared-payload application.
+Default `dev` mode uses fixed policy-defined tasks and bounded workspace change
+tools. The configured `editMode` defaults to `single`, meaning models should
+prefer one logical file operation at a time; policy can later enable batch edit
+mode for multi-file changes. The default surface does not expose free-form
+process execution, raw per-file write tools, or hidden prepared-payload
+application.
 
 `workspace.context` reports available tasks plus task candidates discovered from
 npm/pnpm/yarn/bun scripts, Go, Rust, Dart/Flutter, Playwright/Cypress/Vitest/
@@ -49,7 +58,7 @@ npx tsc -p tsconfig.json --noEmit
 ## Documents
 
 - [Architecture](docs/architecture.md)
-- [ChatGPT Web Known Limits](docs/chatgpt-web-known-limits.md)
+- [ChatGPT Web Constraint Adaptation](docs/chatgpt-web-known-limits.md)
 - [ChatGPT Web Workflow](docs/chatgpt-web-workflow.md)
 - [Policy](docs/policy.md)
 - [Security](docs/security.md)

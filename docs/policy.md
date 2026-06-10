@@ -24,6 +24,7 @@ Important fields:
   limits.
 - `taskBundles`: controls which discovered project task families are reported as
   candidates.
+- `editMode`: defaults to `single`; batch edit mode is opt-in.
 - `audit`: JSONL audit logging switch and rotation size.
 
 ## Default Tool Surface
@@ -68,7 +69,7 @@ result with `code: "CONTEXT_REQUIRED"` and `nextTool: "workspace.context"`.
 `fs.*` tools are relay built-ins. The default policies do not expose raw
 filesystem pass-through tools. This keeps path protection, output truncation,
 and result shape under webvibe control. Host-side output truncation is still
-possible; see [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+possible; see [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
 `fs.read` and `fs.read_many` read bounded UTF-8 byte chunks. Results include
 continuation metadata before `content`: `offsetBytes`, `returnedBytes`,
@@ -76,21 +77,23 @@ optional `nextOffsetBytes`, and `truncated`. When `truncated` is true, call
 `fs.read` again with `byteOffset` set to `nextOffsetBytes`. UTF-8 characters are
 not split across chunk boundaries.
 
-## Batch Changes
+## Workspace Changes
 
-Default dev mode exposes one read-only preview tool and one write tool:
+Default dev mode exposes read-only preview and write tools for bounded workspace
+changes:
 
-- `change.preview`: validate a complete batch change, detect conflicts, return
+- `change.preview`: validate a proposed workspace change, detect conflicts, return
   a bounded diff, and save oversized diffs as artifacts without writing.
-- `change.apply`: apply the complete user-requested file change in one write
+- `change.apply`: apply the requested file change in one write
   call after matching `previewHash`.
 
-This matches ChatGPT Web's confirmation model. File operations require user
-confirmation, so the default policy puts confirmation at one batch change
-boundary instead of repeated per-file writes. Known confirmation limitations are
-tracked in [ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+This matches ChatGPT Web's host constraints. The default `editMode` is `single`,
+so models should prefer one logical file operation per preview/apply pair.
+Policy can opt into batch edit mode for multi-file changes when the user accepts
+the larger payload and confirmation tradeoff. Known confirmation limitations
+are tracked in [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
-Batch change limits default to policy `limits.change` values. Mutating
+Change limits default to policy `limits.change` values. Mutating
 operations require `expectedSha256` where appropriate so stale model plans do
 not overwrite newer workspace edits.
 
@@ -110,7 +113,7 @@ interrupted request.
 ## Tasks
 
 `task.run` runs one policy-defined task by `taskId`. It does not accept
-arbitrary shell commands or stdin. Callers may pass a workspace-relative `cwd`
+free-form command text or stdin. Callers may pass a workspace-relative `cwd`
 to run a fixed task in a nested package or module. Available task IDs, timeout
 defaults, cwd support, extra argument rules, and unavailable reasons are
 returned by `workspace.context`.
@@ -133,10 +136,11 @@ Task results store stdout/stderr in `.webvibe/task-logs/` and return bounded
 head/tail/sha256/log-path summaries plus parsed diagnostics for common
 TypeScript, ESLint, Vitest/Jest, Go, Rust, and Dart output.
 
-If a required command has no matching task ID or needs arbitrary shell/Node,
-the model must use the manual fallback flow instead of ending with an inability
-statement. Manual commands and stdout/stderr are shown in chat and written by
-the user's terminal to a workspace-relative log path. They are not sent through
+If a required command has no matching task ID or needs a capability outside the
+fixed task/tool surface, the model must use the manual fallback flow instead of
+ending with an inability statement. Manual commands and stdout/stderr are shown
+in chat and written by the user's terminal to a workspace-relative log path.
+They are not sent through
 `manual.gate`; the gate receives only `manualFormatVersion`,
 `manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
 summary.
@@ -162,4 +166,4 @@ Because ChatGPT Web tool refresh can leave the model reasoning over stale tools,
 webvibe keeps the list stable and uses structured `unavailable` and
 `CONTEXT_REQUIRED` results instead. Tool surface renames are hard cuts; users
 must refresh connector tools in ChatGPT Web. See
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).

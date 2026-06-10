@@ -8,8 +8,8 @@ Security model:
   glob patterns.
 - Narrow tasks: default dev tasks run only policy-defined executable/argument
   pairs through `local-task-runner`.
-- Batch changes: default dev mode applies workspace edits through one
-  `change.apply` call instead of exposing raw per-file write tools.
+- Bounded changes: default dev mode applies workspace edits through reviewed
+  change tools instead of exposing raw per-file write tools.
 - Hash guards: update/delete changes require `expectedSha256`, and stale hashes
   fail without writing any file.
 - Symlink guard: changeset writes reject symlink targets and symlink parents.
@@ -29,11 +29,12 @@ Security model:
   and tail after redaction. Download tokens are never logged in plaintext.
   Audit logs rotate to `audit.log.1` at `audit.maxLogBytes`.
 
-The relay intentionally does not expose raw arbitrary shell, command strings,
-stdin, kill process, Git mutation tools, or raw filesystem write tools in
-default policies. These defaults match the observed host-side constraints in
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md): use narrow,
-reviewable tool shapes and do not attempt to bypass ChatGPT Web safety review.
+The relay intentionally does not expose free-form process execution, command
+strings, stdin, kill process, broad Git mutation tools, or raw filesystem write
+tools in default policies. These defaults match the observed host-side
+constraints in [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md):
+use narrow, reviewable tool shapes and recover through manual completion when
+needed.
 
 ## OAuth And Pairing
 
@@ -58,7 +59,7 @@ Default access token TTL is 30 days. Pairing-code failures are rate-limited by
 control MCP server. This avoids broad capabilities commonly present in
 desktop-commander style servers, including arbitrary command strings, process
 control, wide file mutation, and session state. It also gives ChatGPT Web a
-narrow named task call instead of a raw shell request. Policy must define each
+narrow named task call instead of free-form command text. Policy must define each
 task ID, executable, arguments, cwd, and timeout. A task call may pass a
 workspace-relative cwd, which is checked against workspace and protected-path
 rules before spawning. `workspace.context` reports available task IDs and argument
@@ -74,26 +75,27 @@ preflight may report additional non-runnable candidates for pnpm/yarn/bun
 scripts, Dart/Flutter, frontend configs, codegen configs, and project task
 files, but those candidates do not become executable unless policy maps them to
 a fixed task ID. The default policy does not expose Poetry, JVM, .NET, Ruby,
-PHP, raw shell, process control, `git push`, `git reset --hard`, or arbitrary
+PHP, free-form process execution, process control, `git push`, `git reset --hard`, or arbitrary
 checkout tools.
 
-## Batch Changes
+## Workspace Changes
 
 Default dev workspace edits go through:
 
-- `change.preview`: validate and diff a complete proposed batch change without
+- `change.preview`: validate and diff a proposed workspace change without
   writing. Oversized diffs are saved as tokenized artifacts.
-- `change.apply`: apply the complete batch change in one write operation after
+- `change.apply`: apply the reviewed change in one write operation after
   matching `previewHash`.
 
 `replace`, `edit`, and `delete` require `expectedSha256`. Apply rejects conflicts
 without partial writes. If an apply operation fails after writing starts, prior
-paths are rolled back from snapshots. The confirmation point is the reviewed
-batch change, not each individual file edit.
+paths are rolled back from snapshots. The default edit mode prefers one logical
+file operation per reviewed change; batch edit mode is an explicit policy
+choice for multi-file payloads.
 
 ## Manual Completion Gate
 
-The manual completion gate does not bypass ChatGPT Web safety checks. When
+The manual completion gate is a recovery protocol, not a hidden write path. When
 ChatGPT Web blocks a write action with the exact OpenAI safety-check text, the
 model retries the same tool call once with the identical tool name and JSON
 arguments. If that identical retry is blocked again, `webvibe` does not split
@@ -102,8 +104,8 @@ by id. Instead, the model shows exact manual instructions in chat and opens a
 local manual barrier with minimal `manual.gate` arguments only. The user
 completes the required step outside ChatGPT and must start the next message with
 `/resume`. The same manual path is used when the best next step requires
-unavailable arbitrary shell, an unavailable configured task, or another tool
-capability limit. `manual.resume` records user intent, an optional
+an unavailable configured task or another tool capability limit. `manual.resume`
+records user intent, an optional
 workspace-relative manual log file path, and optional post-completion checks; it
 does not perform the blocked write.
 Manual command text, scripts, stdout/stderr, diffs, file contents, and log
@@ -114,7 +116,7 @@ summary of why manual completion is required.
 Because ChatGPT Web cannot reliably be forced into a pending UI state, webvibe
 adapts by blocking local tools while manual work is pending and requiring
 `/resume` through `manual.resume` before tools continue. See
-[ChatGPT Web Known Limits](chatgpt-web-known-limits.md).
+[ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
 Boundaries:
 

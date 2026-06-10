@@ -1,14 +1,12 @@
-# ChatGPT Web Known Limits
+# ChatGPT Web Constraint Adaptation
 
 ChatGPT Web places host-side review and UI controls in front of MCP tool calls.
 Those controls are not fully documented from the relay's point of view. Treat
 them as black-box, inconsistent, and subject to change.
 
-This project does not try to deceive, hack, obfuscate, probe, or bypass OpenAI
-safety systems. It adapts to observed ChatGPT Web behavior while staying within
-OpenAI's Terms of Service: use narrower tool shapes, avoid accidental triggering
-from unnecessarily risky payload shapes, keep user confirmation visible, and
-fall back to manual completion when the host refuses a tool call.
+webvibe adapts to those constraints to maximize coding completion in ChatGPT
+Web. It uses narrower tool shapes, smaller payloads, visible user confirmation,
+fixed task IDs, and manual completion when the host refuses a tool call.
 
 The limits below are observed examples, not guaranteed rules. They may appear
 only sometimes, and absence in one session does not mean the limit is gone.
@@ -42,13 +40,15 @@ only sometimes, and absence in one session does not mean the limit is gone.
 ## Design Implications
 
 webvibe treats these limits as product constraints. Default dev mode avoids
-general-purpose shell, raw filesystem write tools, hidden prepared-payload
-application, and broad desktop-control upstreams. It prefers policy-defined
-tasks, bounded read chunks, complete batch changes, explicit manual fallback,
-and `/resume` after user-completed manual work.
+general-purpose command execution, raw filesystem write tools, hidden
+prepared-payload application, and broad desktop-control upstreams. It prefers
+policy-defined tasks, bounded read chunks, small single-logical-change payloads
+by default, explicit manual fallback, and `/resume` after user-completed manual
+work.
 
 When ChatGPT Web blocks a tool call, webvibe does not split the blocked action
 into smaller hidden calls, rename suspicious payloads, encode content, or apply
-a prepared change by id. The model follows the documented workflow: retry an
-exact OpenAI safety block once with unchanged arguments, then use manual
-completion if the retry is blocked again.
+a prepared change by id. Those tactics are unstable, hard to audit, difficult
+to recover from, and tend to lower task completion. The model follows the
+documented workflow: retry an exact OpenAI safety block once with unchanged
+arguments, then use manual completion if the retry is blocked again.

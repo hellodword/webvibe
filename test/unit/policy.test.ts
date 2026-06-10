@@ -24,6 +24,8 @@ describe("default policies", () => {
     expect(readOnly.mode).toBe("read-only");
     expect(dev.mode).toBe("dev");
     expect(dev.activeProfile).toBe("chatgptWebDefault");
+    expect(readOnly.editMode).toEqual({ mode: "single", batch: { enabled: false } });
+    expect(dev.editMode).toEqual({ mode: "single", batch: { enabled: false } });
     expect(dev.profiles.chatgptWebDefault).toBeTruthy();
     const readOnlyTools = readOnly.tools.map((tool) => tool.name);
     const devTools = dev.tools.map((tool) => tool.name);
