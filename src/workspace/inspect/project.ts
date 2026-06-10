@@ -9,7 +9,7 @@ import { isProtectedPath, safeLstat } from "./path.js";
 
 type ProjectManifest = {
   path: string;
-  type: "npm" | "go" | "rust" | "python" | "requirements" | "unknown";
+  type: "npm" | "go" | "rust" | "python" | "requirements" | "dart" | "flutter" | "unknown";
   name?: string;
   scripts?: string[];
   packageManager?: string;
@@ -21,12 +21,18 @@ type TaskFile = {
   targets: string[];
 };
 
+type ProjectConfigFile = {
+  path: string;
+  kind: string;
+};
+
 const MANIFEST_TYPES: Record<string, ProjectManifest["type"]> = {
   "package.json": "npm",
   "go.mod": "go",
   "Cargo.toml": "rust",
   "pyproject.toml": "python",
   "requirements.txt": "requirements",
+  "pubspec.yaml": "dart",
 };
 
 const LOCKFILE_TYPES: Record<string, string> = {
@@ -53,6 +59,7 @@ export async function inspectProject(
   packageManagers: string[];
   languages: string[];
   taskFiles: TaskFile[];
+  configFiles: ProjectConfigFile[];
   truncated: boolean;
 }> {
   const maxDepth = clampInteger(args.maxDepth, 3, 0, 8);
@@ -61,6 +68,7 @@ export async function inspectProject(
   const lockfiles: Array<{ path: string; type: string }> = [];
   const npmScripts: Array<{ manifest: string; name: string; command: string }> = [];
   const taskFiles: TaskFile[] = [];
+  const configFiles: ProjectConfigFile[] = [];
   let truncated = false;
 
   const visit = async (absoluteDir: string, relativeDir: string, depth: number): Promise<void> => {
@@ -83,6 +91,10 @@ export async function inspectProject(
         }
         if (entry.name in LOCKFILE_TYPES) {
           lockfiles.push({ path: relativePath, type: LOCKFILE_TYPES[entry.name] });
+        }
+        const configKind = configKindForPath(relativePath);
+        if (configKind) {
+          configFiles.push({ path: relativePath, kind: configKind });
         }
         const taskFileType = taskFileTypeForName(entry.name);
         if (taskFileType) {
@@ -107,7 +119,18 @@ export async function inspectProject(
   await visit(context.workspaceRoot, ".", 0);
   const packageManagers = sortedUnique(lockfiles.map((lockfile) => lockfile.type));
   const languages = sortedUnique(manifests.map((manifest) => manifest.type).filter((type) => type !== "unknown"));
-  return { status: "ok", root: ".", manifests, lockfiles, npmScripts, packageManagers, languages, taskFiles, truncated };
+  return {
+    status: "ok",
+    root: ".",
+    manifests,
+    lockfiles,
+    npmScripts,
+    packageManagers,
+    languages,
+    taskFiles,
+    configFiles,
+    truncated,
+  };
 }
 
 async function readManifest(
@@ -146,6 +169,13 @@ async function readManifest(
     if (type === "go") {
       const moduleLine = text.split(/\r?\n/).find((line) => line.startsWith("module "));
       return { path: relativePath, type, ...(moduleLine ? { name: moduleLine.slice(7).trim() } : {}) };
+    }
+    if (type === "dart") {
+      const name = text.match(/^name:\s*([A-Za-z0-9_.-]+)/m)?.[1];
+      const manifestType = /^\s*flutter\s*:/m.test(text) || /^\s*sdk:\s*flutter\s*$/m.test(text)
+        ? "flutter"
+        : "dart";
+      return { path: relativePath, type: manifestType, ...(name ? { name } : {}) };
     }
   } catch {
     return { path: relativePath, type };
@@ -192,6 +222,24 @@ function taskFileTypeForName(name: string): TaskFile["type"] | undefined {
   if (name === "Makefile" || name === "makefile") return "make";
   if (name === "justfile" || name === "Justfile") return "just";
   if (name === "Taskfile.yml" || name === "Taskfile.yaml") return "task";
+  return undefined;
+}
+
+function configKindForPath(relativePath: string): string | undefined {
+  const name = path.posix.basename(relativePath);
+  if (name === "tsconfig.json" || /^tsconfig\..+\.json$/.test(name)) return "frontend:typescript";
+  if (/^vitest\.config\./.test(name)) return "frontend:vitest";
+  if (/^playwright\.config\./.test(name)) return "frontend:playwright";
+  if (/^cypress\.config\./.test(name)) return "frontend:cypress";
+  if (/^jest\.config\./.test(name)) return "frontend:jest";
+  if (name === "eslint.config.js" || name === "eslint.config.mjs" || name.startsWith(".eslintrc")) return "frontend:eslint";
+  if (name === "biome.json" || name === "biome.jsonc") return "frontend:biome";
+  if (name.startsWith(".prettierrc") || /^prettier\.config\./.test(name)) return "frontend:prettier";
+  if (name === "schema.prisma") return "database:prisma";
+  if (name === "drizzle.config.ts" || name === "drizzle.config.js") return "database:drizzle";
+  if (name === "buf.yaml" || name === "buf.gen.yaml") return "codegen:buf";
+  if (name === "sqlc.yaml" || name === "sqlc.yml") return "codegen:sqlc";
+  if (/openapi|swagger/i.test(name) && /\.(ya?ml|json)$/.test(name)) return "codegen:openapi";
   return undefined;
 }
 

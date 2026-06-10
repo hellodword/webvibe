@@ -245,6 +245,9 @@ function taskCandidates(
     ...nodeTaskCandidates(bundles, project, commands, availableIds),
     ...languageTaskCandidates("go", bundles, project, ["test_all", "vet", "fmt"], availableIds),
     ...languageTaskCandidates("rust", bundles, project, ["test", "check", "clippy", "fmt", "build"], availableIds),
+    ...flutterTaskCandidates(bundles, project, availableIds),
+    ...frontendTaskCandidates(bundles, project, commands, availableIds),
+    ...codegenTaskCandidates(bundles, project, commands, availableIds),
     ...projectTaskFileCandidates(bundles, project),
   ];
   return candidates.slice(0, 200);
@@ -340,6 +343,243 @@ function commandForLanguageTask(language: "go" | "rust", task: string): string[]
   if (task === "fmt") return ["cargo", "fmt", "--check"];
   if (task === "clippy") return ["cargo", "clippy", "--all-targets", "--all-features"];
   return ["cargo", task];
+}
+
+function flutterTaskCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  availableIds: Set<string>,
+): Array<Record<string, unknown>> {
+  const bundle = bundleRecord(bundles.flutter);
+  const allowedTasks = stringList(bundle.tasks, ["pub_get", "analyze", "test", "dart_format"]);
+  return project.manifests
+    .filter((manifest) => manifest.type === "flutter" || manifest.type === "dart")
+    .flatMap((manifest) => {
+      const cwd = dirnameOrDot(manifest.path);
+      const manifestType = manifest.type === "flutter" ? "flutter" : "dart";
+      return allowedTasks.map((task) => {
+        const staticTaskId = flutterStaticTaskId(task);
+        return {
+          taskId: `candidate:${cwd}:flutter:${task}`,
+          family: manifestType,
+          cwd,
+          source: manifest.path,
+          task,
+          command: commandForFlutterTask(manifestType, task),
+          runnable: staticTaskId ? availableIds.has(staticTaskId) : false,
+          ...(staticTaskId && availableIds.has(staticTaskId) ? { matchingTaskId: staticTaskId } : {}),
+        };
+      });
+    });
+}
+
+function frontendTaskCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  availableIds: Set<string>,
+): Array<Record<string, unknown>> {
+  const bundle = bundleRecord(bundles.frontend);
+  const allowedTasks = stringList(bundle.tasks, [
+    "playwright_test",
+    "cypress_run",
+    "vitest",
+    "jest",
+    "eslint",
+    "biome",
+    "prettier",
+    "tsc_noemit",
+  ]);
+  const candidates: Array<Record<string, unknown>> = [];
+  for (const config of project.configFiles.filter((file) => file.kind.startsWith("frontend:"))) {
+    const cwd = dirnameOrDot(config.path);
+    for (const task of frontendTasksForKind(config.kind)) {
+      if (!allowedTasks.includes(task)) continue;
+      const staticTaskId = frontendStaticTaskId(task);
+      candidates.push({
+        taskId: `candidate:${cwd}:frontend:${task}`,
+        family: "frontend",
+        cwd,
+        source: config.path,
+        task,
+        command: commandForFrontendTask(task, project, commands, cwd),
+        runnable: staticTaskId ? availableIds.has(staticTaskId) : false,
+        ...(staticTaskId && availableIds.has(staticTaskId) ? { matchingTaskId: staticTaskId } : {}),
+      });
+    }
+  }
+  return uniqueCandidates(candidates);
+}
+
+function codegenTaskCandidates(
+  bundles: TaskBundlesPolicy,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  availableIds: Set<string>,
+): Array<Record<string, unknown>> {
+  const bundle = bundleRecord(bundles.codegen);
+  const allowedTasks = stringList(bundle.tasks, [
+    "openapi_generate",
+    "prisma_generate",
+    "drizzle_generate",
+    "sqlc_generate",
+    "buf_lint",
+    "buf_generate",
+  ]);
+  const candidates: Array<Record<string, unknown>> = [];
+  for (const config of project.configFiles.filter((file) => isCodegenConfig(file.kind))) {
+    const cwd = dirnameOrDot(config.path);
+    for (const task of codegenTasksForKind(config.kind)) {
+      if (!allowedTasks.includes(task)) continue;
+      const staticTaskId = codegenStaticTaskId(task);
+      candidates.push({
+        taskId: `candidate:${cwd}:codegen:${task}`,
+        family: "codegen",
+        cwd,
+        source: config.path,
+        task,
+        command: commandForCodegenTask(task, project, commands, cwd),
+        runnable: staticTaskId ? availableIds.has(staticTaskId) : false,
+        ...(staticTaskId && availableIds.has(staticTaskId) ? { matchingTaskId: staticTaskId } : {}),
+      });
+    }
+  }
+  return uniqueCandidates(candidates);
+}
+
+function commandForFlutterTask(manifestType: "dart" | "flutter", task: string): string[] {
+  const tool = manifestType === "flutter" && task !== "dart_format" ? "flutter" : "dart";
+  if (task === "pub_get") return [tool, "pub", "get"];
+  if (task === "analyze") return [tool, "analyze"];
+  if (task === "test") return [tool, "test"];
+  if (task === "dart_format") return ["dart", "format", "--output=none", "--set-exit-if-changed", "."];
+  return [tool, task];
+}
+
+function commandForFrontendTask(
+  task: string,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  cwd: string,
+): string[] {
+  const exec = packageExecutorForCwd(project, commands, cwd);
+  const toolArgs: Record<string, string[]> = {
+    playwright_test: ["playwright", "test"],
+    cypress_run: ["cypress", "run"],
+    vitest: ["vitest", "run"],
+    jest: ["jest"],
+    eslint: ["eslint", "."],
+    biome: ["biome", "check", "."],
+    prettier: ["prettier", "--check", "."],
+    tsc_noemit: ["tsc", "--noEmit"],
+  };
+  return [...exec, ...(toolArgs[task] ?? [task])];
+}
+
+function commandForCodegenTask(
+  task: string,
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  cwd: string,
+): string[] {
+  const exec = packageExecutorForCwd(project, commands, cwd);
+  if (task === "openapi_generate") return [...exec, "openapi-generator-cli", "generate"];
+  if (task === "prisma_generate") return [...exec, "prisma", "generate"];
+  if (task === "drizzle_generate") return [...exec, "drizzle-kit", "generate"];
+  if (task === "sqlc_generate") return ["sqlc", "generate"];
+  if (task === "buf_lint") return ["buf", "lint"];
+  if (task === "buf_generate") return ["buf", "generate"];
+  return [...exec, task];
+}
+
+function packageExecutorForCwd(
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  commands: Awaited<ReturnType<typeof inspectEnvironment>>["path"]["commands"],
+  cwd: string,
+): string[] {
+  const manifest = nearestNpmManifest(project, cwd);
+  const allowed = ["npm", "pnpm", "yarn", "bun"];
+  const packageManager = manifest
+    ? packageManagerForManifest(manifest, project.lockfiles, commands, allowed)
+    : commands.find((command) => allowed.includes(command.command) && command.status === "available")?.command ?? "npm";
+  if (packageManager === "pnpm") return ["pnpm", "exec"];
+  if (packageManager === "yarn") return ["yarn"];
+  if (packageManager === "bun") return ["bunx"];
+  return ["npx"];
+}
+
+function nearestNpmManifest(
+  project: Awaited<ReturnType<typeof inspectEnvironment>>["project"],
+  cwd: string,
+): Awaited<ReturnType<typeof inspectEnvironment>>["project"]["manifests"][number] | undefined {
+  const npmManifests = project.manifests.filter((manifest) => manifest.type === "npm");
+  return npmManifests
+    .filter((manifest) => isSameOrParentDir(dirnameOrDot(manifest.path), cwd))
+    .sort((left, right) => dirnameOrDot(right.path).length - dirnameOrDot(left.path).length)[0];
+}
+
+function isSameOrParentDir(parent: string, child: string): boolean {
+  return parent === "." || child === parent || child.startsWith(`${parent}/`);
+}
+
+function frontendTasksForKind(kind: string): string[] {
+  if (kind === "frontend:playwright") return ["playwright_test"];
+  if (kind === "frontend:cypress") return ["cypress_run"];
+  if (kind === "frontend:vitest") return ["vitest"];
+  if (kind === "frontend:jest") return ["jest"];
+  if (kind === "frontend:eslint") return ["eslint"];
+  if (kind === "frontend:biome") return ["biome"];
+  if (kind === "frontend:prettier") return ["prettier"];
+  if (kind === "frontend:typescript") return ["tsc_noemit"];
+  return [];
+}
+
+function codegenTasksForKind(kind: string): string[] {
+  if (kind === "codegen:openapi") return ["openapi_generate"];
+  if (kind === "database:prisma") return ["prisma_generate"];
+  if (kind === "database:drizzle") return ["drizzle_generate"];
+  if (kind === "codegen:sqlc") return ["sqlc_generate"];
+  if (kind === "codegen:buf") return ["buf_lint", "buf_generate"];
+  return [];
+}
+
+function isCodegenConfig(kind: string): boolean {
+  return kind.startsWith("codegen:") || kind.startsWith("database:");
+}
+
+function flutterStaticTaskId(task: string): string | undefined {
+  if (task === "pub_get") return "flutter_pub_get";
+  if (task === "analyze") return "flutter_analyze";
+  if (task === "test") return "flutter_test";
+  if (task === "dart_format") return "dart_format";
+  return undefined;
+}
+
+function frontendStaticTaskId(task: string): string | undefined {
+  if (task === "tsc_noemit") return "npm_typecheck";
+  if (task === "eslint") return "npm_lint";
+  if (task === "prettier") return "npm_format";
+  return undefined;
+}
+
+function codegenStaticTaskId(task: string): string | undefined {
+  if (task === "prisma_generate") return "prisma_generate";
+  if (task === "drizzle_generate") return "drizzle_generate";
+  if (task === "buf_lint") return "buf_lint";
+  if (task === "buf_generate") return "buf_generate";
+  if (task === "sqlc_generate") return "sqlc_generate";
+  if (task === "openapi_generate") return "openapi_generate";
+  return undefined;
+}
+
+function uniqueCandidates(candidates: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.taskId}:${candidate.source}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function goStaticTaskId(task: string): string | undefined {

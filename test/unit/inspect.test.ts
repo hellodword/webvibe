@@ -439,8 +439,10 @@ describe("workspace inspection built-ins", () => {
   it("synthesizes task candidates from hybrid project manifests", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-task-candidates-"));
     await mkdir(path.join(root, "web"));
+    await mkdir(path.join(root, "web", "prisma"));
     await mkdir(path.join(root, "api"));
     await mkdir(path.join(root, "crates"));
+    await mkdir(path.join(root, "mobile"));
     await writeFile(
       path.join(root, "web", "package.json"),
       JSON.stringify({
@@ -450,14 +452,22 @@ describe("workspace inspection built-ins", () => {
       }),
     );
     await writeFile(path.join(root, "web", "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    await writeFile(path.join(root, "web", "playwright.config.ts"), "export default {}\n");
+    await writeFile(path.join(root, "web", "tsconfig.json"), "{}\n");
+    await writeFile(path.join(root, "web", "prisma", "schema.prisma"), "datasource db {}\n");
     await writeFile(path.join(root, "api", "go.mod"), "module example.test/api\n");
     await writeFile(path.join(root, "crates", "Cargo.toml"), "[package]\nname = \"demo\"\n");
+    await writeFile(path.join(root, "mobile", "pubspec.yaml"), "name: mobile\nflutter:\n");
+    await writeFile(path.join(root, "buf.yaml"), "version: v2\n");
     await writeFile(path.join(root, "Makefile"), "build:\n\ttrue\nsecret-deploy:\n\ttrue\n");
     const policy = policyFor(root);
     policy.taskBundles = {
       node: { packageManagers: ["npm", "pnpm"], scripts: ["test", "lint"] },
       go: { tasks: ["test_all", "vet"] },
       rust: { tasks: ["test", "check"] },
+      flutter: { tasks: ["analyze", "test", "dart_format"] },
+      frontend: { tasks: ["playwright_test", "tsc_noemit"] },
+      codegen: { tasks: ["prisma_generate", "buf_lint"] },
       project: { taskFiles: ["make"], allowedTargets: ["build"] },
     };
     const registry = new Map([
@@ -498,6 +508,39 @@ describe("workspace inspection built-ins", () => {
           cwd: "crates",
           task: "check",
           command: ["cargo", "check"],
+        }),
+        expect.objectContaining({
+          family: "flutter",
+          cwd: "mobile",
+          task: "analyze",
+          command: ["flutter", "analyze"],
+        }),
+        expect.objectContaining({
+          family: "frontend",
+          cwd: "web",
+          task: "playwright_test",
+          source: "web/playwright.config.ts",
+          command: ["pnpm", "exec", "playwright", "test"],
+        }),
+        expect.objectContaining({
+          family: "frontend",
+          cwd: "web",
+          task: "tsc_noemit",
+          command: ["pnpm", "exec", "tsc", "--noEmit"],
+        }),
+        expect.objectContaining({
+          family: "codegen",
+          cwd: "web/prisma",
+          task: "prisma_generate",
+          source: "web/prisma/schema.prisma",
+          command: ["pnpm", "exec", "prisma", "generate"],
+        }),
+        expect.objectContaining({
+          family: "codegen",
+          cwd: ".",
+          task: "buf_lint",
+          source: "buf.yaml",
+          command: ["buf", "lint"],
         }),
         expect.objectContaining({
           family: "project",
