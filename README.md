@@ -27,7 +27,8 @@ directory, built-in mode or custom policy path, and pairing code.
 - `read-only`: `workspace.context`, read-only `workspace.*`, `fs.*`, Git
   inspection tools, and `diagnostics.health`.
 - `dev`: everything in `read-only`, plus `change.preview`, `change.apply`,
-  `manual.gate`, `manual.resume`, `task.*`, and `git.commit`.
+  `manual.prepare`, `manual.gate`, `manual.status`, `manual.resume`, `task.*`,
+  and `git.commit`.
 
 Default `dev` mode uses fixed policy-defined tasks and bounded workspace change
 tools. The configured `editMode` defaults to `single`, meaning models should

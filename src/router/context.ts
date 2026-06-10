@@ -71,11 +71,11 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     "Prefer small single-logical-change payloads; use the edit tools reported by the current policy.",
     "Use change.preview before change.apply for the requested workspace file change.",
     "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",
-    "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, show manual details in chat before calling manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
+    "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, call manual.prepare when available, show manual details in chat, then call manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
     "Use task.run only with taskIds reported by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
-    "If task.run returns manualRequired, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
+    "If task.run returns manualRequired, call manual.prepare when available, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
     "If no taskId matches a required command or the needed capability is outside the fixed tool surface, use manualFallback instead of ending with an inability statement.",
-    "After manual.resume returns, verify current state and continue the original interrupted user request.",
+    "After manual.resume returns confirmed, verify current state and continue the original interrupted user request; do not continue on cancelled, expired, not_found, blocked, or verification_failed.",
     "Use git.status, git.changed, and git.diff after changes; use git.commit only with explicit paths.",
   ];
   return {
@@ -210,11 +210,13 @@ function displayExecutable(executable: string): string {
 function manualFallbackGuide(): Record<string, unknown> {
   return {
     nextTool: "manual.gate",
+    prepareTool: "manual.prepare",
+    statusTool: "manual.status",
     reason: "external_manual_step",
     when:
       "Use when the required next step is outside the fixed tool surface, has no matching taskId, or is blocked by an unavailable tool capability.",
     chatInstructions:
-      "Show the exact manual command or step in ChatGPT Web chat only. Ask the user to run it outside ChatGPT, redirect stdout/stderr to a workspace-relative log file, and reply with /resume followed by that optional log file path.",
+      "Show the exact manual command or step in ChatGPT Web chat only. Ask the user to run it outside ChatGPT, redirect stdout/stderr to a workspace-relative log file, and reply with /resume <operationId> followed by that optional log file path.",
     suggestedLogPathPattern: ".webvibe/manual-logs/<slug>.log",
     gatePayloadRule:
       "Never put manual commands, scripts, diffs, file contents, stdout/stderr, or log contents in manual.gate arguments.",
@@ -234,8 +236,8 @@ function manualRequiredForUnavailableCapability(
     reason: "external_manual_step",
     userInstructions:
       `Task '${taskId}' is unavailable (${reason}). If this task is required, show the manual command or equivalent step in ChatGPT Web chat only. ` +
-      `Ask the user to run it outside ChatGPT, write stdout/stderr to ${logPath}, then reply with /resume ${logPath}. ` +
-      "Call manual.gate with manualFormatVersion, manualMessageHash, operation, reason, and the provided low-risk hostObservation; do not include the command or log contents in the tool arguments.",
+      `Ask the user to run it outside ChatGPT, write stdout/stderr to ${logPath}, then reply with /resume ${safeLogName(taskId)} ${logPath}. ` +
+      "Call manual.prepare when available, then call manual.gate with manualFormatVersion, manualMessageHash, operation, optional preparedId, reason, and the provided low-risk hostObservation; do not include the command or log contents in the tool arguments.",
     hostObservation: capabilityLimitHostObservation(
       "manual step required because configured task is unavailable",
     ),

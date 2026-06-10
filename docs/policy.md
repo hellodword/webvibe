@@ -41,7 +41,9 @@ The built-in ChatGPT Web tool surface is intentionally compact:
 - `fs.stat`
 - `fs.manifest`
 - `change.preview` in dev mode
+- `manual.prepare` in dev mode
 - `manual.gate` in dev mode
+- `manual.status` in dev mode
 - `manual.resume` in dev mode
 - `change.apply` in dev mode
 - `task.list` in dev mode
@@ -99,16 +101,18 @@ not overwrite newer workspace edits.
 
 If ChatGPT Web blocks the write with the exact OpenAI
 safety-check text, the model retries the same tool once with unchanged
-arguments. If the identical retry is blocked again, the model shows manual
+arguments. If the identical retry is blocked again, the model prepares low-risk
+continuation metadata with `manual.prepare` when possible, shows manual
 instructions in chat, calls `manual.gate` with `WEBVIBE_MANUAL_REQUIRED v1`
 proof fields, stops the
 assistant turn immediately, and waits for a later user message that starts with
 `/resume`. Detailed manual instructions stay in the chat text, not in the
 `manual.gate` call. While pending, webvibe blocks workspace tools except
-`diagnostics.health` and `manual.resume`. `manual.resume` validates the
-`/resume` command, accepts an optional workspace-relative manual log file path,
-and verifies configured checks before the model continues the original
-interrupted request.
+`diagnostics.health`, `manual.status`, and `manual.resume`. `manual.resume`
+validates the `/resume` command, accepts `/resume <operationId>
+[workspace-log-path]` and `/resume cancel <operationId>`, verifies any supplied
+log file exists, records bounded log evidence, and only `confirmed` lets the
+model continue the original interrupted request.
 
 ## Tasks
 
@@ -142,8 +146,8 @@ ending with an inability statement. Manual commands and stdout/stderr are shown
 in chat and written by the user's terminal to a workspace-relative log path.
 They are not sent through
 `manual.gate`; the gate receives only `manualFormatVersion`,
-`manualMessageHash`, `operation`, `reason`, and a low-risk `hostObservation`
-summary.
+`manualMessageHash`, `operation`, optional `preparedId`, `reason`, and a
+low-risk `hostObservation` summary.
 
 ## Git
 

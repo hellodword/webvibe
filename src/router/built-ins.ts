@@ -1,5 +1,7 @@
 import { openManualGate } from "../manual/gate.js";
+import { prepareManualAction } from "../manual/prepare.js";
 import { resumeManualAction } from "../manual/resume.js";
+import { manualStatus } from "../manual/status.js";
 import type { RelayPolicy } from "../policy/policy.js";
 import type { AuditLog } from "../state/audit.js";
 import { LocalTaskRunnerClient } from "../upstream/local-task-runner.js";
@@ -207,6 +209,20 @@ export async function callBuiltIn(
       audit: context.audit,
     });
   }
+  if (name === "manual.prepare") {
+    return prepareManualAction(args, {
+      stateDir: context.stateDir,
+      limits: context.policy.limits,
+      audit: context.audit,
+    });
+  }
+  if (name === "manual.status") {
+    return manualStatus(args, {
+      workspaceRoot: context.workspaceRoot,
+      stateDir: context.stateDir,
+      caller: context.caller,
+    });
+  }
   if (name === "manual.resume") {
     return resumeManualAction(args, {
       workspaceRoot: context.workspaceRoot,
@@ -401,9 +417,9 @@ function manualRequiredForUnavailableTask(
     reason: "external_manual_step",
     userInstructions:
       `ChatGPT Web could not run task '${taskId || "task.run"}' because ${reason}.\n\n` +
-      "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then reply in the next ChatGPT message with /resume followed by that optional workspace-relative log file path.\n\n" +
-      `Suggested log path: ${logPath}\n\n` +
-      "Do not paste the command, stdout/stderr, or log contents into manual.gate; the gate call must use only v1 proof fields, reason, and the low-risk hostObservation.",
+      "Run the equivalent step outside ChatGPT from the workspace root, write stdout/stderr to a workspace-relative log file, then reply in the next ChatGPT message with /resume <operationId> followed by that optional workspace-relative log file path.\n\n" +
+      `Suggested resume command: /resume ${safeLogName(taskId || "task.run")} ${logPath}\n\n` +
+      "Call manual.prepare when available. Do not paste the command, stdout/stderr, or log contents into manual.prepare or manual.gate; the gate call must use only v1 proof fields, optional preparedId, reason, and the low-risk hostObservation.",
     hostObservation: {
       toolName: "capability.limit",
       outputText: "manual step required because required execution capability is unavailable",

@@ -18,6 +18,22 @@ export type ManualOperation = {
   kind: "task" | "change" | "external";
 };
 
+export type ManualInterruptedAt = "task" | "edit" | "test" | "commit" | "other";
+
+export type ManualNextAfterResume = {
+  tool: string;
+  reason: string;
+};
+
+export type ManualLogEvidence = {
+  path: string;
+  sizeBytes: number;
+  sha256: string;
+  head: string;
+  tail: string;
+  exitCode?: number;
+};
+
 export type ManualArtifactRef = {
   artifactId: string;
   kind: "diff" | "task-log" | "manual" | "generic";
@@ -51,6 +67,9 @@ export type ManualCheck =
 export type ManualActionRecord = {
   operationId: string;
   operation?: ManualOperation;
+  originalRequestSummary?: string;
+  interruptedAt?: ManualInterruptedAt;
+  nextAfterResume?: ManualNextAfterResume;
   manualFormatVersion?: "WEBVIBE_MANUAL_REQUIRED v1";
   manualMessageHash?: string;
   pendingId: string;
@@ -84,5 +103,6 @@ export type ManualActionRecord = {
       | "expired"
       | "verification_failed";
     manualLogPath?: string;
+    manualLog?: ManualLogEvidence;
   }>;
 };

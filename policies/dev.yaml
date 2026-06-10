@@ -573,6 +573,62 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
+  - name: manual.prepare
+    type: builtIn
+    description: Prepare low-risk manual continuation metadata before showing manual instructions and opening manual.gate.
+    inputSchema:
+      type: object
+      properties:
+        operation:
+          type: object
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 100
+              pattern: "^[A-Za-z0-9_.-]+$"
+            kind:
+              type: string
+              enum: [task, change, external]
+          required: [id, kind]
+          additionalProperties: false
+        originalRequestSummary:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        interruptedAt:
+          type: string
+          enum: [task, edit, test, commit, other]
+        verificationPlan:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: true
+        nextAfterResume:
+          type: object
+          properties:
+            tool:
+              type: string
+              minLength: 1
+              maxLength: 100
+            reason:
+              type: string
+              minLength: 1
+              maxLength: 500
+          required: [tool, reason]
+          additionalProperties: false
+      required: [operation, originalRequestSummary, interruptedAt, nextAfterResume]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      openWorldHint: false
+    _meta:
+      "openai/toolInvocation/invoking": "Preparing manual action"
+      "openai/toolInvocation/invoked": "Manual action prepared"
+
   - name: manual.gate
     type: builtIn
     description: Open a manual barrier after manual instructions were shown in chat.
@@ -674,9 +730,19 @@ tools:
       "openai/toolInvocation/invoking": "Opening manual gate"
       "openai/toolInvocation/invoked": "Manual gate opened"
 
+  - name: manual.status
+    type: builtIn
+    description: Report current pending manual action for this caller. Allowed while manual work is pending.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+    _meta:
+      "openai/toolInvocation/invoking": "Checking manual status"
+      "openai/toolInvocation/invoked": "Manual status checked"
+
   - name: manual.resume
     type: builtIn
-    description: manual.resume is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. Call it only after a later user message starts with /resume. It validates the resume command with trimStart() and exact lowercase /resume, accepts /resume cancel, treats any other /resume tail as an optional workspace-relative manual log file path, optionally verifies configured post-completion checks, writes an audit event, and lets tools continue only after the pending action is resolved.
+    description: manual.resume is the authoritative transition from a pending manual action to confirmed/cancelled/expired. It does not apply patches, delete files, run commands, or mutate the workspace. Call it only after a later user message starts with /resume. It validates exact lowercase /resume, accepts /resume [operationId] [workspace-log-path] and /resume cancel [operationId], records bounded log evidence when a log path is supplied, verifies configured checks, and only confirmed resumes the interrupted workflow.
     inputSchema:
       type: object
       properties:
@@ -707,6 +773,9 @@ tools:
           type: string
           enum: [completed, cancelled]
         verification:
+          type: object
+          additionalProperties: true
+        evidence:
           type: object
           additionalProperties: true
         next:

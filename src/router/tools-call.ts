@@ -352,11 +352,11 @@ type ManualPendingBlockedResult = {
 };
 
 function isManualBarrierAllowedTool(name: string): boolean {
-  return name === "diagnostics.health" || name === "manual.resume";
+  return name === "diagnostics.health" || name === "manual.resume" || name === "manual.status";
 }
 
 function isContextPreflightAllowedTool(name: string): boolean {
-  return name === "workspace.context" || name === "diagnostics.health" || name === "manual.resume";
+  return name === "workspace.context" || name === "diagnostics.health" || name === "manual.resume" || name === "manual.status";
 }
 
 function manualPendingRequired(record: ManualActionRecord): ManualPendingBlockedResult {

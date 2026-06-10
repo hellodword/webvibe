@@ -59,7 +59,9 @@ describe("default policies", () => {
       "fs.stat",
       "fs.manifest",
       "change.preview",
+      "manual.prepare",
       "manual.gate",
+      "manual.status",
       "manual.resume",
       "change.apply",
       "task.list",
@@ -123,6 +125,9 @@ describe("default policies", () => {
         .every((tool) => tool.outputSchema),
     ).toBe(true);
     expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(3);
+    expect(dev.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["manual.prepare", "manual.status"]),
+    );
     const defaultTasks = Object.values(dev.upstreams.tasks.tasks ?? {}) as Array<Record<string, unknown>>;
     expect(defaultTasks.every((task) => !("requiredFiles" in task))).toBe(true);
     expect(defaultTasks.every((task) => !("requiredPackageScript" in task))).toBe(true);
@@ -159,6 +164,7 @@ describe("default policies", () => {
     expect((manualResume.inputSchema as any).properties.manualOutputFormat).toBeUndefined();
     expect((manualResume.inputSchema as any).properties.evidenceNote).toBeUndefined();
     expect((manualResume.outputSchema as any).properties.status.enum).toContain("blocked");
+    expect((manualResume.outputSchema as any).properties.evidence.type).toBe("object");
     expect((manualResume.outputSchema as any).properties.next.properties.followUpPrompt.type).toBe(
       "string",
     );
@@ -170,6 +176,12 @@ describe("default policies", () => {
       (manualResume.outputSchema as any).properties.next.properties.verifyBeforeContinuing.type,
     ).toBe("boolean");
     const manualGate = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.gate")!);
+    const manualPrepare = normalizeDescriptor(dev.tools.find((tool) => tool.name === "manual.prepare")!);
+    expect((manualPrepare.inputSchema as any).properties.command).toBeUndefined();
+    expect((manualPrepare.inputSchema as any).properties.diff).toBeUndefined();
+    expect((manualPrepare.inputSchema as any).properties.stdout).toBeUndefined();
+    expect((manualPrepare.inputSchema as any).properties.stderr).toBeUndefined();
+    expect((manualPrepare.inputSchema as any).properties.verificationPlan).toBeTruthy();
     expect((manualGate._meta as any).ui).toBeUndefined();
     expect((manualGate._meta as any)["openai/outputTemplate"]).toBeUndefined();
     expect((manualGate._meta as any)["openai/widgetAccessible"]).toBeUndefined();

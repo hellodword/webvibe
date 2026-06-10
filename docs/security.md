@@ -104,10 +104,12 @@ by id. Instead, the model shows exact manual instructions in chat and opens a
 local manual barrier with minimal `manual.gate` arguments only. The user
 completes the required step outside ChatGPT and must start the next message with
 `/resume`. The same manual path is used when the best next step requires
-an unavailable configured task or another tool capability limit. `manual.resume`
-records user intent, an optional
-workspace-relative manual log file path, and optional post-completion checks; it
-does not perform the blocked write.
+an unavailable configured task or another tool capability limit. `manual.prepare`
+can store low-risk continuation metadata before `manual.gate`, so `/resume` can
+recover even if the gate itself is blocked by the host. `manual.resume` records
+user intent, validates any supplied workspace-relative manual log file path,
+stores bounded size/sha256/head/tail evidence, and verifies optional
+post-completion checks; it does not perform the blocked write.
 Manual command text, scripts, stdout/stderr, diffs, file contents, and log
 contents are not sent through `manual.gate`. They stay in ChatGPT Web chat or in
 the user's local workspace log file, while the gate receives only a low-risk
@@ -129,7 +131,7 @@ Boundaries:
   for audit, troubleshooting, and expiry control.
 
 While a manual action is pending, the relay blocks follow-up tools with
-`MANUAL_PENDING_REQUIRED` except `diagnostics.health` and `manual.resume`. This
+`MANUAL_PENDING_REQUIRED` except `diagnostics.health`, `manual.status`, and `manual.resume`. This
 is a local barrier, not a ChatGPT Web host hard-pending protocol. If the host
 does not call MCP tools, the relay cannot intercept ordinary assistant text.
 The model must stop the assistant turn after `manual.gate`, even if other work
@@ -138,12 +140,11 @@ remains.
 `manual.resume` is the authoritative transition from a pending manual action to
 confirmed/cancelled/expired. It applies `trimStart()` to the model-supplied next
 user message, requires exact lowercase `/resume` as the first command token,
-accepts `/resume cancel`, and treats any other `/resume` tail as an optional
-workspace-relative manual log file path. It optionally verifies configured
-post-completion checks, writes an audit event, and clears the pending barrier
-only after confirmation, cancellation, or expiry. `/resume` is a control signal,
-not a new task; after resume, the model verifies current state and continues the
-original interrupted request.
+accepts `/resume <operationId> [workspace-log-path]` and `/resume cancel
+<operationId>`, validates any supplied log file exists, and verifies configured
+post-completion checks. `/resume` is a control signal, not a new task. Only
+`confirmed` resumes the original interrupted request; cancelled, expired,
+not_found, and verification_failed do not continue it.
 
 If ChatGPT Web blocks a tool call before it reaches `/mcp`, the local relay
 cannot log that blocked call directly. The model first retries the same tool

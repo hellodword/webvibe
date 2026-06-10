@@ -1,7 +1,13 @@
 import path from "node:path";
 
 import { MANUAL_PREPARED_DIR, MANUAL_PREPARED_TTL_MS } from "./constants.js";
-import type { ManualArtifactRef, ManualCheck } from "./types.js";
+import type {
+  ManualArtifactRef,
+  ManualCheck,
+  ManualInterruptedAt,
+  ManualNextAfterResume,
+  ManualOperation,
+} from "./types.js";
 import { randomToken } from "../util/hash.js";
 import {
   ensurePrivateDir,
@@ -12,6 +18,10 @@ import {
 
 export type PreparedManualAction = {
   operationId: string;
+  operation?: ManualOperation;
+  originalRequestSummary?: string;
+  interruptedAt?: ManualInterruptedAt;
+  nextAfterResume?: ManualNextAfterResume;
   preparedId: string;
   createdAt: string;
   expiresAt: string;
@@ -38,6 +48,10 @@ export class PreparedManualActionStore {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const record: PreparedManualAction = {
       operationId: input.operationId,
+      operation: input.operation,
+      originalRequestSummary: input.originalRequestSummary,
+      interruptedAt: input.interruptedAt,
+      nextAfterResume: input.nextAfterResume,
       createdByTool: input.createdByTool,
       title: input.title,
       instructions: input.instructions,

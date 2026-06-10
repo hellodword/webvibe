@@ -10,7 +10,7 @@ const safetyBlock =
 
 describe("server instructions", () => {
   it("publishes a stable instruction contract version", () => {
-    expect(WEBVIBE_INSTRUCTION_VERSION).toBe("4.0.1");
+    expect(WEBVIBE_INSTRUCTION_VERSION).toBe("4.0.2");
     expect(webvibeServerInstructions.length).toBeGreaterThan(1000);
   });
 
@@ -18,7 +18,9 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain("workspace.context");
     expect(webvibeServerInstructions).toContain("change.preview");
     expect(webvibeServerInstructions).toContain("change.apply");
+    expect(webvibeServerInstructions).toContain("manual.prepare");
     expect(webvibeServerInstructions).toContain("manual.gate");
+    expect(webvibeServerInstructions).toContain("manual.status");
     expect(webvibeServerInstructions).toContain("manual.resume");
     expect(webvibeServerInstructions).toContain("/resume");
     expect(webvibeServerInstructions).toContain("fs.*");
@@ -26,6 +28,7 @@ describe("server instructions", () => {
     expect(webvibeServerInstructions).toContain(safetyBlock);
     expect(webvibeServerInstructions).toContain("identical JSON arguments");
     expect(webvibeServerInstructions).toContain("stop the assistant turn immediately");
+    expect(webvibeServerInstructions).toContain("Only confirmed resumes");
   });
 
   it("covers host-output decisions without bypass advice", () => {

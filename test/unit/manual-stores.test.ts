@@ -83,7 +83,17 @@ describe("manual action stores", () => {
     await store.save({ ...record, expiresAt: new Date(Date.now() - 1000).toISOString() });
     await expect(
       resumeManualAction({ resumeMessage: "/resume" }, context),
-    ).resolves.toMatchObject({ status: "expired" });
+    ).resolves.toMatchObject({
+      status: "expired",
+      next: { mode: "await_resume_command", verifyBeforeContinuing: false },
+    });
+
+    await expect(
+      resumeManualAction({ resumeMessage: "/resume" }, testContext(root, path.join(root, "empty-state"))),
+    ).resolves.toMatchObject({
+      status: "not_found",
+      next: { mode: "await_resume_command", verifyBeforeContinuing: false },
+    });
   });
 
   it("stores prepared manual state without debug payloads", async () => {

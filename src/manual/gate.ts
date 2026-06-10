@@ -10,7 +10,14 @@ import { classifyHostOutput } from "./host-output.js";
 import { ManualPendingStore } from "./pending-store.js";
 import { PreparedManualActionStore } from "./prepared-store.js";
 import { buildManualActionScope } from "./scope.js";
-import type { ManualActionReason, ManualArtifactRef, ManualCheck } from "./types.js";
+import type {
+  ManualActionReason,
+  ManualArtifactRef,
+  ManualCheck,
+  ManualInterruptedAt,
+  ManualNextAfterResume,
+  ManualOperation,
+} from "./types.js";
 import type { LimitsPolicy } from "../policy/policy.js";
 import type { CallerIdentity } from "../router/tools-call.js";
 import type { AuditLog } from "../state/audit.js";
@@ -81,6 +88,10 @@ export async function openManualGate(
   let instructions =
     "See the preceding ChatGPT message for the manual instructions. After completing the manual step, reply with /resume and an optional workspace-relative log file path.";
   let operationId = input.operation.id || randomToken(18);
+  let operation: ManualOperation = input.operation;
+  let originalRequestSummary: string | undefined;
+  let interruptedAt: ManualInterruptedAt | undefined;
+  let nextAfterResume: ManualNextAfterResume | undefined;
   let artifacts: ManualArtifactRef[] = [];
   let checks: ManualCheck[] = [];
   const preparedStore = new PreparedManualActionStore(context.stateDir);
@@ -92,6 +103,10 @@ export async function openManualGate(
     title = prepared.title;
     instructions = prepared.instructions;
     operationId = prepared.operationId;
+    operation = prepared.operation ?? input.operation;
+    originalRequestSummary = prepared.originalRequestSummary;
+    interruptedAt = prepared.interruptedAt;
+    nextAfterResume = prepared.nextAfterResume;
     artifacts = prepared.artifacts;
     checks = prepared.checks;
   }
@@ -114,7 +129,10 @@ export async function openManualGate(
     : undefined;
   const record = await pendingStore.create({
     operationId,
-    operation: input.operation,
+    operation,
+    originalRequestSummary,
+    interruptedAt,
+    nextAfterResume,
     manualFormatVersion: input.manualFormatVersion,
     manualMessageHash: input.manualMessageHash,
     pendingId,
@@ -146,7 +164,7 @@ export async function openManualGate(
     inputHash: sha256({
       preparedId: input.preparedId,
       reason: input.reason,
-      operation: input.operation,
+      operation,
       manualFormatVersion: input.manualFormatVersion,
       manualMessageHash: input.manualMessageHash,
       hostObservation,
@@ -154,7 +172,7 @@ export async function openManualGate(
     input: {
       preparedId: input.preparedId,
       reason: input.reason,
-      operation: input.operation,
+      operation,
       manualFormatVersion: input.manualFormatVersion,
       manualMessageHash: input.manualMessageHash,
       hostObservation,
@@ -170,7 +188,7 @@ export async function openManualGate(
     structuredContent: {
       status: "awaiting_manual_completion",
       operationId: record.operationId,
-      operation: input.operation,
+      operation,
       manualFormatVersion: input.manualFormatVersion,
       manualMessageHash: input.manualMessageHash,
       pendingId: record.pendingId,
@@ -188,7 +206,7 @@ export async function openManualGate(
     content: [
       {
         type: "text",
-        text: "Manual gate opened. End this assistant turn now. Do not summarize, call more tools, or continue any remaining work until the next user message starts with /resume and manual.resume returns a result. After resume, verify state and continue the original interrupted workflow.",
+        text: "Manual gate opened. End this assistant turn now. Do not summarize, call more tools, or continue any remaining work until the next user message starts with /resume and manual.resume returns confirmed. After confirmed resume, verify state and continue the original interrupted workflow.",
       },
     ],
   };
