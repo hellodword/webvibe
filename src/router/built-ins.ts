@@ -30,11 +30,11 @@ export type BuiltInContext = {
   audit: AuditLog;
 };
 
-export function callBuiltIn(
+export async function callBuiltIn(
   name: string,
   args: Record<string, unknown>,
   context: BuiltInContext,
-): unknown | Promise<unknown> {
+): Promise<unknown> {
   if (context.policy.mode === "read-only" && readOnlyBlockedTools.has(name)) {
     return unavailable(name, "Tool is unavailable in read-only mode");
   }
@@ -149,11 +149,28 @@ export function callBuiltIn(
     });
   }
   if (name === "change.preview") {
-    return previewChangeset(args, {
+    const preview = await previewChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      stateDir: context.stateDir,
+      publicBaseUrl: context.publicBaseUrl,
     });
+    return {
+      ok: preview.status === "ok",
+      status: preview.status,
+      data: preview,
+      warnings: preview.warnings,
+      limits: {
+        requested: {},
+        effective: {
+          change: context.policy.limits.change,
+        },
+      },
+      truncated: preview.diffInfo.truncated,
+      nextCursor: null,
+      artifacts: preview.artifacts,
+    };
   }
   if (name === "change.apply") {
     return applyChangeset(args, {

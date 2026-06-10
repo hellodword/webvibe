@@ -542,7 +542,7 @@ tools:
                   additionalProperties: false
               diff:
                 type: string
-            required: [op, path]
+            required: [op]
             additionalProperties: false
       required: [changes]
       additionalProperties: false

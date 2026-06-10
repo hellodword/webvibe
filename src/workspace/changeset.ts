@@ -39,6 +39,22 @@ type ApplyVerification = {
   files: FileVerification[];
 };
 
+type PreviewWarning = {
+  code: string;
+  message: string;
+};
+
+type DiffPreview = {
+  text: string;
+  truncated: boolean;
+  bytes: number;
+  lines: number;
+  maxInlineBytes: number;
+  maxInlineLines: number;
+  affectedPaths: string[];
+  artifact: ManualArtifactRef | null;
+};
+
 type VerificationExpectation = {
   path: string;
   op: PlannedAction["op"];
@@ -49,7 +65,10 @@ export { fileManifest };
 
 export async function previewChangeset(
   rawArgs: unknown,
-  context: WorkspaceContext,
+  context: WorkspaceContext & {
+    stateDir?: string;
+    publicBaseUrl?: string;
+  },
 ): Promise<{
   valid: boolean;
   status: "ok" | "conflicted";
@@ -59,22 +78,40 @@ export async function previewChangeset(
   summary: ChangesetSummary;
   files: PlannedFile[];
   diff: string;
+  diffInfo: DiffPreview;
   conflicts: Conflict[];
+  warnings: PreviewWarning[];
+  artifacts: ManualArtifactRef[];
   previewHash: string;
   changeHash: string;
 }> {
   const plan = await buildChangesetPlan(rawArgs, context);
   const hashes = previewHashes(rawArgs, plan);
+  const previewId = `cp_${randomToken(12)}`;
+  const diffInfo = await buildDiffPreview(plan, context, previewId);
+  const warnings = diffInfo.truncated
+    ? [
+        {
+          code: "DIFF_TRUNCATED",
+          message: diffInfo.artifact
+            ? "Diff exceeded inline limits and was saved as an artifact."
+            : "Diff exceeded inline limits and no artifact store was configured.",
+        },
+      ]
+    : [];
   return {
     valid: plan.conflicts.length === 0,
     status: plan.conflicts.length === 0 ? "ok" : "conflicted",
-    previewId: `cp_${randomToken(12)}`,
+    previewId,
     baseRevision: plan.baseRevision,
     base: { manifestHash: baseManifestHash(plan) },
     summary: plan.summary,
     files: plan.files,
-    diff: plan.diff,
+    diff: diffInfo.text,
+    diffInfo,
     conflicts: plan.conflicts,
+    warnings,
+    artifacts: diffInfo.artifact ? [diffInfo.artifact] : [],
     ...hashes,
   };
 }
@@ -129,6 +166,60 @@ export async function applyChangeset(
     conflicts: [],
     previewHash: hashes.previewHash,
   };
+}
+
+async function buildDiffPreview(
+  plan: { diff: string; files: PlannedFile[] },
+  context: WorkspaceContext & { stateDir?: string; publicBaseUrl?: string },
+  previewId: string,
+): Promise<DiffPreview> {
+  const bytes = Buffer.byteLength(plan.diff, "utf8");
+  const lines = countLines(plan.diff);
+  const maxInlineBytes = context.limits.change.maxInlineDiffBytes;
+  const maxInlineLines = context.limits.change.maxInlineDiffLines;
+  const affectedPaths = plan.files.map((file) => file.path);
+  if (bytes <= maxInlineBytes && lines <= maxInlineLines) {
+    return {
+      text: plan.diff,
+      truncated: false,
+      bytes,
+      lines,
+      maxInlineBytes,
+      maxInlineLines,
+      affectedPaths,
+      artifact: null,
+    };
+  }
+
+  let artifact: ManualArtifactRef | null = null;
+  if (context.stateDir && context.publicBaseUrl) {
+    artifact = (
+      await new ManualArtifactStore(context.stateDir).create({
+        label: "Workspace change preview diff",
+        filename: "workspace-change-preview.diff",
+        mimeType: "text/x-diff",
+        content: plan.diff,
+        createdByTool: "change.preview",
+        operationId: previewId,
+        publicBaseUrl: context.publicBaseUrl,
+      })
+    ).ref;
+  }
+  return {
+    text: "",
+    truncated: true,
+    bytes,
+    lines,
+    maxInlineBytes,
+    maxInlineLines,
+    affectedPaths,
+    artifact,
+  };
+}
+
+function countLines(text: string): number {
+  if (text.length === 0) return 0;
+  return text.split(/\r\n|\r|\n/).length;
 }
 
 async function verifyApplied(
