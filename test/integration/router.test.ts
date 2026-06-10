@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import { loadPolicy } from "../../src/config/loader.js";
 import { ToolRouter } from "../../src/router/tools-call.js";
+import { webvibeServerInstructions } from "../../src/server/instructions.js";
 import { AuditLog } from "../../src/state/audit.js";
 import { UpstreamManager } from "../../src/upstream/manager.js";
 import { buildRegistry } from "../../src/upstream/registry.js";
+import { sha256 } from "../../src/util/hash.js";
 import { writeFakePolicy } from "../support/policy.js";
 
 describe("tool router", () => {
@@ -40,6 +42,38 @@ describe("tool router", () => {
       await expect(setup.router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
       );
+      await expect(setup.router.call("diagnostics.health", {}, { clientId: "c1" })).resolves.toMatchObject({
+        ok: true,
+        status: "ok",
+        data: {
+          status: "ok",
+          name: "webvibe",
+          server: { name: "webvibe", version: "0.1.0" },
+          activeProfile: "chatgptWebDefault",
+          policy: {
+            hash: expect.any(String),
+            effectiveLimits: expect.any(Object),
+          },
+          toolSurface: {
+            version: "4.0.0",
+            hash: expect.any(String),
+            toolCount: setup.registry.size,
+          },
+          instructions: {
+            version: "4.0.0",
+            hash: sha256(webvibeServerInstructions),
+          },
+          upstreams: expect.any(Array),
+          recentToolErrors: [
+            expect.objectContaining({
+              tool: "x.read",
+              type: "passThrough",
+              code: "FORBIDDEN",
+              message: expect.stringContaining("protected"),
+            }),
+          ],
+        },
+      });
       await expect(
         setup.router.call(
           "x.edit_apply",

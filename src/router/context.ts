@@ -1,16 +1,30 @@
 import type { RelayPolicy, TaskBundlesPolicy, TaskPolicy } from "../policy/policy.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
+import {
+  WEBVIBE_INSTRUCTION_VERSION,
+  webvibeServerInstructions,
+} from "../server/instructions.js";
+import { WEBVIBE_SERVER_NAME, WEBVIBE_SERVER_VERSION } from "../server/version.js";
 import { gitStatus } from "../workspace/inspect/git.js";
 import { inspectEnvironment } from "../workspace/inspect/env.js";
 import { buildPreflightFingerprint, TOOL_SURFACE_VERSION } from "./tool-surface.js";
 import { sha256 } from "../util/hash.js";
+
+export type RecentToolError = {
+  timestamp: string;
+  tool: string;
+  type: string;
+  code?: string;
+  message: string;
+};
 
 export type ContextToolContext = {
   registry: Map<string, RegisteredTool>;
   policy: RelayPolicy;
   upstreams: UpstreamManager;
   workspaceRoot: string;
+  recentToolErrors?: RecentToolError[];
 };
 
 export async function getContext(context: ContextToolContext): Promise<Record<string, unknown>> {
@@ -84,9 +98,14 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
 
 export function getDiagnostics(context: ContextToolContext): Record<string, unknown> {
   const toolSurfaceHash = sha256(Array.from(context.registry.values()).map((entry) => entry.descriptor));
+  const instructionHash = sha256(webvibeServerInstructions);
   return {
     status: "ok",
-    name: "webvibe",
+    name: WEBVIBE_SERVER_NAME,
+    server: {
+      name: WEBVIBE_SERVER_NAME,
+      version: WEBVIBE_SERVER_VERSION,
+    },
     mode: context.policy.mode,
     activeProfile: context.policy.activeProfile,
     policy: {
@@ -99,8 +118,13 @@ export function getDiagnostics(context: ContextToolContext): Record<string, unkn
       toolCount: context.registry.size,
       tools: Array.from(context.registry.keys()),
     },
+    instructions: {
+      version: WEBVIBE_INSTRUCTION_VERSION,
+      hash: instructionHash,
+    },
     validFor: buildPreflightFingerprint(context),
     upstreams: context.upstreams.listHealth(),
+    recentToolErrors: context.recentToolErrors ?? [],
   };
 }
 

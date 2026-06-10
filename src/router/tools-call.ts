@@ -14,6 +14,7 @@ import { assertToolAllowed } from "./namespace.js";
 import { prepareToolOutput } from "./output.js";
 import { RateLimiter } from "./rate-limit.js";
 import { toolTimeoutMs, withToolTimeout } from "./timeout.js";
+import type { RecentToolError } from "./context.js";
 import {
   buildPreflightFingerprint,
   fingerprintsEqual,
@@ -41,6 +42,7 @@ export type ToolCallOptions = {
 
 export class ToolRouter {
   private readonly rateLimiter = new RateLimiter();
+  private readonly recentToolErrors: RecentToolError[] = [];
   private readonly preflight = new Map<
     string,
     { inspectedAt: string; fingerprint: PreflightFingerprint }
@@ -141,6 +143,15 @@ export class ToolRouter {
       return finalOutput;
     } catch (error) {
       const err = toError(error);
+      const errorCode =
+        "code" in err && typeof (err as any).code === "string" ? (err as any).code : undefined;
+      this.recordToolError({
+        timestamp: new Date().toISOString(),
+        tool: name,
+        type: entry?.policy.type ?? "unknown",
+        code: errorCode,
+        message: err.message,
+      });
       await this.options.audit.write(
         buildAuditRecord({
           clientId: caller.clientId,
@@ -155,7 +166,7 @@ export class ToolRouter {
           clientOutput: null,
           error: err.message,
           errorStack: err.stack,
-          errorCode: "code" in err && typeof (err as any).code === "string" ? (err as any).code : undefined,
+          errorCode,
         }),
       );
       throw err;
@@ -259,6 +270,7 @@ export class ToolRouter {
         publicBaseUrl: this.options.publicBaseUrl,
         caller,
         audit: this.options.audit,
+        recentToolErrors: this.recentToolErrors.slice(),
       });
     }
     if (tool.type === "passThrough") {
@@ -316,6 +328,13 @@ export class ToolRouter {
         );
       },
     });
+  }
+
+  private recordToolError(error: RecentToolError): void {
+    this.recentToolErrors.push(error);
+    if (this.recentToolErrors.length > 10) {
+      this.recentToolErrors.splice(0, this.recentToolErrors.length - 10);
+    }
   }
 }
 

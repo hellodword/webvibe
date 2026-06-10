@@ -15,6 +15,7 @@ import {
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
 import { webvibeServerInstructions } from "./instructions.js";
 import { readLimitedBody } from "./oauth.js";
+import { WEBVIBE_SERVER_NAME, WEBVIBE_SERVER_VERSION } from "./version.js";
 
 export type McpHandlerOptions = {
   store: OAuthStore;
@@ -82,7 +83,7 @@ async function handleMcpRequest(
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
         instructions: webvibeServerInstructions,
-        serverInfo: { name: "webvibe", version: "0.1.0" },
+        serverInfo: { name: WEBVIBE_SERVER_NAME, version: WEBVIBE_SERVER_VERSION },
       };
     case "tools/list":
       return toolsList(options.registry);

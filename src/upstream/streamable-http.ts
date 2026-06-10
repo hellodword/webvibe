@@ -1,6 +1,7 @@
 import type { UpstreamClient, UpstreamHealth } from "./client.js";
 import type { McpToolDescriptor } from "../descriptor/normalize.js";
 import type { UpstreamPolicy } from "../policy/policy.js";
+import { WEBVIBE_SERVER_NAME, WEBVIBE_SERVER_VERSION } from "../server/version.js";
 import { TimeoutError } from "../util/errors.js";
 
 export class StreamableHttpUpstreamClient implements UpstreamClient {
@@ -21,7 +22,7 @@ export class StreamableHttpUpstreamClient implements UpstreamClient {
     await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: "webvibe", version: "0.1.0" },
+      clientInfo: { name: WEBVIBE_SERVER_NAME, version: WEBVIBE_SERVER_VERSION },
     });
     this.healthy = true;
   }

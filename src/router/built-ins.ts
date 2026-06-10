@@ -25,7 +25,7 @@ import {
   gitStatus,
 } from "../workspace/inspect/git.js";
 import type { CallerIdentity } from "./tools-call.js";
-import { getContext, getDiagnostics } from "./context.js";
+import { getContext, getDiagnostics, type RecentToolError } from "./context.js";
 
 export type BuiltInContext = {
   registry: Map<string, RegisteredTool>;
@@ -36,6 +36,7 @@ export type BuiltInContext = {
   publicBaseUrl: string;
   caller: CallerIdentity;
   audit: AuditLog;
+  recentToolErrors: RecentToolError[];
 };
 
 export async function callBuiltIn(
@@ -74,6 +75,7 @@ export async function callBuiltIn(
       policy: context.policy,
       upstreams: context.upstreams,
       workspaceRoot: context.workspaceRoot,
+      recentToolErrors: context.recentToolErrors,
     });
   }
   if (name === "fs.search") {

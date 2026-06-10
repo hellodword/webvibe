@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { webvibeServerInstructions } from "../../src/server/instructions.js";
+import {
+  WEBVIBE_INSTRUCTION_VERSION,
+  webvibeServerInstructions,
+} from "../../src/server/instructions.js";
 
 const safetyBlock =
   "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.";
 
 describe("server instructions", () => {
+  it("publishes a stable instruction contract version", () => {
+    expect(WEBVIBE_INSTRUCTION_VERSION).toBe("4.0.0");
+    expect(webvibeServerInstructions.length).toBeGreaterThan(1000);
+  });
+
   it("publishes the initialize-time workflow contract", () => {
     expect(webvibeServerInstructions).toContain("workspace.context");
     expect(webvibeServerInstructions).toContain("change.preview");
