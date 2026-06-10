@@ -34,7 +34,10 @@ describe("workspace changesets", () => {
     );
 
     expect(preview.valid).toBe(true);
+    expect(preview.status).toBe("ok");
+    expect(preview.previewId).toMatch(/^cp_/);
     expect(preview.previewHash).toMatch(/^sha256:/);
+    expect(preview.base.manifestHash).toMatch(/^sha256:/);
     expect(preview.diff).toContain("+++ b/src/new.ts");
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("alpha\nbeta\n");
 
@@ -56,6 +59,27 @@ describe("workspace changesets", () => {
     );
 
     expect(applied.applied).toBe(true);
+    expect(applied.verified).toBe(true);
+    expect(applied.base.manifestHash).toBe(preview.base.manifestHash);
+    expect(applied.verification).toMatchObject({
+      status: "passed",
+      manifestHash: expect.stringMatching(/^sha256:/),
+    });
+    expect(applied.verification.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "src",
+          ok: true,
+          expected: expect.objectContaining({ type: "directory" }),
+          actual: expect.objectContaining({ type: "directory" }),
+        }),
+        expect.objectContaining({
+          path: "a.txt",
+          ok: true,
+          expected: expect.objectContaining({ sha256: sha256("gamma\nbeta\n") }),
+        }),
+      ]),
+    );
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("gamma\nbeta\n");
     expect(await readFile(path.join(root, "src/new.ts"), "utf8")).toBe(
       "export const value = 1;\n",
@@ -97,6 +121,8 @@ describe("workspace changesets", () => {
     );
 
     expect(result.applied).toBe(false);
+    expect(result.verified).toBe(false);
+    expect(result.verification.status).toBe("skipped");
     expect(result.conflicts).toMatchObject([{ path: "a.txt", reason: "File hash mismatch" }]);
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("one\n");
     await expect(readFile(path.join(root, "created.txt"), "utf8")).rejects.toThrow("ENOENT");
@@ -175,6 +201,8 @@ describe("workspace changesets", () => {
 
     await expect(applyChangeset({ changes, previewHash: preview.previewHash }, context)).resolves.toMatchObject({
       applied: true,
+      verified: true,
+      verification: { status: "passed" },
       previewHash: preview.previewHash,
     });
   });
@@ -227,7 +255,21 @@ describe("workspace changesets", () => {
       ]),
     );
 
-    await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+    const applied = await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+    expect(applied.verification.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "old.txt",
+          ok: true,
+          actual: expect.objectContaining({ exists: false, type: "missing" }),
+        }),
+        expect.objectContaining({
+          path: "nested/new.txt",
+          ok: true,
+          expected: expect.objectContaining({ sha256: sha256("move me\n") }),
+        }),
+      ]),
+    );
     await expect(readFile(path.join(root, "old.txt"), "utf8")).rejects.toThrow("ENOENT");
     expect(await readFile(path.join(root, "nested/new.txt"), "utf8")).toBe("move me\n");
   });
@@ -294,6 +336,7 @@ describe("workspace changesets", () => {
     );
     expect(ambiguous).toMatchObject({
       valid: false,
+      status: "conflicted",
       conflicts: [{ path: "a.txt", reason: "Edit text matched more than once" }],
     });
     expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("same\nsame\n");

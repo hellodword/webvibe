@@ -11,10 +11,39 @@ import { fileManifest } from "./changeset/manifest.js";
 import type {
   ChangesetSummary,
   Conflict,
+  ManifestEntry,
   PlannedAction,
   PlannedFile,
   WorkspaceContext,
 } from "./changeset/types.js";
+
+type ManifestBase = {
+  path: string;
+  exists: boolean;
+  type?: ManifestEntry["type"];
+  sha256?: string;
+  sizeBytes?: number;
+};
+
+type FileVerification = {
+  path: string;
+  op: PlannedAction["op"];
+  expected: ManifestBase;
+  actual: ManifestEntry;
+  ok: boolean;
+};
+
+type ApplyVerification = {
+  status: "skipped" | "passed" | "failed";
+  manifestHash: string;
+  files: FileVerification[];
+};
+
+type VerificationExpectation = {
+  path: string;
+  op: PlannedAction["op"];
+  expected: ManifestBase;
+};
 
 export { fileManifest };
 
@@ -23,7 +52,10 @@ export async function previewChangeset(
   context: WorkspaceContext,
 ): Promise<{
   valid: boolean;
+  status: "ok" | "conflicted";
+  previewId: string;
   baseRevision?: string;
+  base: { manifestHash: string };
   summary: ChangesetSummary;
   files: PlannedFile[];
   diff: string;
@@ -35,7 +67,10 @@ export async function previewChangeset(
   const hashes = previewHashes(rawArgs, plan);
   return {
     valid: plan.conflicts.length === 0,
+    status: plan.conflicts.length === 0 ? "ok" : "conflicted",
+    previewId: `cp_${randomToken(12)}`,
     baseRevision: plan.baseRevision,
+    base: { manifestHash: baseManifestHash(plan) },
     summary: plan.summary,
     files: plan.files,
     diff: plan.diff,
@@ -49,7 +84,10 @@ export async function applyChangeset(
   context: WorkspaceContext,
 ): Promise<{
   applied: boolean;
+  verified: boolean;
+  verification: ApplyVerification;
   baseRevision?: string;
+  base: { manifestHash: string };
   summary: ChangesetSummary;
   files: PlannedFile[];
   conflicts: Conflict[];
@@ -67,7 +105,10 @@ export async function applyChangeset(
   if (plan.conflicts.length > 0) {
     return {
       applied: false,
+      verified: false,
+      verification: skippedVerification(plan),
       baseRevision: plan.baseRevision,
+      base: { manifestHash: baseManifestHash(plan) },
       summary: plan.summary,
       files: plan.files,
       conflicts: plan.conflicts,
@@ -76,14 +117,166 @@ export async function applyChangeset(
   }
 
   await applyPlan(plan);
+  const verification = await verifyApplied(plan, context);
   return {
     applied: true,
+    verified: verification.status === "passed",
+    verification,
     baseRevision: plan.baseRevision,
+    base: { manifestHash: baseManifestHash(plan) },
     summary: plan.summary,
     files: plan.files,
     conflicts: [],
     previewHash: hashes.previewHash,
   };
+}
+
+async function verifyApplied(
+  plan: { actions: PlannedAction[] },
+  context: WorkspaceContext,
+): Promise<ApplyVerification> {
+  const expected = verificationExpectations(plan);
+  const paths = Array.from(new Set(expected.map((item) => item.path)));
+  if (paths.length === 0) {
+    return { status: "passed", manifestHash: manifestHash([]), files: [] };
+  }
+  const manifest = await fileManifest({ paths }, context);
+  const actualByPath = new Map(manifest.files.map((entry) => [entry.path, entry]));
+  const files = expected.map((item) => {
+    const actual = actualByPath.get(item.path) ?? {
+      path: item.path,
+      exists: false,
+      type: "missing" as const,
+    };
+    return {
+      path: item.path,
+      op: item.op,
+      expected: item.expected,
+      actual,
+      ok: manifestMatches(actual, item.expected),
+    };
+  });
+  return {
+    status: files.every((file) => file.ok) ? "passed" : "failed",
+    manifestHash: manifestHash(manifest.files),
+    files,
+  };
+}
+
+function skippedVerification(plan: { actions: PlannedAction[] }): ApplyVerification {
+  return {
+    status: "skipped",
+    manifestHash: baseManifestHash(plan),
+    files: [],
+  };
+}
+
+function baseManifestHash(plan: { actions: PlannedAction[] }): string {
+  return manifestHash(baseManifestEntries(plan));
+}
+
+function baseManifestEntries(plan: { actions: PlannedAction[] }): ManifestBase[] {
+  return plan.actions.flatMap((action) => {
+    if (action.op === "rename") {
+      return [
+        {
+          path: action.path,
+          exists: true,
+          type: "file" as const,
+          sha256: action.before?.sha256,
+          sizeBytes: action.before?.sizeBytes,
+        },
+        { path: action.toPath ?? action.path, exists: false, type: "missing" as const },
+      ];
+    }
+    if (action.op === "create" || action.op === "write" || action.op === "mkdir") {
+      return [{ path: action.path, exists: false, type: "missing" as const }];
+    }
+    return [
+      {
+        path: action.path,
+        exists: true,
+        type: "file" as const,
+        sha256: action.before?.sha256,
+        sizeBytes: action.before?.sizeBytes,
+      },
+    ];
+  });
+}
+
+function verificationExpectations(plan: { actions: PlannedAction[] }): VerificationExpectation[] {
+  return plan.actions.flatMap<VerificationExpectation>((action) => {
+    if (action.op === "mkdir") {
+      return [
+        {
+          path: action.path,
+          op: action.op,
+          expected: { path: action.path, exists: true, type: "directory" as const },
+        },
+      ];
+    }
+    if (action.op === "delete") {
+      return [
+        {
+          path: action.path,
+          op: action.op,
+          expected: { path: action.path, exists: false, type: "missing" as const },
+        },
+      ];
+    }
+    if (action.op === "rename") {
+      const target = action.toPath ?? action.path;
+      return [
+        {
+          path: action.path,
+          op: action.op,
+          expected: { path: action.path, exists: false, type: "missing" as const },
+        },
+        {
+          path: target,
+          op: action.op,
+          expected: {
+            path: target,
+            exists: true,
+            type: "file" as const,
+            sha256: action.afterSha256,
+          },
+        },
+      ];
+    }
+    return [
+      {
+        path: action.path,
+        op: action.op,
+        expected: {
+          path: action.path,
+          exists: true,
+          type: "file" as const,
+          sha256: action.afterSha256,
+        },
+      },
+    ];
+  });
+}
+
+function manifestMatches(actual: ManifestEntry, expected: ManifestBase): boolean {
+  if (actual.exists !== expected.exists) return false;
+  if (!expected.exists) return actual.type === "missing";
+  if (expected.type && actual.type !== expected.type) return false;
+  if (expected.sha256 && actual.sha256 !== expected.sha256) return false;
+  return true;
+}
+
+function manifestHash(entries: ManifestBase[]): string {
+  return `sha256:${sha256(
+    entries.map((entry) => ({
+      path: entry.path,
+      exists: entry.exists,
+      type: entry.type,
+      sha256: entry.sha256,
+      sizeBytes: entry.sizeBytes,
+    })),
+  )}`;
 }
 
 export async function prepareChangeset(
