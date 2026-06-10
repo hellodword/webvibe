@@ -53,12 +53,12 @@ export async function gitChanged(_args: Record<string, unknown>, context: GitCon
 
 export async function gitDiffUnstaged(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
   const pathArgs = pathspecArgs(args.path, context);
-  return runGit(["diff", "--", ...pathArgs], context, "git diff");
+  return boundedStdout(await runGit(["diff", "--", ...pathArgs], context, "git diff"), args);
 }
 
 export async function gitDiffStaged(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
   const pathArgs = pathspecArgs(args.path, context);
-  return runGit(["diff", "--cached", "--", ...pathArgs], context, "git diff --cached");
+  return boundedStdout(await runGit(["diff", "--cached", "--", ...pathArgs], context, "git diff --cached"), args);
 }
 
 export async function gitLog(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
@@ -75,7 +75,10 @@ export async function gitLog(args: Record<string, unknown>, context: GitContext)
 export async function gitShow(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
   const revision = safeGitRevision(args.revision ?? "HEAD", "revision");
   const pathArgs = pathspecArgs(args.path, context);
-  return runGit(["show", "--stat", "--patch", revision, "--", ...pathArgs], context, "git show");
+  return boundedStdout(
+    await runGit(["show", "--stat", "--patch", revision, "--", ...pathArgs], context, "git show"),
+    args,
+  );
 }
 
 export async function gitBlame(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
@@ -245,6 +248,49 @@ function noChangesResult(durationMs: number): GitToolResult {
     durationMs,
     unavailableReason: "No changes in explicit paths",
   };
+}
+
+function boundedStdout(result: GitToolResult, args: Record<string, unknown>): GitToolResult {
+  if (result.status !== "ok") return result;
+  const maxBytes = maxOutputBytes(args.maxBytes);
+  const offsetBytes = cursorOffset(args.cursor);
+  const data = Buffer.from(result.stdout, "utf8");
+  const end = Math.min(offsetBytes + maxBytes, data.byteLength);
+  const chunk = data.subarray(offsetBytes, end).toString("utf8");
+  return {
+    ...result,
+    stdout: chunk,
+    offsetBytes,
+    returnedBytes: Buffer.byteLength(chunk, "utf8"),
+    totalBytes: data.byteLength,
+    stdoutSha256: `sha256:${sha256(result.stdout)}`,
+    truncated: end < data.byteLength,
+    nextCursor: end < data.byteLength ? encodeCursor(end) : null,
+  };
+}
+
+function maxOutputBytes(value: unknown): number {
+  if (value === undefined || value === null) return 12000;
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new BadRequestError("maxBytes must be a positive integer");
+  }
+  return Math.min(value as number, 60000);
+}
+
+function cursorOffset(value: unknown): number {
+  if (value === undefined || value === null || value === "") return 0;
+  if (typeof value !== "string") throw new BadRequestError("cursor must be string");
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!Number.isInteger(parsed.offsetBytes) || parsed.offsetBytes < 0) throw new Error("bad cursor");
+    return parsed.offsetBytes;
+  } catch {
+    throw new BadRequestError("cursor is invalid");
+  }
+}
+
+function encodeCursor(offsetBytes: number): string {
+  return Buffer.from(JSON.stringify({ offsetBytes }), "utf8").toString("base64url");
 }
 
 function pathspecArgs(rawPath: unknown, context: GitContext): string[] {

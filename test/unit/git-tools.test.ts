@@ -13,6 +13,7 @@ import {
   gitChanged,
   gitCommitPaths,
   gitCommitPreview,
+  gitDiffUnstaged,
   gitStatus,
 } from "../../src/workspace/inspect/git.js";
 
@@ -40,6 +41,22 @@ describe("Git built-ins", () => {
     });
 
     await writeFile(path.join(root, "a.txt"), "a2\n");
+    const firstDiff = await gitDiffUnstaged({ path: "a.txt", maxBytes: 20 }, context);
+    expect(firstDiff).toMatchObject({
+      status: "ok",
+      truncated: true,
+      nextCursor: expect.any(String),
+      offsetBytes: 0,
+    });
+    const secondDiff = await gitDiffUnstaged(
+      { path: "a.txt", maxBytes: 20, cursor: firstDiff.nextCursor },
+      context,
+    );
+    expect(secondDiff).toMatchObject({
+      status: "ok",
+      offsetBytes: 20,
+      stdoutSha256: firstDiff.stdoutSha256,
+    });
     await writeFile(path.join(root, "b.txt"), "b2\n");
     await gitRun(root, ["add", "b.txt"]);
 

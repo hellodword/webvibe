@@ -853,6 +853,12 @@ tools:
           enum: [unstaged, staged]
         path:
           type: string
+        maxBytes:
+          type: integer
+          minimum: 1
+          maximum: 60000
+        cursor:
+          type: string
       additionalProperties: false
     outputSchema: *gitOutputSchema
     annotations: *readOnlyAnnotations
@@ -868,6 +874,12 @@ tools:
           minLength: 1
           maxLength: 200
         path:
+          type: string
+        maxBytes:
+          type: integer
+          minimum: 1
+          maximum: 60000
+        cursor:
           type: string
       additionalProperties: false
     outputSchema: *gitOutputSchema
