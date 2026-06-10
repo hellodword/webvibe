@@ -78,6 +78,27 @@ export async function gitShow(args: Record<string, unknown>, context: GitContext
   return runGit(["show", "--stat", "--patch", revision, "--", ...pathArgs], context, "git show");
 }
 
+export async function gitBlame(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
+  const pathArgs = pathspecArgs(args.path, context);
+  if (pathArgs.length !== 1) throw new BadRequestError("path is required");
+  const startLine = lineNumber(args.startLine ?? 1, "startLine");
+  const endLine = lineNumber(args.endLine ?? startLine, "endLine");
+  if (endLine < startLine) throw new BadRequestError("endLine must be >= startLine");
+  const result = await runGit(
+    ["blame", "--line-porcelain", "-L", `${startLine},${endLine}`, "--", ...pathArgs],
+    context,
+    "git blame",
+  );
+  if (result.status !== "ok") return result;
+  return {
+    ...result,
+    path: pathArgs[0],
+    startLine,
+    endLine,
+    lines: parseBlame(result.stdout),
+  };
+}
+
 export async function gitBranch(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
   const all = args.all === true;
   return runGit(["branch", all ? "--all" : "--list"], context, all ? "git branch --all" : "git branch --list");
@@ -242,6 +263,13 @@ function safeGitRevision(value: unknown, field: string): string {
   return value;
 }
 
+function lineNumber(value: unknown, field: string): number {
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new BadRequestError(`${field} must be a positive integer`);
+  }
+  return value as number;
+}
+
 function unavailable(command: string, reason: string, base: FixedCommandResult): GitToolResult {
   return {
     command,
@@ -295,4 +323,38 @@ function parsePorcelainLine(line: string): {
     worktree,
     nameStatus: `${index}${worktree}`.trim() || "clean",
   };
+}
+
+function parseBlame(stdout: string): Array<{
+  commit: string;
+  line: number;
+  author?: string;
+  authorTime?: number;
+  content: string;
+}> {
+  const lines = stdout.split(/\r?\n/);
+  const result = [];
+  let current:
+    | {
+        commit: string;
+        line: number;
+        author?: string;
+        authorTime?: number;
+      }
+    | undefined;
+  for (const line of lines) {
+    const header = /^([0-9a-f]{40}) \d+ (\d+)/.exec(line);
+    if (header) {
+      current = { commit: header[1], line: Number(header[2]) };
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("author ")) current.author = line.slice("author ".length);
+    if (line.startsWith("author-time ")) current.authorTime = Number(line.slice("author-time ".length));
+    if (line.startsWith("\t")) {
+      result.push({ ...current, content: line.slice(1) });
+      current = undefined;
+    }
+  }
+  return result;
 }

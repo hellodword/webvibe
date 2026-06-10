@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkspacePolicy } from "../../src/policy/policy.js";
 import { findExecutable } from "../../src/workspace/inspect/command.js";
 import {
+  gitBlame,
   gitChanged,
   gitCommitPaths,
   gitCommitPreview,
@@ -31,6 +32,12 @@ describe("Git built-ins", () => {
     await writeFile(path.join(root, "b.txt"), "b1\n");
     await gitRun(root, ["add", "a.txt", "b.txt"]);
     await gitRun(root, ["commit", "-m", "initial"]);
+    const blame = await gitBlame({ path: "a.txt", startLine: 1, endLine: 1 }, context);
+    expect(blame).toMatchObject({
+      status: "ok",
+      path: "a.txt",
+      lines: [expect.objectContaining({ line: 1, author: "webvibe", content: "a1" })],
+    });
 
     await writeFile(path.join(root, "a.txt"), "a2\n");
     await writeFile(path.join(root, "b.txt"), "b2\n");

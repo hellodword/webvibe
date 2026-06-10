@@ -15,6 +15,7 @@ import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/
 import { workspaceScan } from "../workspace/inspect/scan.js";
 import { workspaceSymbols } from "../workspace/inspect/symbols.js";
 import {
+  gitBlame,
   gitChanged,
   gitCommitPreview,
   gitCommitPaths,
@@ -144,7 +145,10 @@ export async function callBuiltIn(
     });
   }
   if (name === "git.blame") {
-    return unavailable(name, "git.blame is not implemented in this phase");
+    return gitBlame(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+    });
   }
   if (name === "git.commit_preview") {
     return gitCommitPreview(args, {
