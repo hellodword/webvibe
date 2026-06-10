@@ -32,7 +32,9 @@ export const appConfigSchema = z
       .default({ root: "." }),
     auth: z
       .object({
-        pairingCode: z.string().min(1),
+        pairingCode: z.string().min(1).optional(),
+        pairingCodeEnv: z.string().min(1).optional(),
+        pairingCodeFile: z.string().min(1).optional(),
         accessTokenTtlDays: z.number().int().positive().default(30),
         pairingFailures: z
           .object({

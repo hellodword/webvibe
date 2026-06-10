@@ -16,11 +16,15 @@ refuses a tool call.
 npm install
 npm run build
 npm test
+npm run audit
+cp config.example.yaml config.yaml
 npm run dev -- --config config.yaml
 ```
 
-`config.yaml` sets the listen address, public base URL, workspace root, state
-directory, built-in mode or custom policy path, and pairing code.
+`config.example.yaml` shows the listen address, public base URL, workspace root,
+state directory, built-in mode or custom policy path, and pairing code secret
+source. Real `config.yaml` files are ignored; set a unique `WEBVIBE_PAIRING_CODE`
+or use `auth.pairingCodeFile`.
 
 ## Default Modes
 
@@ -57,6 +61,7 @@ errors.
 npm test
 npm run build
 npm run lint
+npm run audit
 npx tsc -p tsconfig.json --noEmit
 ```
 

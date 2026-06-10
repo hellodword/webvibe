@@ -47,8 +47,10 @@ needed.
 - `/oauth/token`
 - `/mcp`
 
-`auth.pairingCode` is required in the config file, loaded into memory at startup,
-and not persisted to `stateDir`. OAuth clients and tokens persist in
+Exactly one pairing-code source is required: `auth.pairingCode`,
+`auth.pairingCodeEnv`, or `auth.pairingCodeFile`. The example/default code is
+rejected at startup, resolved secrets are loaded into memory, and the pairing
+code is not persisted to `stateDir`. OAuth clients and tokens persist in
 `stateDir/oauth-store.json`. Authorization codes are short-lived and in-memory.
 Default access token TTL is 30 days. Pairing-code failures are rate-limited by
 `auth.pairingFailures.maxAttempts` and `auth.pairingFailures.windowSeconds`.

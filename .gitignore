@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+config.yaml
 .env
 *.log
 !.devcontainer/.gitignore

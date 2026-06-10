@@ -42,7 +42,7 @@ server:
 workspace:
   root: "${workspaceRoot}"
 auth:
-  pairingCode: "123456"
+  pairingCode: "unit-secret-1"
 `,
     );
 
@@ -67,11 +67,13 @@ server:
 workspace:
   root: "."
 auth:
-  pairingCode: "123456"
+  pairingCodeEnv: "WEBVIBE_TEST_PAIRING_CODE"
 `,
     );
 
+    process.env.WEBVIBE_TEST_PAIRING_CODE = "unit-secret-2";
     const runtime = await loadRuntimeConfig({ config: modeConfigPath });
+    delete process.env.WEBVIBE_TEST_PAIRING_CODE;
     expect(runtime.workspaceRoot).toBe(root);
     expect(runtime.policyPath).toBe(defaultPolicyPaths.dev);
 
@@ -84,12 +86,62 @@ server:
   mode: "dev"
   policy: "${policyPath}"
 auth:
-  pairingCode: "123456"
+  pairingCodeFile: "./pairing.txt"
 `,
     );
+    await writeFile(path.join(root, "pairing.txt"), "unit-secret-3\n");
 
     await expect(loadRuntimeConfig({ config: conflictConfigPath })).rejects.toThrow(
       "server.mode and server.policy are mutually exclusive",
     );
+  });
+
+  it("rejects default pairing code and supports env/file secret sources", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-config-secrets-"));
+    const policyPath = await writeFakePolicy(root);
+    const defaultConfig = path.join(root, "default.yaml");
+    await writeFile(
+      defaultConfig,
+      `version: 1
+server:
+  policy: "./policy.yaml"
+auth:
+  pairingCode: "123456"
+`,
+    );
+    await expect(loadRuntimeConfig({ config: defaultConfig })).rejects.toThrow(
+      "Refusing default auth pairing code",
+    );
+
+    const envConfig = path.join(root, "env.yaml");
+    await writeFile(
+      envConfig,
+      `version: 1
+server:
+  policy: "${policyPath}"
+auth:
+  pairingCodeEnv: "WEBVIBE_TEST_PAIRING_CODE"
+`,
+    );
+    process.env.WEBVIBE_TEST_PAIRING_CODE = "unit-secret-env";
+    await expect(loadRuntimeConfig({ config: envConfig })).resolves.toMatchObject({
+      config: { auth: { pairingCode: "unit-secret-env" } },
+    });
+    delete process.env.WEBVIBE_TEST_PAIRING_CODE;
+
+    const fileConfig = path.join(root, "file.yaml");
+    await writeFile(path.join(root, "pairing-file.txt"), "unit-secret-file\n");
+    await writeFile(
+      fileConfig,
+      `version: 1
+server:
+  policy: "${policyPath}"
+auth:
+  pairingCodeFile: "./pairing-file.txt"
+`,
+    );
+    await expect(loadRuntimeConfig({ config: fileConfig })).resolves.toMatchObject({
+      config: { auth: { pairingCode: "unit-secret-file" } },
+    });
   });
 });

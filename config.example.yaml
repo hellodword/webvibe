@@ -7,7 +7,7 @@ server:
 workspace:
   root: "."
 auth:
-  pairingCode: "123456"
+  pairingCodeEnv: "WEBVIBE_PAIRING_CODE"
   pairingFailures:
     maxAttempts: 5
     windowSeconds: 600

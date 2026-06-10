@@ -67,7 +67,10 @@ export async function loadRuntimeConfig(cli: CliOptions): Promise<RuntimeConfig>
   if (!cli.config) throw new BadRequestError("Missing required --config <path>");
   const configPath = resolvePath(cli.config);
   const configDir = path.dirname(configPath);
-  const config = appConfigSchema.parse(await loadDataFile(configPath));
+  const config = await resolveConfigSecrets(
+    appConfigSchema.parse(await loadDataFile(configPath)),
+    configDir,
+  );
   const workspaceRoot = resolvePath(config.workspace.root, configDir);
   const stateDir = resolvePath(config.server.stateDir, configDir);
   const publicBaseUrl = config.server.publicBaseUrl ?? defaultPublicBaseUrl(config.server.listen);
@@ -75,6 +78,39 @@ export async function loadRuntimeConfig(cli: CliOptions): Promise<RuntimeConfig>
   const policyPath = resolvePolicyPath(config, configDir);
   const policy = await loadPolicy(policyPath, { workspaceRoot, stateDir });
   return { config, workspaceRoot, stateDir, publicBaseUrl, listen, policyPath, policy };
+}
+
+async function resolveConfigSecrets(config: AppConfig, configDir: string): Promise<AppConfig> {
+  const sources = [
+    config.auth.pairingCode ? "auth.pairingCode" : undefined,
+    config.auth.pairingCodeEnv ? "auth.pairingCodeEnv" : undefined,
+    config.auth.pairingCodeFile ? "auth.pairingCodeFile" : undefined,
+  ].filter((item): item is string => item !== undefined);
+  if (sources.length !== 1) {
+    throw new BadRequestError(
+      "Configure exactly one pairing code source: auth.pairingCode, auth.pairingCodeEnv, or auth.pairingCodeFile",
+    );
+  }
+  let pairingCode = config.auth.pairingCode;
+  if (config.auth.pairingCodeEnv) {
+    pairingCode = process.env[config.auth.pairingCodeEnv];
+    if (!pairingCode) throw new BadRequestError(`Missing environment variable: ${config.auth.pairingCodeEnv}`);
+  }
+  if (config.auth.pairingCodeFile) {
+    pairingCode = await readFile(resolvePath(config.auth.pairingCodeFile, configDir), "utf8");
+  }
+  pairingCode = pairingCode?.trim();
+  if (!pairingCode) throw new BadRequestError("Missing auth pairing code");
+  if (pairingCode === "123456") {
+    throw new BadRequestError("Refusing default auth pairing code: configure a unique secret");
+  }
+  return {
+    ...config,
+    auth: {
+      ...config.auth,
+      pairingCode,
+    },
+  };
 }
 
 export async function loadPolicy(

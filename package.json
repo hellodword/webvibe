@@ -9,7 +9,7 @@
   "files": [
     "dist",
     "policies",
-    "config.yaml",
+    "config.example.yaml",
     "docs",
     "README.md"
   ],
@@ -20,30 +20,31 @@
     "policy:schema": "node scripts/generate-policy-schema.mjs",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "audit": "npm audit --audit-level=high",
     "lint": "eslint .",
     "format": "prettier -w ."
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.20.0",
-    "execa": "latest",
-    "fast-json-stable-stringify": "latest",
-    "minimatch": "latest",
-    "nanoid": "latest",
-    "pino": "latest",
-    "toml": "latest",
-    "yaml": "latest",
-    "zod": "latest"
+    "execa": "^9.6.1",
+    "fast-json-stable-stringify": "^2.1.0",
+    "minimatch": "^10.2.5",
+    "nanoid": "^5.1.11",
+    "pino": "^10.3.1",
+    "toml": "^4.1.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "latest",
-    "@types/node": "latest",
-    "eslint": "latest",
-    "prettier": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "typescript-eslint": "latest",
-    "vitest": "latest"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=20"

@@ -25,7 +25,7 @@ server:
 workspace:
   root: "${root}"
 auth:
-  pairingCode: "123456"
+  pairingCode: "http-secret-1"
 `,
     );
     const first = await runWebvibe({ config: configPath });
@@ -80,7 +80,7 @@ auth:
           response_type: "code",
           client_id: client.client_id,
           redirect_uri: "http://client.test/callback",
-          pairing_code: "123456",
+          pairing_code: "http-secret-1",
         })}`,
         { redirect: "manual" },
       );
