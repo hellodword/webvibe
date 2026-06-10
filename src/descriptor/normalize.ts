@@ -46,7 +46,7 @@ export function normalizeDescriptor(
 }
 
 function builtInOutputSchema(name: string): Record<string, unknown> | undefined {
-  if (name === "context.get" || name === "diagnostics.health") {
+  if (name === "workspace.context" || name === "diagnostics.health") {
     return {
       type: "object",
       additionalProperties: true,

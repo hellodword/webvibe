@@ -29,36 +29,61 @@ describe("default policies", () => {
     const devTools = dev.tools.map((tool) => tool.name);
 
     expect(readOnlyTools).toEqual([
-      "context.get",
-      "read.tree",
-      "read.search",
-      "read.files",
-      "read.stat",
+      "workspace.context",
+      "workspace.scan",
+      "workspace.symbols",
+      "fs.tree",
+      "fs.search",
+      "fs.read",
+      "fs.read_many",
+      "fs.stat",
+      "fs.manifest",
       "git.status",
+      "git.changed",
       "git.diff",
-      "git.history",
       "git.show",
+      "git.blame",
+      "git.commit_preview",
       "diagnostics.health",
     ]);
     expect(devTools).toEqual([
-      "context.get",
-      "read.tree",
-      "read.search",
-      "read.files",
-      "read.stat",
-      "change.plan",
-      "change.prepare",
+      "workspace.context",
+      "workspace.scan",
+      "workspace.symbols",
+      "fs.tree",
+      "fs.search",
+      "fs.read",
+      "fs.read_many",
+      "fs.stat",
+      "fs.manifest",
+      "change.preview",
       "manual.gate",
       "manual.resume",
       "change.apply",
+      "task.list",
       "task.run",
+      "task.result",
       "git.status",
+      "git.changed",
       "git.diff",
-      "git.history",
       "git.show",
+      "git.blame",
+      "git.commit_preview",
       "git.commit",
       "diagnostics.health",
     ]);
+    expect(devTools).not.toEqual(
+      expect.arrayContaining([
+        "context.get",
+        "read.tree",
+        "read.search",
+        "read.files",
+        "read.stat",
+        "change.plan",
+        "change.prepare",
+        "git.history",
+      ]),
+    );
     expect(devTools.filter((name) => name.startsWith("fs.") && /write|edit|create/.test(name))).toEqual(
       [],
     );
@@ -67,23 +92,24 @@ describe("default policies", () => {
     expect(devTools.filter((name) => /pnpm|yarn|bun|poetry|maven|gradle|dotnet|ruby|php/.test(name))).toEqual(
       [],
     );
-    const readOnlyReadFiles = normalizeDescriptor(readOnly.tools.find((tool) => tool.name === "read.files")!);
-    const devReadFiles = normalizeDescriptor(dev.tools.find((tool) => tool.name === "read.files")!);
-    for (const descriptor of [readOnlyReadFiles, devReadFiles]) {
+    const readOnlyReadMany = normalizeDescriptor(readOnly.tools.find((tool) => tool.name === "fs.read_many")!);
+    const devReadMany = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.read_many")!);
+    for (const descriptor of [readOnlyReadMany, devReadMany]) {
       const schema = descriptor.inputSchema as any;
-      expect(Object.keys(schema.properties)).toEqual(["paths", "offsetBytes", "maxBytes"]);
-      expect(schema.properties.offsetBytes).toEqual({
-        type: "integer",
-        minimum: 0,
-      });
-      expect(schema.properties.maxBytes).toEqual({
+      expect(Object.keys(schema.properties)).toEqual(["files", "maxBytesPerFile"]);
+      expect(schema.properties.maxBytesPerFile).toEqual({
         type: "integer",
         minimum: 1,
         maximum: 131072,
       });
-      expect(schema.required).toEqual(["paths"]);
+      expect(schema.required).toEqual(["files"]);
       expect(schema.additionalProperties).toBe(false);
     }
+    const devRead = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.read")!);
+    expect((devRead.inputSchema as any).properties.byteOffset).toEqual({
+      type: "integer",
+      minimum: 0,
+    });
     expect(
       readOnly.tools
         .filter((tool) => tool.name.startsWith("git."))
@@ -94,7 +120,7 @@ describe("default policies", () => {
         .filter((tool) => tool.name.startsWith("task."))
         .every((tool) => tool.outputSchema),
     ).toBe(true);
-    expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(1);
+    expect(dev.tools.filter((tool) => tool.name.startsWith("task."))).toHaveLength(3);
     const defaultTasks = Object.values(dev.upstreams.tasks.tasks ?? {}) as Array<Record<string, unknown>>;
     expect(defaultTasks.every((task) => !("requiredFiles" in task))).toBe(true);
     expect(defaultTasks.every((task) => !("requiredPackageScript" in task))).toBe(true);
@@ -191,7 +217,7 @@ describe("default policies", () => {
       workspaceRoot: root,
       stateDir: path.join(root, "state"),
     });
-    const preview = dev.tools.find((tool) => tool.name === "change.plan");
+    const preview = dev.tools.find((tool) => tool.name === "change.preview");
     expect(preview).toBeTruthy();
     const descriptor = normalizeDescriptor(preview!);
     const schema = descriptor.inputSchema as any;
@@ -219,7 +245,7 @@ profiles:
         defaultMaxBytes: 100
         maxBytes: 1000
 tools:
-  - name: context.get
+  - name: workspace.context
     type: builtIn
 limits:
   output:
@@ -254,7 +280,7 @@ limits:
       policyPath,
       `version: 2
 tools:
-  - name: context.get
+  - name: workspace.context
     type: builtIn
 limits:
   output:

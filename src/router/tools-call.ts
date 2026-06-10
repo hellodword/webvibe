@@ -117,7 +117,7 @@ export class ToolRouter {
         ),
         name,
       );
-      if (name === "context.get") {
+      if (name === "workspace.context") {
         this.preflight.set(this.callerKey(caller), {
           inspectedAt: new Date().toISOString(),
           fingerprint: this.currentFingerprint(),
@@ -169,7 +169,7 @@ export class ToolRouter {
   private contextBlock(
     name: string,
     caller: CallerIdentity,
-  ): { status: "blocked"; code: "CONTEXT_REQUIRED"; message: string; nextTool: "context.get"; reason: string } | undefined {
+  ): { status: "blocked"; code: "CONTEXT_REQUIRED"; message: string; nextTool: "workspace.context"; reason: string } | undefined {
     if (isContextPreflightAllowedTool(name)) return undefined;
     const state = this.preflight.get(this.callerKey(caller));
     if (!state) return contextRequired("missing");
@@ -321,7 +321,7 @@ function isManualBarrierAllowedTool(name: string): boolean {
 }
 
 function isContextPreflightAllowedTool(name: string): boolean {
-  return name === "context.get" || name === "diagnostics.health" || name === "manual.resume";
+  return name === "workspace.context" || name === "diagnostics.health" || name === "manual.resume";
 }
 
 function manualPendingRequired(record: ManualActionRecord): ManualPendingBlockedResult {
@@ -344,14 +344,14 @@ function contextRequired(reason: string): {
   status: "blocked";
   code: "CONTEXT_REQUIRED";
   message: string;
-  nextTool: "context.get";
+  nextTool: "workspace.context";
   reason: string;
 } {
   return {
     status: "blocked",
     code: "CONTEXT_REQUIRED",
-    message: "Call context.get before using workspace tools.",
-    nextTool: "context.get",
+    message: "Call workspace.context before using workspace tools.",
+    nextTool: "workspace.context",
     reason,
   };
 }

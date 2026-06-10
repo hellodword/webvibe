@@ -27,25 +27,25 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
   const policyHash = sha256(context.policy);
   const capabilities = {
     rawShell: false,
-    filesystemRead: tools.some((tool) => tool.startsWith("read.")),
+    filesystemRead: tools.some((tool) => tool.startsWith("fs.")),
     batchChange: tools.includes("change.apply"),
     namedTasks: tools.includes("task.run"),
     gitRead: tools.some((tool) => tool.startsWith("git.")),
     gitCommit: tools.includes("git.commit"),
   };
   const workflow = [
-    "Use context.get before workspace tools.",
-    "Use read.tree, read.search, and read.files to inspect only relevant files.",
-    "read.files returns at most 10000 content bytes per file by default; when truncated is true, continue the same file with nextOffsetBytes, and reduce maxBytes if the host still truncates the result.",
-    "Use change.plan to validate one complete batch workspace change.",
-    "Use one change.apply call for the full requested file change.",
+    "Use workspace.context before workspace tools.",
+    "Use fs.tree, fs.search, fs.read, and fs.read_many to inspect only relevant files.",
+    "fs.read and fs.read_many return bounded content bytes; when truncated is true, continue the same file with nextOffsetBytes, and reduce maxBytes if the host still truncates the result.",
+    "Use change.preview to validate one complete batch workspace change.",
+    "Use change.apply after change.preview for the full requested file change.",
     "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",
     "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, show manual details in chat before calling manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
-    "Use task.run only with taskIds reported by context.get; pass cwd from project.manifests for monorepos.",
+    "Use task.run only with taskIds reported by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
     "If task.run returns manualRequired, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
     "If no taskId matches a required command or arbitrary shell/Node would be needed, use manualFallback instead of ending with an inability statement.",
     "After manual.resume returns, verify current state and continue the original interrupted user request.",
-    "Use git.status and git.diff after changes; use git.commit only with explicit paths.",
+    "Use git.status, git.changed, and git.diff after changes; use git.commit only with explicit paths.",
   ];
   return {
     status: "ok",

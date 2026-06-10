@@ -7,15 +7,13 @@ const safetyBlock =
 
 describe("server instructions", () => {
   it("publishes the initialize-time workflow contract", () => {
-    expect(webvibeServerInstructions).toContain("context.get");
-    expect(webvibeServerInstructions).toContain("change.prepare");
+    expect(webvibeServerInstructions).toContain("workspace.context");
+    expect(webvibeServerInstructions).toContain("change.preview");
     expect(webvibeServerInstructions).toContain("change.apply");
     expect(webvibeServerInstructions).toContain("manual.gate");
     expect(webvibeServerInstructions).toContain("manual.resume");
     expect(webvibeServerInstructions).toContain("/resume");
-    expect(webvibeServerInstructions).toContain("read.files");
-    expect(webvibeServerInstructions).toContain("nextOffsetBytes");
-    expect(webvibeServerInstructions).toContain("smaller maxBytes");
+    expect(webvibeServerInstructions).toContain("fs.*");
     expect(webvibeServerInstructions).toContain("MANUAL_PENDING_REQUIRED");
     expect(webvibeServerInstructions).toContain(safetyBlock);
     expect(webvibeServerInstructions).toContain("identical JSON arguments");

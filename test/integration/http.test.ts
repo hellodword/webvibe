@@ -93,9 +93,10 @@ auth:
 
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
+      expect(tools.result.nextCursor).toBeNull();
 
       const context = await mcp(firstBase, token.access_token, "tools/call", {
-        name: "context.get",
+        name: "workspace.context",
         arguments: {},
       });
       expect(context.result.content[0].text).toContain("toolSurface");

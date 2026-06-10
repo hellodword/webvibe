@@ -303,9 +303,9 @@ function nextResponse(
   const followUp =
     status === "verification_failed"
       ? "Manual verification failed. Stay on the original interrupted request, report the failed checks, and wait for the user to complete or cancel the manual step before continuing."
-      : "Treat /resume as a control signal, not a new task. Verify current workspace state with context.get and appropriate read/git/task tools, then continue the original interrupted user request.";
+      : "Treat /resume as a control signal, not a new task. Verify current workspace state with workspace.context and appropriate fs/git/task tools, then continue the original interrupted user request.";
   return {
-    recommendedTools: ["context.get", "git.status", "git.diff", "read.stat", "read.files", "task.run"],
+    recommendedTools: ["workspace.context", "git.status", "git.diff", "fs.stat", "fs.read", "task.run"],
     mode: resumed ? "resume_interrupted_workflow" : "await_resume_command",
     verifyBeforeContinuing: resumed,
     followUpPrompt: [

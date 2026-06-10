@@ -29,7 +29,7 @@ describe("manual gate", () => {
         publicBaseUrl: "http://localhost",
       });
       const caller = { clientId: "manual-client", openaiSession: "session-a" };
-      await router.call("context.get", {}, caller);
+      await router.call("workspace.context", {}, caller);
 
       const gateEnvelope = (await router.call(
         "manual.gate",
@@ -64,7 +64,7 @@ describe("manual gate", () => {
       expect(pending).toMatchObject({ status: "pending", title: "Manual action required" });
       expect(pending?.scope.sessionHash).toBeTruthy();
 
-      await expect(router.call("read.tree", {}, caller)).resolves.toMatchObject({
+      await expect(router.call("fs.tree", {}, caller)).resolves.toMatchObject({
         ok: false,
         status: "blocked",
         data: {
@@ -89,7 +89,7 @@ describe("manual gate", () => {
           pendingId,
         },
       });
-      await expect(router.call("context.get", {}, caller)).resolves.toMatchObject({
+      await expect(router.call("workspace.context", {}, caller)).resolves.toMatchObject({
         ok: false,
         status: "blocked",
         data: {
@@ -103,8 +103,8 @@ describe("manual gate", () => {
       });
 
       const otherCaller = { clientId: "manual-client", openaiSession: "session-b" };
-      await router.call("context.get", {}, otherCaller);
-      await expect(router.call("read.tree", {}, otherCaller)).resolves.not.toMatchObject({
+      await router.call("workspace.context", {}, otherCaller);
+      await expect(router.call("fs.tree", {}, otherCaller)).resolves.not.toMatchObject({
         data: { code: "MANUAL_PENDING_REQUIRED" },
       });
 

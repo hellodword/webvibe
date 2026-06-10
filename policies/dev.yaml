@@ -241,9 +241,9 @@ upstreams:
         maxTimeoutSeconds: 36000
 
 tools:
-  - name: context.get
+  - name: workspace.context
     type: builtIn
-    description: ChatGPT Web coding preflight. Call this first before reading files, inspecting Git, planning changes, applying changes, running tasks, or committing. Returns workspace context, project manifests, task availability, upstream health, current tool surface version, warnings, and recommended workflow.
+    description: Preflight context for ChatGPT Web coding. Call before workspace tools.
     inputSchema: &emptyInputSchema
       type: object
       additionalProperties: false
@@ -255,9 +255,38 @@ tools:
       destructiveHint: false
       openWorldHint: false
 
-  - name: read.tree
+  - name: workspace.scan
     type: builtIn
-    description: Return a bounded workspace file tree while skipping protected paths. Requires context.get first.
+    description: Deep workspace scan. Returns unavailable until scan support is enabled.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: workspace.symbols
+    type: builtIn
+    description: Query workspace symbol map. Returns unavailable until symbol support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        query:
+          type: string
+        path:
+          type: string
+        kind:
+          type: string
+        cursor:
+          type: string
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: fs.tree
+    type: builtIn
+    description: Return a bounded workspace file tree while skipping protected paths.
     inputSchema:
       type: object
       properties:
@@ -275,9 +304,9 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.search
+  - name: fs.search
     type: builtIn
-    description: Search workspace text files by literal query while skipping protected paths. Requires context.get first.
+    description: Search workspace text while skipping protected paths.
     inputSchema:
       type: object
       properties:
@@ -300,33 +329,55 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.files
+  - name: fs.read
     type: builtIn
-    description: Read one or more workspace text files while enforcing protected paths and output limits. Defaults to 12000 content bytes per file; continue truncated files with nextOffsetBytes, and lower maxBytes if the host still truncates the result. Requires context.get first.
+    description: Read one workspace file in a bounded UTF-8 byte chunk.
     inputSchema:
       type: object
       properties:
-        paths:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items:
-            type: string
-        offsetBytes:
+        path:
+          type: string
+        byteOffset:
           type: integer
           minimum: 0
         maxBytes:
           type: integer
           minimum: 1
           maximum: 131072
-      required: [paths]
+      required: [path]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.stat
+  - name: fs.read_many
     type: builtIn
-    description: Return metadata for one workspace path while enforcing protected paths. Requires context.get first.
+    description: Read multiple workspace files in bounded UTF-8 byte chunks.
+    inputSchema:
+      type: object
+      properties:
+        files:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+            required: [path]
+            additionalProperties: false
+        maxBytesPerFile:
+          type: integer
+          minimum: 1
+          maximum: 131072
+      required: [files]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: fs.stat
+    type: builtIn
+    description: Return metadata for one workspace path.
     inputSchema:
       type: object
       properties:
@@ -337,9 +388,26 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: change.plan
+  - name: fs.manifest
     type: builtIn
-    description: Read-only planning tool for one complete batch workspace change. Validates proposed create/edit/replace/delete/mkdir operations, detects conflicts, and returns a diff. Requires context.get first.
+    description: Return manifest entries with hashes for workspace paths.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: change.preview
+    type: builtIn
+    description: Validate and diff one complete batch workspace change.
     inputSchema: &changeInputSchema
       type: object
       properties:
@@ -380,86 +448,10 @@ tools:
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
-    _meta:
-      "openai/toolInvocation/invoking": "Planning change"
-      "openai/toolInvocation/invoked": "Change planned"
-
-  - name: change.prepare
-    type: builtIn
-    description: Prepare one complete batch workspace change for a later write attempt and for a generic manual completion gate if ChatGPT Web blocks the write. It validates the same create/edit/replace/delete/mkdir changeset as change.plan, records an expiring prepared action, may create generic review artifacts, and does not mutate the workspace. Call this before change.apply.
-    inputSchema: *changeInputSchema
-    outputSchema:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [prepared, conflicted]
-        valid:
-          type: boolean
-        preparedId:
-          type: string
-        operationId:
-          type: string
-        manualGate:
-          type: ["object", "null"]
-          properties:
-            preparedId:
-              type: string
-            reason:
-              type: string
-              enum: [manual_review_requested]
-            expiresAt:
-              type: string
-            nextTool:
-              type: string
-              enum: [manual.gate]
-            artifacts:
-              type: array
-              items:
-                type: object
-                additionalProperties: true
-            checks:
-              type: array
-              items:
-                type: object
-                additionalProperties: true
-          required: [preparedId, reason, expiresAt, nextTool]
-          additionalProperties: true
-      required: [status, valid, summary, files, diff, conflicts, manualGate]
-      additionalProperties: true
-    annotations: *readOnlyAnnotations
-    _meta:
-      "openai/toolInvocation/invoking": "Preparing change"
-      "openai/toolInvocation/invoked": "Change prepared"
 
   - name: manual.gate
     type: builtIn
-    description: >-
-      Open a manual barrier that waits for the user to complete a step outside
-      ChatGPT and then continue in a later message that starts with /resume.
-      This tool does not apply patches, delete files, run commands, or mutate
-      the workspace. Before calling this tool, ChatGPT Web must show detailed
-      manual instructions in chat: for commands, include the complete command
-      and redirect stdout/stderr to a workspace-relative temporary log file; for
-      prepared diffs, show small diffs inline or link large review artifacts
-      from change.prepare. Use this after an OpenAI safety block has already
-      been retried once with identical arguments, or whenever the user must
-      manually complete something before the model continues.
-      Never include manual commands, scripts, diffs, file contents,
-      stdout/stderr, or log contents in this tool's arguments. Those details
-      must stay in ChatGPT Web chat only. For model-observed capability limits
-      such as no raw shell, no matching taskId, or unavailable Node execution,
-      use only a low-risk hostObservation summary such as toolName
-      "capability.limit" and outputText "manual step required because required
-      execution capability is unavailable".
-      After this tool returns awaiting_manual_completion, stop the assistant
-      turn immediately even if other tasks remain, and wait for a later user
-      message that starts with /resume. If ChatGPT Web blocks this manual.gate
-      call with OpenAI safety checks, retry the same manual.gate call once with
-      identical arguments; if it is still blocked, stop immediately and wait for
-      human intervention; do not try another tool or workaround. While pending,
-      webvibe blocks other tools with
-      MANUAL_PENDING_REQUIRED.
+    description: Open a manual barrier after manual instructions were shown in chat.
     inputSchema:
       type: object
       properties:
@@ -593,7 +585,7 @@ tools:
 
   - name: change.apply
     type: builtIn
-    description: Apply one complete batch workspace change in a single write approval. Use one call for the full user-requested file change; do not split a single request across multiple write calls. Call change.prepare first so a generic manual completion gate is available if ChatGPT Web blocks this write. If ChatGPT Web asks for confirmation, retry this same tool once with the identical JSON arguments. If ChatGPT Web returns "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.", retry this same tool once with the identical JSON arguments and no other changes. If that identical retry returns the same safety block, show the manual instructions in chat, then call manual.gate with the latest preparedId and observed host output. Do not transform, split, encode, hide, or rewrite the changeset to bypass the block. Requires context.get first.
+    description: Apply one complete batch workspace change after preview.
     inputSchema: *changeInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations:
@@ -604,20 +596,16 @@ tools:
       "openai/toolInvocation/invoking": "Applying change"
       "openai/toolInvocation/invoked": "Change applied"
 
+  - name: task.list
+    type: builtIn
+    description: List available and unavailable policy-defined tasks.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: task.run
     type: builtIn
-    description: >-
-      Run one preconfigured local task by taskId, optionally from a
-      workspace-relative cwd. Does not accept arbitrary shell commands.
-      Available taskIds, cwd support, argument rules, and availability are
-      returned by context.get. If the task is unavailable and manualRequired is
-      returned, show its userInstructions in ChatGPT Web, then call manual.gate
-      only with reason and the low-risk hostObservation gate fields, not with
-      the manual command, stdout/stderr, or log contents. If the required
-      command has no matching taskId or would need arbitrary shell/Node, use the
-      context.get manualFallback guidance instead of ending with an inability
-      statement.
-      Requires context.get first.
+    description: Run one policy-defined local task by taskId. Does not accept arbitrary shell.
     inputSchema:
       type: object
       properties:
@@ -689,9 +677,22 @@ tools:
       destructiveHint: true
       openWorldHint: false
 
+  - name: task.result
+    type: builtIn
+    description: Read task run status/logs. Returns unavailable until background task support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        runId:
+          type: string
+      required: [runId]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: git.status
     type: builtIn
-    description: Show concise Git worktree status. Requires context.get first.
+    description: Show concise Git worktree status.
     inputSchema: *emptyInputSchema
     outputSchema: &gitOutputSchema
       type: object
@@ -715,9 +716,16 @@ tools:
       additionalProperties: false
     annotations: *readOnlyAnnotations
 
+  - name: git.changed
+    type: builtIn
+    description: Show changed files.
+    inputSchema: *emptyInputSchema
+    outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: git.diff
     type: builtIn
-    description: Show staged or unstaged Git diff for the workspace or one path. Requires context.get first.
+    description: Show staged or unstaged Git diff for the workspace or one path.
     inputSchema:
       type: object
       properties:
@@ -730,23 +738,9 @@ tools:
     outputSchema: *gitOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: git.history
-    type: builtIn
-    description: Show recent Git history. Requires context.get first.
-    inputSchema:
-      type: object
-      properties:
-        maxCount:
-          type: integer
-          minimum: 1
-          maximum: 200
-      additionalProperties: false
-    outputSchema: *gitOutputSchema
-    annotations: *readOnlyAnnotations
-
   - name: git.show
     type: builtIn
-    description: Show one Git revision with stat and patch, optionally scoped to a path. Requires context.get first.
+    description: Show one Git revision with stat and patch.
     inputSchema:
       type: object
       properties:
@@ -760,22 +754,60 @@ tools:
     outputSchema: *gitOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: git.commit
+  - name: git.blame
     type: builtIn
-    description: Commit only explicit workspace-relative paths with the provided message; protected paths are rejected and unrelated dirty files are not included. Requires context.get first.
+    description: Show line blame. Returns unavailable until blame support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        path:
+          type: string
+        startLine:
+          type: integer
+          minimum: 1
+        endLine:
+          type: integer
+          minimum: 1
+      required: [path]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.commit_preview
+    type: builtIn
+    description: Preview an explicit-path commit. Returns unavailable until commit preview support is enabled.
     inputSchema:
       type: object
       properties:
         paths:
           type: array
           minItems: 1
-          maxItems: 80
+          maxItems: 1000
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.commit
+    type: builtIn
+    description: Commit only explicit workspace-relative paths with the provided message.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 1000
           items:
             type: string
         message:
           type: string
           minLength: 1
           maxLength: 500
+        previewHash:
+          type: string
       required: [paths, message]
       additionalProperties: false
     outputSchema: *gitOutputSchema

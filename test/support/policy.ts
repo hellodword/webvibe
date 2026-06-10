@@ -23,29 +23,47 @@ upstreams:
     command: "__webvibe_missing_command__"
     optional: true
 tools:
-  - name: context.get
+  - name: workspace.context
     type: builtIn
   - name: diagnostics.health
     type: builtIn
-  - name: read.files
+  - name: fs.read
     type: builtIn
     inputSchema:
       type: object
       properties:
-        paths:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items:
-            type: string
-        offsetBytes:
+        path:
+          type: string
+        byteOffset:
           type: integer
           minimum: 0
         maxBytes:
           type: integer
           minimum: 1
           maximum: 131072
-      required: [paths]
+      required: [path]
+      additionalProperties: false
+  - name: fs.read_many
+    type: builtIn
+    inputSchema:
+      type: object
+      properties:
+        files:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+            required: [path]
+            additionalProperties: false
+        maxBytesPerFile:
+          type: integer
+          minimum: 1
+          maximum: 131072
+      required: [files]
       additionalProperties: false
   - name: change.apply
     type: builtIn

@@ -60,9 +60,9 @@ workspace:
 upstreams: {}
 
 tools:
-  - name: context.get
+  - name: workspace.context
     type: builtIn
-    description: ChatGPT Web coding preflight. Call this first before reading files, inspecting Git, planning changes, applying changes, running tasks, or committing. Returns workspace context, project manifests, task availability, upstream health, current tool surface version, warnings, and recommended workflow.
+    description: Preflight context for ChatGPT Web coding. Call before workspace tools.
     inputSchema: &emptyInputSchema
       type: object
       additionalProperties: false
@@ -74,9 +74,38 @@ tools:
       destructiveHint: false
       openWorldHint: false
 
-  - name: read.tree
+  - name: workspace.scan
     type: builtIn
-    description: Return a bounded workspace file tree while skipping protected paths. Requires context.get first.
+    description: Deep workspace scan. Returns unavailable until scan support is enabled.
+    inputSchema: *emptyInputSchema
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: workspace.symbols
+    type: builtIn
+    description: Query workspace symbol map. Returns unavailable until symbol support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        query:
+          type: string
+        path:
+          type: string
+        kind:
+          type: string
+        cursor:
+          type: string
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 1000
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: fs.tree
+    type: builtIn
+    description: Return a bounded workspace file tree while skipping protected paths.
     inputSchema:
       type: object
       properties:
@@ -94,9 +123,9 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.search
+  - name: fs.search
     type: builtIn
-    description: Search workspace text files by literal query while skipping protected paths. Requires context.get first.
+    description: Search workspace text while skipping protected paths.
     inputSchema:
       type: object
       properties:
@@ -119,33 +148,55 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.files
+  - name: fs.read
     type: builtIn
-    description: Read one or more workspace text files while enforcing protected paths and output limits. Defaults to 12000 content bytes per file; continue truncated files with nextOffsetBytes, and lower maxBytes if the host still truncates the result. Requires context.get first.
+    description: Read one workspace file in a bounded UTF-8 byte chunk.
     inputSchema:
       type: object
       properties:
-        paths:
-          type: array
-          minItems: 1
-          maxItems: 50
-          items:
-            type: string
-        offsetBytes:
+        path:
+          type: string
+        byteOffset:
           type: integer
           minimum: 0
         maxBytes:
           type: integer
           minimum: 1
           maximum: 131072
-      required: [paths]
+      required: [path]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: read.stat
+  - name: fs.read_many
     type: builtIn
-    description: Return metadata for one workspace path while enforcing protected paths. Requires context.get first.
+    description: Read multiple workspace files in bounded UTF-8 byte chunks.
+    inputSchema:
+      type: object
+      properties:
+        files:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+            required: [path]
+            additionalProperties: false
+        maxBytesPerFile:
+          type: integer
+          minimum: 1
+          maximum: 131072
+      required: [files]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: fs.stat
+    type: builtIn
+    description: Return metadata for one workspace path.
     inputSchema:
       type: object
       properties:
@@ -156,9 +207,26 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
+  - name: fs.manifest
+    type: builtIn
+    description: Return manifest entries with hashes for workspace paths.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: git.status
     type: builtIn
-    description: Show concise Git worktree status. Requires context.get first.
+    description: Show concise Git worktree status.
     inputSchema: *emptyInputSchema
     outputSchema: &gitOutputSchema
       type: object
@@ -182,9 +250,16 @@ tools:
       additionalProperties: false
     annotations: *readOnlyAnnotations
 
+  - name: git.changed
+    type: builtIn
+    description: Show changed files.
+    inputSchema: *emptyInputSchema
+    outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
   - name: git.diff
     type: builtIn
-    description: Show staged or unstaged Git diff for the workspace or one path. Requires context.get first.
+    description: Show staged or unstaged Git diff for the workspace or one path.
     inputSchema:
       type: object
       properties:
@@ -197,23 +272,9 @@ tools:
     outputSchema: *gitOutputSchema
     annotations: *readOnlyAnnotations
 
-  - name: git.history
-    type: builtIn
-    description: Show recent Git history. Requires context.get first.
-    inputSchema:
-      type: object
-      properties:
-        maxCount:
-          type: integer
-          minimum: 1
-          maximum: 200
-      additionalProperties: false
-    outputSchema: *gitOutputSchema
-    annotations: *readOnlyAnnotations
-
   - name: git.show
     type: builtIn
-    description: Show one Git revision with stat and patch, optionally scoped to a path. Requires context.get first.
+    description: Show one Git revision with stat and patch.
     inputSchema:
       type: object
       properties:
@@ -225,6 +286,42 @@ tools:
           type: string
       additionalProperties: false
     outputSchema: *gitOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.blame
+    type: builtIn
+    description: Show line blame. Returns unavailable until blame support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        path:
+          type: string
+        startLine:
+          type: integer
+          minimum: 1
+        endLine:
+          type: integer
+          minimum: 1
+      required: [path]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
+    annotations: *readOnlyAnnotations
+
+  - name: git.commit_preview
+    type: builtIn
+    description: Preview an explicit-path commit. Returns unavailable until commit preview support is enabled.
+    inputSchema:
+      type: object
+      properties:
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+      required: [paths]
+      additionalProperties: false
+    outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
   - name: diagnostics.health

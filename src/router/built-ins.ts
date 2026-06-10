@@ -5,13 +5,12 @@ import type { AuditLog } from "../state/audit.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import type { UpstreamManager } from "../upstream/manager.js";
 import { ForbiddenError } from "../util/errors.js";
-import { applyChangeset, prepareChangeset, previewChangeset } from "../workspace/changeset.js";
+import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
 import {
   gitCommitPaths,
   gitDiffStaged,
   gitDiffUnstaged,
-  gitLog,
   gitShow,
   gitStatus,
 } from "../workspace/inspect/git.js";
@@ -34,13 +33,22 @@ export function callBuiltIn(
   args: Record<string, unknown>,
   context: BuiltInContext,
 ): unknown | Promise<unknown> {
-  if (name === "context.get") {
+  if (context.policy.mode === "read-only" && readOnlyBlockedTools.has(name)) {
+    return unavailable(name, "Tool is unavailable in read-only mode");
+  }
+  if (name === "workspace.context") {
     return getContext({
       registry: context.registry,
       policy: context.policy,
       upstreams: context.upstreams,
       workspaceRoot: context.workspaceRoot,
     });
+  }
+  if (name === "workspace.scan") {
+    return unavailable(name, "workspace.scan is not implemented in this phase");
+  }
+  if (name === "workspace.symbols") {
+    return unavailable(name, "workspace.symbols is not implemented in this phase");
   }
   if (name === "diagnostics.health") {
     return getDiagnostics({
@@ -50,35 +58,55 @@ export function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
     });
   }
-  if (name === "read.search") {
+  if (name === "fs.search") {
     return searchCode(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
-  if (name === "read.tree") {
+  if (name === "fs.tree") {
     return fileTree(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
-  if (name === "read.files") {
-    return readFiles(args, {
+  if (name === "fs.read") {
+    return readFiles(fsReadToReadManyArgs(args), {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
-  if (name === "read.stat") {
+  if (name === "fs.read_many") {
+    return readFiles(fsReadManyArgs(args), {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+    });
+  }
+  if (name === "fs.stat") {
     return fileStat(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
+  if (name === "fs.manifest") {
+    return fileManifest(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+    });
+  }
   if (name === "git.status") {
+    return gitStatus(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+    });
+  }
+  if (name === "git.changed") {
     return gitStatus(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
@@ -92,17 +120,17 @@ export function callBuiltIn(
       workspace: context.policy.workspace,
     });
   }
-  if (name === "git.history") {
-    return gitLog(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-    });
-  }
   if (name === "git.show") {
     return gitShow(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });
+  }
+  if (name === "git.blame") {
+    return unavailable(name, "git.blame is not implemented in this phase");
+  }
+  if (name === "git.commit_preview") {
+    return unavailable(name, "git.commit_preview is not implemented in this phase");
   }
   if (name === "git.commit") {
     return gitCommitPaths(args, {
@@ -110,21 +138,11 @@ export function callBuiltIn(
       workspace: context.policy.workspace,
     });
   }
-  if (name === "change.plan") {
+  if (name === "change.preview") {
     return previewChangeset(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
-    });
-  }
-  if (name === "change.prepare") {
-    return prepareChangeset(args, {
-      workspaceRoot: context.workspaceRoot,
-      workspace: context.policy.workspace,
-      limits: context.policy.limits,
-      stateDir: context.stateDir,
-      publicBaseUrl: context.publicBaseUrl,
-      audit: context.audit,
     });
   }
   if (name === "change.apply") {
@@ -153,6 +171,14 @@ export function callBuiltIn(
       audit: context.audit,
     });
   }
+  if (name === "task.list") {
+    return getContext({
+      registry: context.registry,
+      policy: context.policy,
+      upstreams: context.upstreams,
+      workspaceRoot: context.workspaceRoot,
+    }).then((result) => ({ status: "ok", tasks: result.tasks }));
+  }
   if (name === "task.run") {
     if (!context.upstreams.isAvailable("tasks")) {
       const taskId = typeof args.taskId === "string" ? args.taskId : "";
@@ -171,7 +197,44 @@ export function callBuiltIn(
     }
     return context.upstreams.call("tasks", "run_task", args);
   }
+  if (name === "task.result") {
+    return unavailable(name, "task.result is not implemented in this phase");
+  }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
+}
+
+const readOnlyBlockedTools = new Set(["change.apply", "task.run", "git.commit"]);
+
+function unavailable(toolName: string, reason: string): {
+  status: "unavailable";
+  toolName: string;
+  unavailableReason: string;
+} {
+  return {
+    status: "unavailable",
+    toolName,
+    unavailableReason: reason,
+  };
+}
+
+function fsReadToReadManyArgs(args: Record<string, unknown>): Record<string, unknown> {
+  return {
+    paths: [args.path],
+    offsetBytes: args.byteOffset,
+    maxBytes: args.maxBytes,
+  };
+}
+
+function fsReadManyArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const files = Array.isArray(args.files) ? args.files : [];
+  return {
+    paths: files.map((file) =>
+      typeof file === "object" && file !== null && "path" in file
+        ? (file as Record<string, unknown>).path
+        : file,
+    ),
+    maxBytes: args.maxBytesPerFile,
+  };
 }
 
 function manualRequiredForUnavailableTask(

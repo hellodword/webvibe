@@ -27,6 +27,16 @@ export class ForbiddenError extends WebvibeError {
   }
 }
 
+export class UnknownToolSurfaceError extends WebvibeError {
+  constructor(toolName: string) {
+    super(
+      `UNKNOWN_TOOL_SURFACE: Tool '${toolName}' is not in the active webvibe 4.0 tool surface. Call workspace.context and retry with the current tool names.`,
+      "UNKNOWN_TOOL_SURFACE",
+      400,
+    );
+  }
+}
+
 export class NotFoundError extends WebvibeError {
   constructor(message = "Not found") {
     super(message, "NOT_FOUND", 404);

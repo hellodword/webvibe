@@ -3,7 +3,7 @@ import type { UpstreamManager } from "../upstream/manager.js";
 import type { RegisteredTool } from "../upstream/registry.js";
 import { sha256 } from "../util/hash.js";
 
-export const TOOL_SURFACE_VERSION = "3.2.0";
+export const TOOL_SURFACE_VERSION = "4.0.0";
 
 export type PreflightFingerprint = {
   workspaceRootHash: string;

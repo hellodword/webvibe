@@ -19,21 +19,21 @@ describe("tool router", () => {
       expect(Array.from(setup.registry.keys())).not.toContain("x.optional");
 
       await expect(
-        setup.router.call("read.files", { paths: ["README.md"] }, { clientId: "c1" }),
+        setup.router.call("fs.read_many", { files: [{ path: "README.md" }] }, { clientId: "c1" }),
       ).resolves.toMatchObject({
         ok: false,
         status: "blocked",
         data: {
           code: "CONTEXT_REQUIRED",
-          nextTool: "context.get",
+          nextTool: "workspace.context",
         },
       });
-      await expect(setup.router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
+      await expect(setup.router.call("workspace.context", {}, { clientId: "c1" })).resolves.toMatchObject({
         ok: true,
         status: "ok",
         data: {
           status: "ok",
-          toolSurface: { version: "3.2.0" },
+          toolSurface: { version: "4.0.0" },
           policy: { profile: "chatgptWebDefault" },
         },
       });
@@ -59,7 +59,9 @@ describe("tool router", () => {
           timeout: 2000,
         },
       });
-      await expect(setup.router.call("x.nope", {}, { clientId: "c1" })).rejects.toThrow("not exposed");
+      await expect(setup.router.call("read.files", {}, { clientId: "c1" })).rejects.toThrow(
+        "UNKNOWN_TOOL_SURFACE",
+      );
     } finally {
       await setup.close();
     }
@@ -69,11 +71,11 @@ describe("tool router", () => {
     const setup = await setupRouter("webvibe-router-read-files-");
     try {
       await writeFile(path.join(setup.root, "large.txt"), "a".repeat(12050));
-      await setup.router.call("context.get", {}, { clientId: "read-client" });
+      await setup.router.call("workspace.context", {}, { clientId: "read-client" });
 
       const first = await setup.router.call(
-        "read.files",
-        { paths: ["large.txt"] },
+        "fs.read_many",
+        { files: [{ path: "large.txt" }] },
         { clientId: "read-client" },
       );
 
@@ -99,8 +101,8 @@ describe("tool router", () => {
 
       await expect(
         setup.router.call(
-          "read.files",
-          { paths: ["large.txt"], offsetBytes: 10000, maxBytes: 50 },
+          "fs.read",
+          { path: "large.txt", byteOffset: 12000, maxBytes: 50 },
           { clientId: "read-client" },
         ),
       ).resolves.toMatchObject({
@@ -111,10 +113,9 @@ describe("tool router", () => {
           files: [
             {
               path: "large.txt",
-              offsetBytes: 10000,
+              offsetBytes: 12000,
               returnedBytes: 50,
-              nextOffsetBytes: 10050,
-              truncated: true,
+              truncated: false,
               content: "a".repeat(50),
             },
           ],
@@ -128,7 +129,7 @@ describe("tool router", () => {
   it("redacts audit payloads and caps client-visible output", async () => {
     const setup = await setupRouter("webvibe-router-audit-");
     try {
-      await setup.router.call("context.get", {}, { clientId: "audit-client" });
+      await setup.router.call("workspace.context", {}, { clientId: "audit-client" });
       await setup.router.call(
         "x.edit_apply",
         {
@@ -142,7 +143,7 @@ describe("tool router", () => {
       );
 
       setup.policy.limits.output.maxToolOutputBytes = 10;
-      await setup.router.call("context.get", {}, { clientId: "audit-client" });
+      await setup.router.call("workspace.context", {}, { clientId: "audit-client" });
       await expect(
         setup.router.call("x.read", { path: "README.md" }, { clientId: "audit-client" }),
       ).resolves.toMatchObject({ truncated: true });
@@ -165,14 +166,14 @@ describe("tool router", () => {
     const setup = await setupRouter("webvibe-router-limits-");
     try {
       setup.policy.limits.rate.maxCallsPerMinute = 2;
-      await setup.router.call("context.get", {}, { clientId: "rate-client" });
+      await setup.router.call("workspace.context", {}, { clientId: "rate-client" });
       await setup.router.call("x.read", { path: "README.md" }, { clientId: "rate-client" });
       await expect(
         setup.router.call("x.read", { path: "README.md" }, { clientId: "rate-client" }),
       ).rejects.toThrow("Rate limit");
 
       setup.policy.limits.rate.maxCallsPerMinute = 120;
-      await setup.router.call("context.get", {}, { clientId: "timeout-client" });
+      await setup.router.call("workspace.context", {}, { clientId: "timeout-client" });
       await expect(
         setup.router.call("x.slow", { delayMs: 7000 }, { clientId: "timeout-client" }),
       ).rejects.toThrow("timed out");
