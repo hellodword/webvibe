@@ -150,14 +150,25 @@ const schema = {
       type: "object",
       description: "Required pass-through input guard. Use pathFields and require/deny constraints so upstream calls cannot bypass policy.",
       additionalProperties: true,
+      anyOf: [
+        { required: ["pathFields"], properties: { pathFields: { type: "array" } } },
+        { required: ["noPathInput"], properties: { noPathInput: { const: true } } },
+      ],
       properties: {
         require: { type: "object", description: "Input values that must match exactly.", additionalProperties: true },
         deny: { type: "object", description: "Input values that must not match.", additionalProperties: true },
         pathFields: {
           type: "array",
+          minItems: 1,
           description: "Input field names treated as workspace paths and checked against protected path policy.",
           items: { type: "string" },
           examples: [["path"], ["files[].path"]],
+        },
+        noPathInput: {
+          type: "boolean",
+          default: false,
+          description: "Set true only when this pass-through tool has no workspace path inputs.",
+          examples: [true],
         },
         protectedPathPolicy: {
           enum: ["deny", "allow"],

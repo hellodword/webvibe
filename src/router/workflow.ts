@@ -17,10 +17,15 @@ export async function executeWorkflow(input: {
 }): Promise<unknown> {
   const vars: Record<string, unknown> = {};
   let lastOutput: unknown = null;
+  const warnings: Array<Record<string, unknown>> = [];
   for (const step of input.tool.steps) {
     if (!input.upstreams.isAvailable(step.call.upstream)) {
-      if (step.optional) continue;
-      throw new Error(`Workflow upstream '${step.call.upstream}' is unavailable`);
+      const warning = workflowStepWarning(step.call.upstream, step.call.tool, "upstream_unavailable");
+      if (step.optional) {
+        warnings.push(warning);
+        continue;
+      }
+      return workflowFailed(warning, warnings);
     }
     const startedAt = Date.now();
     const stepInput = interpolateValue(step.call.input, {
@@ -32,7 +37,20 @@ export async function executeWorkflow(input: {
       typeof stepInput === "object" && stepInput !== null && !Array.isArray(stepInput)
         ? (stepInput as Record<string, unknown>)
         : {};
-    lastOutput = await input.upstreams.call(step.call.upstream, step.call.tool, normalizedInput);
+    try {
+      lastOutput = await input.upstreams.call(step.call.upstream, step.call.tool, normalizedInput);
+    } catch (error) {
+      const warning = workflowStepWarning(
+        step.call.upstream,
+        step.call.tool,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (step.optional) {
+        warnings.push(warning);
+        continue;
+      }
+      return workflowFailed(warning, warnings);
+    }
     if (step.saveAs) vars[step.saveAs] = lastOutput;
     await input.onStep?.({
       upstream: step.call.upstream,
@@ -42,5 +60,38 @@ export async function executeWorkflow(input: {
       startedAt,
     });
   }
+  if (warnings.length > 0) {
+    return {
+      ok: true,
+      status: "ok",
+      data: lastOutput,
+      warnings,
+      limits: { requested: {}, effective: {} },
+      truncated: false,
+      nextCursor: null,
+      artifacts: [],
+    };
+  }
   return lastOutput;
+}
+
+function workflowStepWarning(upstream: string, tool: string, reason: string): Record<string, unknown> {
+  return {
+    code: "WORKFLOW_STEP_FAILED",
+    upstream,
+    tool,
+    reason,
+  };
+}
+
+function workflowFailed(
+  failedStep: Record<string, unknown>,
+  warnings: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  return {
+    status: "failed",
+    failedStep,
+    warnings,
+    next: { tool: "manual.prepare", reason: "workflow_step_failed" },
+  };
 }

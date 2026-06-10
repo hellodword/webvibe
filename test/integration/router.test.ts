@@ -18,7 +18,7 @@ describe("tool router", () => {
     const setup = await setupRouter("webvibe-router-routing-");
     try {
       expect(Array.from(setup.registry.keys())).toContain("x.read");
-      expect(Array.from(setup.registry.keys())).not.toContain("x.optional");
+      expect(Array.from(setup.registry.keys())).toContain("x.optional");
 
       await expect(
         setup.router.call("fs.read_many", { files: [{ path: "README.md" }] }, { clientId: "c1" }),
@@ -138,12 +138,42 @@ describe("tool router", () => {
           { clientId: "c1" },
         ),
       ).resolves.toMatchObject({ ok: true, data: { ok: true, applied: true } });
+      await expect(
+        setup.router.call("x.optional", { path: "optional.txt" }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: false,
+        status: "unavailable",
+        data: {
+          status: "unavailable",
+          toolName: "x.optional",
+          upstream: "missing",
+          next: { tool: "manual.prepare", reason: "upstream_unavailable" },
+        },
+      });
       await expect(setup.router.call("x.run", { timeoutSeconds: 2 }, { clientId: "c1" })).resolves.toMatchObject({
         ok: true,
         data: {
           ok: true,
           command: "npm test",
           timeout: 2000,
+        },
+      });
+      await expect(setup.router.call("x.optional_fail", {}, { clientId: "c1" })).resolves.toMatchObject({
+        ok: true,
+        status: "ok",
+        data: {
+          ok: true,
+          command: "npm test",
+        },
+        warnings: [expect.objectContaining({ code: "WORKFLOW_STEP_FAILED", tool: "missing" })],
+      });
+      await expect(setup.router.call("x.required_fail", {}, { clientId: "c1" })).resolves.toMatchObject({
+        ok: false,
+        status: "failed",
+        data: {
+          status: "failed",
+          failedStep: expect.objectContaining({ code: "WORKFLOW_STEP_FAILED", tool: "missing" }),
+          next: { tool: "manual.prepare", reason: "workflow_step_failed" },
         },
       });
       const taskRun = (await setup.router.call("task.run", { taskId: "echo" }, { clientId: "c1" })) as any;

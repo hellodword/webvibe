@@ -68,10 +68,20 @@ export const inputPolicySchema = z
   .object({
     require: z.record(z.string(), z.unknown()).optional(),
     deny: z.record(z.string(), z.unknown()).optional(),
-    pathFields: z.array(z.string()).optional(),
-    protectedPathPolicy: z.enum(["deny", "allow"]).optional(),
+    pathFields: z.array(z.string()).min(1).optional(),
+    noPathInput: z.boolean().optional(),
+    protectedPathPolicy: z.enum(["deny", "allow"]).default("deny"),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((policy, context) => {
+    if (!policy.noPathInput && !policy.pathFields?.length) {
+      context.addIssue({
+        code: "custom",
+        message: "inputPolicy must declare pathFields or noPathInput",
+        path: ["pathFields"],
+      });
+    }
+  });
 
 export const builtInToolSchema = z
   .object({

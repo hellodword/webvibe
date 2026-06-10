@@ -176,7 +176,8 @@ tools:
     upstream: missing
     upstreamTool: read
     optional: true
-    inputPolicy: {}
+    inputPolicy:
+      pathFields: ["path"]
   - name: x.edit_preview
     type: passThrough
     upstream: main
@@ -218,6 +219,34 @@ tools:
           input:
             command: "npm test"
             timeout_ms: "\${coalesce(input.timeoutSeconds, 5) * 1000}"
+  - name: x.optional_fail
+    type: workflow
+    description: Run fake workflow with optional failing step
+    inputSchema:
+      type: object
+      additionalProperties: false
+    steps:
+      - optional: true
+        call:
+          upstream: main
+          tool: missing
+          input: {}
+      - call:
+          upstream: main
+          tool: run
+          input:
+            command: "npm test"
+  - name: x.required_fail
+    type: workflow
+    description: Run fake workflow with required failing step
+    inputSchema:
+      type: object
+      additionalProperties: false
+    steps:
+      - call:
+          upstream: main
+          tool: missing
+          input: {}
   - name: x.slow
     type: workflow
     description: Run slow fake workflow

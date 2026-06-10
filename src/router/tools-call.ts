@@ -276,6 +276,16 @@ export class ToolRouter {
       });
     }
     if (tool.type === "passThrough") {
+      if (!this.options.upstreams.isAvailable(tool.upstream)) {
+        return {
+          status: "unavailable",
+          toolName: tool.name,
+          upstream: tool.upstream,
+          upstreamTool: tool.upstreamTool,
+          unavailableReason: `Optional upstream '${tool.upstream}' is unavailable`,
+          next: { tool: "manual.prepare", reason: "upstream_unavailable" },
+        };
+      }
       assertInputPolicy({
         policy: tool.inputPolicy,
         args,

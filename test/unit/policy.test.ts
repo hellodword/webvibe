@@ -428,6 +428,66 @@ tools:
     ).rejects.toThrow(/inputPolicy/);
   });
 
+  it("requires pass-through inputPolicy to declare path handling", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-input-policy-"));
+    const policyPath = path.join(root, "policy.yaml");
+    await writeFile(
+      policyPath,
+      `version: 3
+upstreams:
+  main:
+    transport: stdio
+    command: "${process.execPath}"
+tools:
+  - name: x.raw
+    type: passThrough
+    upstream: main
+    upstreamTool: raw
+    inputPolicy:
+      require:
+        dryRun: true
+`,
+    );
+
+    await expect(
+      loadPolicy(policyPath, {
+        workspaceRoot: root,
+        stateDir: path.join(root, "state"),
+      }),
+    ).rejects.toThrow(/pathFields or noPathInput/);
+
+    await writeFile(
+      policyPath,
+      `version: 3
+upstreams:
+  main:
+    transport: stdio
+    command: "${process.execPath}"
+tools:
+  - name: x.status
+    type: passThrough
+    upstream: main
+    upstreamTool: status
+    inputPolicy:
+      noPathInput: true
+`,
+    );
+
+    await expect(
+      loadPolicy(policyPath, {
+        workspaceRoot: root,
+        stateDir: path.join(root, "state"),
+      }),
+    ).resolves.toMatchObject({
+      tools: [
+        expect.objectContaining({
+          name: "x.status",
+          inputPolicy: expect.objectContaining({ noPathInput: true }),
+        }),
+      ],
+    });
+  });
+
   it("ships generated v3 policy schema metadata for YAML editors", async () => {
     const schema = JSON.parse(await readFile("policies/schema.json", "utf8"));
 
@@ -437,6 +497,8 @@ tools:
     expect(schema.properties.taskCatalog.description).toContain("capability");
     expect(schema.$defs.hostRisk.properties.largeDiffBytes.default).toBe(12288);
     expect(schema.$defs.hostRisk.properties.rawShellShape.default).toBe("manualFirst");
+    expect(schema.$defs.inputPolicy.properties.noPathInput.description).toContain("no workspace path");
+    expect(schema.$defs.inputPolicy.properties.protectedPathPolicy.default).toBe("deny");
     expect(schema.$defs.editMode.properties.batch.properties.enabled.default).toBe(false);
     expect(schema.$defs.passThroughTool.required).toContain("inputPolicy");
     expect(schema.$defs.workflowTool.properties.steps.description).toContain("fixed");

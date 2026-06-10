@@ -19,7 +19,10 @@ export function buildRegistry(
     }
     if (tool.type === "passThrough") {
       if (!upstreams.isAvailable(tool.upstream)) {
-        if (tool.optional) continue;
+        if (tool.optional) {
+          registry.set(tool.name, { policy: tool, descriptor: normalizeDescriptor(tool) });
+          continue;
+        }
         continue;
       }
       const upstreamDescriptor = upstreams.getToolDescriptor(tool.upstream, tool.upstreamTool);
