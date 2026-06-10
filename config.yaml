@@ -8,4 +8,7 @@ workspace:
   root: "."
 auth:
   pairingCode: "123456"
+  pairingFailures:
+    maxAttempts: 5
+    windowSeconds: 600
   accessTokenTtlDays: 30

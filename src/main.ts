@@ -19,6 +19,7 @@ export async function runWebvibe(cli: CliOptions): Promise<RunningWebvibe> {
   await mkdir(runtime.stateDir, { recursive: true, mode: 0o700 });
   const pairing = new PairingManager({
     pairingCode: runtime.config.auth.pairingCode,
+    pairingFailures: runtime.config.auth.pairingFailures,
   });
   await pairing.load();
   const store = OAuthStore.atStateDir(runtime.stateDir);

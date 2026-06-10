@@ -53,6 +53,7 @@ auth:
     expect(runtime.stateDir).toBe(stateDir);
     expect(runtime.policyPath).toBe(policyPath);
     expect(runtime.config.auth.accessTokenTtlDays).toBe(30);
+    expect(runtime.config.auth.pairingFailures).toEqual({ maxAttempts: 5, windowSeconds: 600 });
   });
 
   it("uses server mode to select a built-in policy and rejects policy conflicts", async () => {

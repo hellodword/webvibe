@@ -2,6 +2,10 @@ import { BadRequestError, ForbiddenError } from "../util/errors.js";
 
 export type PairingOptions = {
   pairingCode?: string;
+  pairingFailures?: {
+    maxAttempts?: number;
+    windowSeconds?: number;
+  };
 };
 
 export class PairingManager {
@@ -36,14 +40,26 @@ export class PairingManager {
       this.failures.delete(key);
       return;
     }
-    if (record.count >= 5) throw new ForbiddenError("Too many pairing attempts");
+    if (record.count >= this.maxAttempts()) throw new ForbiddenError("Too many pairing attempts");
   }
 
   private recordFailure(key: string): void {
     const current = this.failures.get(key);
     this.failures.set(key, {
       count: (current?.count ?? 0) + 1,
-      resetAt: current?.resetAt ?? Date.now() + 60_000,
+      resetAt: current?.resetAt ?? Date.now() + this.windowSeconds() * 1000,
     });
   }
+
+  private maxAttempts(): number {
+    return positiveInteger(this.options.pairingFailures?.maxAttempts, 5);
+  }
+
+  private windowSeconds(): number {
+    return positiveInteger(this.options.pairingFailures?.windowSeconds, 600);
+  }
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
 }

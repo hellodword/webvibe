@@ -34,6 +34,12 @@ export const appConfigSchema = z
       .object({
         pairingCode: z.string().min(1),
         accessTokenTtlDays: z.number().int().positive().default(30),
+        pairingFailures: z
+          .object({
+            maxAttempts: z.number().int().positive().default(5),
+            windowSeconds: z.number().int().positive().default(600),
+          })
+          .default({ maxAttempts: 5, windowSeconds: 600 }),
       }),
   })
   .strict();

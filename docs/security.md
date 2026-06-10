@@ -49,7 +49,8 @@ reviewable tool shapes and do not attempt to bypass ChatGPT Web safety review.
 `auth.pairingCode` is required in the config file, loaded into memory at startup,
 and not persisted to `stateDir`. OAuth clients and tokens persist in
 `stateDir/oauth-store.json`. Authorization codes are short-lived and in-memory.
-Default access token TTL is 30 days.
+Default access token TTL is 30 days. Pairing-code failures are rate-limited by
+`auth.pairingFailures.maxAttempts` and `auth.pairingFailures.windowSeconds`.
 
 ## Narrow Local Tasks
 
