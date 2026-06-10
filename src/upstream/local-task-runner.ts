@@ -15,6 +15,7 @@ import {
   type TaskOutputSummary,
   type TaskRunRecord,
 } from "./task-log-store.js";
+import { parseTaskDiagnostics, type TaskDiagnostic } from "./task-diagnostics.js";
 
 type TaskResult = {
   status: "running" | "ok" | "failed" | "timeout" | "unavailable";
@@ -23,6 +24,7 @@ type TaskResult = {
   exitCode: number | null;
   stdout: TaskOutputSummary;
   stderr: TaskOutputSummary;
+  diagnostics: TaskDiagnostic[];
   durationMs: number;
   timeoutSeconds: number;
   unavailableReason?: string;
@@ -108,6 +110,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             exitCode: { type: ["integer", "null"] },
             stdout: taskOutputSummarySchema(),
             stderr: taskOutputSummarySchema(),
+            diagnostics: taskDiagnosticsSchema(),
             durationMs: { type: "integer" },
             timeoutSeconds: { type: "integer" },
             unavailableReason: { type: "string" },
@@ -138,6 +141,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
             "exitCode",
             "stdout",
             "stderr",
+            "diagnostics",
             "durationMs",
             "timeoutSeconds",
           ],
@@ -239,6 +243,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         if (input.errorMessage) stderrCapture.write(Buffer.from(input.errorMessage, "utf8"));
         const stdout = await stdoutCapture.finish();
         const stderr = await stderrCapture.finish();
+        const diagnostics = parseTaskDiagnostics([stdout, stderr]);
         const result: TaskResult = {
           status: input.status,
           runId,
@@ -246,6 +251,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
           exitCode: input.exitCode,
           stdout,
           stderr,
+          diagnostics,
           durationMs: Date.now() - startedAt,
           timeoutSeconds,
           ...(input.unavailableReason ? { unavailableReason: input.unavailableReason } : {}),
@@ -416,6 +422,24 @@ function taskOutputSummarySchema(): Record<string, unknown> {
   };
 }
 
+function taskDiagnosticsSchema(): Record<string, unknown> {
+  return {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        line: { type: "integer" },
+        column: { type: "integer" },
+        message: { type: "string" },
+        severity: { type: "string", enum: ["error", "warning", "info"] },
+      },
+      required: ["path", "line", "message"],
+      additionalProperties: false,
+    },
+  };
+}
+
 async function safeLstat(filePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
   try {
     return await lstat(filePath);
@@ -450,6 +474,7 @@ async function unavailable(
     exitCode: null,
     stdout,
     stderr,
+    diagnostics: parseTaskDiagnostics([stdout, stderr]),
     durationMs: Date.now() - startedAt,
     timeoutSeconds,
     unavailableReason: reason,
@@ -478,6 +503,7 @@ function recordFromResult(
     completedAt: new Date().toISOString(),
     stdout: result.stdout,
     stderr: result.stderr,
+    diagnostics: result.diagnostics,
     ...(result.unavailableReason ? { unavailableReason: result.unavailableReason } : {}),
     ...(result.manualRequired ? { manualRequired: result.manualRequired } : {}),
   };
@@ -503,6 +529,7 @@ function runningResult(input: {
     startedAt: input.startedAt,
     stdout: emptySummary(input.stdoutLogPath),
     stderr: emptySummary(input.stderrLogPath),
+    diagnostics: [],
   };
 }
 

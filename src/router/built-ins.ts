@@ -234,6 +234,7 @@ export async function callBuiltIn(
         exitCode: null,
         stdout: emptyTaskOutputSummary(),
         stderr: taskOutputSummaryFromText(reason),
+        diagnostics: [],
         durationMs: 0,
         timeoutSeconds: typeof args.timeoutSeconds === "number" ? args.timeoutSeconds : 0,
         unavailableReason: reason,
@@ -255,7 +256,7 @@ export async function callBuiltIn(
         unavailableReason: "Task run not found",
       };
     }
-    return record;
+    return { ...record, diagnostics: record.diagnostics ?? [] };
   }
   throw new ForbiddenError(`Unknown built-in tool: ${name}`);
 }

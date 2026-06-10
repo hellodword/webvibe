@@ -808,6 +808,24 @@ tools:
           required: [head, tail, truncated, sha256, bytes, logPath]
           additionalProperties: false
         stderr: *taskOutputSummarySchema
+        diagnostics:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              line:
+                type: integer
+              column:
+                type: integer
+              message:
+                type: string
+              severity:
+                type: string
+                enum: [error, warning, info]
+            required: [path, line, message]
+            additionalProperties: false
         durationMs:
           type: integer
         timeoutSeconds:
@@ -836,7 +854,7 @@ tools:
               additionalProperties: false
           required: [nextTool, reason, userInstructions, hostObservation]
           additionalProperties: false
-      required: [status, runId, taskId, exitCode, stdout, stderr, durationMs, timeoutSeconds]
+      required: [status, runId, taskId, exitCode, stdout, stderr, diagnostics, durationMs, timeoutSeconds]
       additionalProperties: false
     annotations:
       readOnlyHint: false

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { ensurePrivateDir, readJsonFile, resolveStorePath, writePrivateJson } from "../manual/store-utils.js";
 import type { ManualRequired } from "./local-task-runner.js";
+import type { TaskDiagnostic } from "./task-diagnostics.js";
 import { randomToken } from "../util/hash.js";
 
 export type TaskOutputSummary = {
@@ -27,6 +28,7 @@ export type TaskRunRecord = {
   completedAt?: string;
   stdout: TaskOutputSummary;
   stderr: TaskOutputSummary;
+  diagnostics: TaskDiagnostic[];
   unavailableReason?: string;
   manualRequired?: ManualRequired;
 };

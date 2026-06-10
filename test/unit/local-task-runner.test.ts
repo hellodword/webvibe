@@ -82,6 +82,7 @@ describe("local task runner upstream", () => {
             "exitCode",
             "stdout",
             "stderr",
+            "diagnostics",
             "durationMs",
             "timeoutSeconds",
           ],
@@ -194,6 +195,85 @@ describe("local task runner upstream", () => {
       logPath: expect.stringContaining(".webvibe/task-logs/"),
     });
     expect((await readFile(path.join(root, result.stdout.logPath), "utf8")).length).toBe(10000);
+  });
+
+  it("parses common diagnostics from task output", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-task-diagnostics-"));
+    const policy: UpstreamPolicy = {
+      transport: "local-task-runner",
+      cwd: root,
+      tasks: {
+        diagnostics: {
+          executable: process.execPath,
+          args: [
+            "-e",
+            [
+              "console.log('src/app.ts(10,5): error TS2304: Cannot find name x.');",
+              "console.error('lib/main.go:12:3: undefined: y');",
+              "console.error('error[E0425]: cannot find value `z` in this scope');",
+              "console.error(' --> src/main.rs:7:9');",
+              "console.error('error - lib/main.dart:4:2 - Undefined name q. - undefined_identifier');",
+              "console.error('AssertionError: expected true to be false');",
+              "console.error(' ❯ test/app.test.ts:22:7');",
+              "console.error('src/lint.ts');",
+              "console.error('  3:1  warning  Unexpected console statement  no-console');",
+              "process.exit(1);",
+            ].join(""),
+          ],
+          defaultTimeoutSeconds: 2,
+        },
+      },
+    };
+    const runner = new LocalTaskRunnerClient("tasks", policy, root, { root, protected: [] });
+    await runner.initialize();
+
+    const result = (await runner.callTool("run_task", { taskId: "diagnostics" })) as any;
+
+    expect(result).toMatchObject({
+      status: "failed",
+      diagnostics: expect.arrayContaining([
+        {
+          path: "src/app.ts",
+          line: 10,
+          column: 5,
+          severity: "error",
+          message: "error TS2304: Cannot find name x.",
+        },
+        {
+          path: "lib/main.go",
+          line: 12,
+          column: 3,
+          message: "undefined: y",
+        },
+        {
+          path: "src/main.rs",
+          line: 7,
+          column: 9,
+          severity: "error",
+          message: "cannot find value `z` in this scope",
+        },
+        {
+          path: "lib/main.dart",
+          line: 4,
+          column: 2,
+          severity: "error",
+          message: "Undefined name q. - undefined_identifier",
+        },
+        {
+          path: "test/app.test.ts",
+          line: 22,
+          column: 7,
+          message: "AssertionError: expected true to be false",
+        },
+        {
+          path: "src/lint.ts",
+          line: 3,
+          column: 1,
+          severity: "warning",
+          message: "Unexpected console statement  no-console",
+        },
+      ]),
+    });
   });
 
   it("returns running records for background tasks and updates result logs", async () => {
