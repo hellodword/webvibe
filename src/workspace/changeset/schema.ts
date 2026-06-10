@@ -83,6 +83,14 @@ export const changeSchema = z.discriminatedUnion("op", [
     .strict(),
   z
     .object({
+      op: z.literal("rename"),
+      from: z.string().min(1),
+      to: z.string().min(1),
+      expectedSha256: z.string().regex(sha256Pattern),
+    })
+    .strict(),
+  z
+    .object({
       op: z.literal("mkdir"),
       path: z.string().min(1),
     })

@@ -206,6 +206,32 @@ describe("workspace changesets", () => {
     });
   });
 
+  it("renames files through preview hash without losing content", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-rename-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "old.txt"), "move me\n");
+    const changes = [
+      {
+        op: "rename" as const,
+        from: "old.txt",
+        to: "nested/new.txt",
+        expectedSha256: sha256("move me\n"),
+      },
+    ];
+    const preview = await previewChangeset({ changes }, context);
+    expect(preview.valid).toBe(true);
+    expect(preview.summary.renames).toBe(1);
+    expect(preview.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "nested/new.txt", op: "rename", afterSha256: sha256("move me\n") }),
+      ]),
+    );
+
+    await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+    await expect(readFile(path.join(root, "old.txt"), "utf8")).rejects.toThrow("ENOENT");
+    expect(await readFile(path.join(root, "nested/new.txt"), "utf8")).toBe("move me\n");
+  });
+
   it("rejects ambiguous plans before writing", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-plan-guards-"));
     const context = testContext(root);
@@ -282,6 +308,7 @@ describe("workspace changesets", () => {
           edits: 0,
           replaces: 2,
           deletes: 0,
+          renames: 0,
           mkdirs: 0,
         },
         files: [],

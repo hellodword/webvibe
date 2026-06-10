@@ -30,6 +30,19 @@ export async function buildChangesetPlan(
   let totalWriteBytes = 0;
 
   for (const change of input.changes) {
+    if (change.op === "rename") {
+      const from = await resolveWorkspacePath(change.from, context);
+      const to = await resolveWorkspacePath(change.to, context);
+      for (const item of [from.relativePath, to.relativePath]) {
+        if (seenPaths.has(item)) {
+          throw new BadRequestError(`Duplicate changeset path: ${item}`);
+        }
+        seenPaths.add(item);
+      }
+      const action = await planRenameAction(change, from, to, limits, conflicts);
+      if (action) actions.push(action);
+      continue;
+    }
     const resolved = await resolveWorkspacePath(change.path, context);
     if (seenPaths.has(resolved.relativePath)) {
       throw new BadRequestError(`Duplicate changeset path: ${resolved.relativePath}`);
@@ -63,8 +76,53 @@ export async function buildChangesetPlan(
   };
 }
 
+async function planRenameAction(
+  change: Extract<ParsedChange, { op: "rename" }>,
+  from: ResolvedWorkspacePath,
+  to: ResolvedWorkspacePath,
+  limits: EffectiveLimits,
+  conflicts: Conflict[],
+): Promise<PlannedAction | undefined> {
+  const fromInfo = await safeLstat(from.absolutePath);
+  if (fromInfo?.isSymbolicLink()) throw new ForbiddenError(`Path is a symlink: ${from.relativePath}`);
+  if (!fromInfo) {
+    conflicts.push({ path: from.relativePath, reason: "Path does not exist" });
+    return undefined;
+  }
+  if (!fromInfo.isFile()) {
+    conflicts.push({ path: from.relativePath, reason: "Path is not a file" });
+    return undefined;
+  }
+  const toInfo = await safeLstat(to.absolutePath);
+  if (toInfo) {
+    conflicts.push({ path: to.relativePath, reason: "Path already exists" });
+    return undefined;
+  }
+  const before = await readTextFileState(from.absolutePath, from.relativePath, limits);
+  if (before.sha256 !== change.expectedSha256) {
+    conflicts.push({
+      path: from.relativePath,
+      reason: "File hash mismatch",
+      expectedSha256: change.expectedSha256,
+      actualSha256: before.sha256,
+    });
+    return undefined;
+  }
+  return {
+    op: "rename",
+    path: from.relativePath,
+    absolutePath: from.absolutePath,
+    toPath: to.relativePath,
+    toAbsolutePath: to.absolutePath,
+    before,
+    afterContent: before.content,
+    afterSha256: before.sha256,
+    diff: unifiedDiff(from.relativePath, before.content, undefined) + "\n" + unifiedDiff(to.relativePath, undefined, before.content),
+  };
+}
+
 async function planAction(
-  change: ParsedChange,
+  change: Exclude<ParsedChange, { op: "rename" }>,
   resolved: ResolvedWorkspacePath,
   limits: EffectiveLimits,
   conflicts: Conflict[],
@@ -165,7 +223,7 @@ async function planAction(
 
 function plannedFile(action: PlannedAction): PlannedFile {
   return {
-    path: action.path,
+    path: action.toPath ?? action.path,
     op: action.op,
     beforeSha256: action.before?.sha256,
     afterSha256: action.afterSha256,
@@ -181,6 +239,7 @@ function summarize(changes: ParsedChange[]): ChangesetSummary {
     edits: changes.filter((change) => change.op === "edit" || change.op === "text_edit" || change.op === "json_patch").length,
     replaces: changes.filter((change) => change.op === "replace").length,
     deletes: changes.filter((change) => change.op === "delete").length,
+    renames: changes.filter((change) => change.op === "rename").length,
     mkdirs: changes.filter((change) => change.op === "mkdir").length,
   };
 }

@@ -501,8 +501,12 @@ tools:
             properties:
               op:
                 type: string
-                enum: [write, replace, text_edit, json_patch, create, edit, delete, mkdir]
+                enum: [write, replace, text_edit, json_patch, rename, create, edit, delete, mkdir]
               path:
+                type: string
+              from:
+                type: string
+              to:
                 type: string
               expectedSha256:
                 type: string

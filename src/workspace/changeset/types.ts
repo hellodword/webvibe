@@ -39,6 +39,7 @@ export type ChangesetSummary = {
   edits: number;
   replaces: number;
   deletes: number;
+  renames: number;
   mkdirs: number;
 };
 
@@ -54,6 +55,8 @@ export type PlannedAction = {
   op: ParsedChange["op"];
   path: string;
   absolutePath: string;
+  toPath?: string;
+  toAbsolutePath?: string;
   before?: FileState;
   afterContent?: string;
   afterSha256?: string;

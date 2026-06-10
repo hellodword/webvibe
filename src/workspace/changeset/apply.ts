@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, unlink } from "node:fs/promises";
+import path from "node:path";
 
 import { writeFileAtomic } from "../../util/paths.js";
 import { safeLstat } from "./path-guard.js";
@@ -6,7 +7,7 @@ import { decodeUtf8 } from "./text.js";
 import type { ChangesetPlan, PlannedAction, Snapshot } from "./types.js";
 
 export async function applyPlan(plan: ChangesetPlan): Promise<void> {
-  const snapshots = await Promise.all(plan.actions.map((action) => snapshotPath(action)));
+  const snapshots = (await Promise.all(plan.actions.map((action) => snapshotPaths(action)))).flat();
   try {
     for (const action of plan.actions) {
       await applyAction(action);
@@ -26,28 +27,48 @@ async function applyAction(action: PlannedAction): Promise<void> {
     await unlink(action.absolutePath);
     return;
   }
+  if (action.op === "rename") {
+    if (!action.toAbsolutePath) throw new Error("Rename target is missing");
+    await mkdir(path.dirname(action.toAbsolutePath), { recursive: true });
+    await rename(action.absolutePath, action.toAbsolutePath);
+    return;
+  }
   const mode = action.before ? action.before.mode & 0o777 : 0o666;
   await writeFileAtomic(action.absolutePath, action.afterContent ?? "", mode);
 }
 
-async function snapshotPath(action: PlannedAction): Promise<Snapshot> {
-  const info = await safeLstat(action.absolutePath);
+async function snapshotPaths(action: PlannedAction): Promise<Snapshot[]> {
+  if (action.op === "rename" && action.toAbsolutePath && action.toPath) {
+    return [
+      await snapshotOnePath(action.absolutePath, action.path, "file"),
+      await snapshotOnePath(action.toAbsolutePath, action.toPath, "file"),
+    ];
+  }
+  return [await snapshotOnePath(action.absolutePath, action.path, action.op === "mkdir" ? "directory" : "file")];
+}
+
+async function snapshotOnePath(
+  absolutePath: string,
+  relativePath: string,
+  cleanup: "file" | "directory",
+): Promise<Snapshot> {
+  const info = await safeLstat(absolutePath);
   if (!info) {
     return {
       kind: "missing",
-      absolutePath: action.absolutePath,
-      cleanup: action.op === "mkdir" ? "directory" : "file",
+      absolutePath,
+      cleanup,
     };
   }
-  if (info.isDirectory()) return { kind: "directory", absolutePath: action.absolutePath };
+  if (info.isDirectory()) return { kind: "directory", absolutePath };
   if (!info.isFile()) {
-    return { kind: "missing", absolutePath: action.absolutePath, cleanup: "file" };
+    return { kind: "missing", absolutePath, cleanup: "file" };
   }
-  const data = await readFile(action.absolutePath);
+  const data = await readFile(absolutePath);
   return {
     kind: "file",
-    absolutePath: action.absolutePath,
-    content: decodeUtf8(data, action.path),
+    absolutePath,
+    content: decodeUtf8(data, relativePath),
     mode: info.mode & 0o777,
   };
 }

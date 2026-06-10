@@ -219,6 +219,13 @@ function previewHashes(rawArgs: unknown, plan: {
 
 function manualChecksForActions(actions: PlannedAction[]): ManualCheck[] {
   return actions.map((action) => {
+    if (action.op === "rename") {
+      return {
+        kind: "workspace-path-state",
+        path: action.toPath ?? action.path,
+        expected: { exists: true, type: "file", sha256: action.afterSha256 },
+      };
+    }
     if (action.op === "delete") {
       return { kind: "workspace-path-state", path: action.path, expected: { exists: false } };
     }
