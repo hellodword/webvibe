@@ -1,10 +1,11 @@
-import type { LimitsPolicy, WorkspacePolicy } from "../../policy/policy.js";
+import type { HostRiskPolicy, LimitsPolicy, WorkspacePolicy } from "../../policy/policy.js";
 import type { ParsedChange } from "./schema.js";
 
 export type WorkspaceContext = {
   workspaceRoot: string;
   workspace: WorkspacePolicy;
   limits: LimitsPolicy;
+  hostRisk?: HostRiskPolicy;
 };
 
 export type EffectiveLimits = {

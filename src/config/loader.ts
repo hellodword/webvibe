@@ -99,6 +99,8 @@ export async function loadPolicy(
       tools: [...base.tools, ...parsed.tools],
       profiles: deepMergeRecords(base.profiles, parsed.profiles),
       taskBundles: deepMerge(base.taskBundles ?? {}, parsed.taskBundles ?? {}),
+      taskCatalog: deepMerge(base.taskCatalog ?? {}, parsed.taskCatalog ?? {}),
+      hostRisk: deepMerge(base.hostRisk, parsed.hostRisk),
       limits: deepMerge(base.limits, parsed.limits),
       audit: { ...base.audit, ...parsed.audit },
     };

@@ -72,6 +72,7 @@ type ChangeRiskAssessment = {
   diffRisk: {
     bytes: number;
     lines: number;
+    thresholdBytes: number;
     maxInlineBytes: number;
     maxInlineLines: number;
     truncated: boolean;
@@ -150,7 +151,7 @@ export async function previewChangeset(
   const hashes = previewHashes(rawArgs, plan);
   const previewId = `cp_${randomToken(12)}`;
   const diffInfo = await buildDiffPreview(plan, context, previewId);
-  const risk = assessChangeRisk(plan, diffInfo, context.toolName);
+  const risk = assessChangeRisk(plan, diffInfo, context, context.toolName);
   const warnings = changeRiskWarnings(diffInfo, risk);
   const manualPlan = risk.hostRisk === "high" ? manualPlanForChange(previewId, risk) : undefined;
   return {
@@ -203,7 +204,7 @@ export async function applyChangeset(
   if (input.previewHash !== hashes.previewHash) {
     throw new BadRequestError("previewHash mismatch");
   }
-  const risk = assessChangeRisk(plan, diffPreviewFromPlan(plan, context), context.toolName);
+  const risk = assessChangeRisk(plan, diffPreviewFromPlan(plan, context), context, context.toolName);
   if (risk.hostRisk === "high") {
     const operationId = `cp_${randomToken(12)}`;
     return {
@@ -370,16 +371,20 @@ function diffPreviewFromPlan(plan: { diff: string; files: PlannedFile[] }, conte
 function assessChangeRisk(
   plan: { summary: ChangesetSummary; files: PlannedFile[] },
   diffInfo: DiffPreview,
+  context: WorkspaceContext,
   toolName = "change.preview",
 ): ChangeRiskAssessment {
-  const deleteThreshold = 3;
+  const deleteThreshold = context.hostRisk?.deleteFileCount ?? 3;
+  const largeDiffThreshold = context.hostRisk?.largeDiffBytes ?? context.limits.change.maxInlineDiffBytes;
   const deleteRiskHigh = plan.summary.deletes >= deleteThreshold;
-  const diffRiskHigh = diffInfo.truncated;
+  const diffRiskHigh = diffInfo.truncated || diffInfo.bytes >= largeDiffThreshold;
   const reasons = [
     ...(deleteRiskHigh
       ? [`delete count ${plan.summary.deletes} meets manual-first threshold ${deleteThreshold}`]
       : []),
-    ...(diffRiskHigh ? ["diff exceeds inline payload limits"] : []),
+    ...(diffRiskHigh
+      ? [`diff size ${diffInfo.bytes} bytes meets manual-first threshold ${largeDiffThreshold}`]
+      : []),
   ];
   const hostRisk: HostRisk = reasons.length > 0 ? "high" : "medium";
   const applyTool = toolName.startsWith("batch.") || toolName === "change.preview"
@@ -401,6 +406,7 @@ function assessChangeRisk(
     diffRisk: {
       bytes: diffInfo.bytes,
       lines: diffInfo.lines,
+      thresholdBytes: largeDiffThreshold,
       maxInlineBytes: diffInfo.maxInlineBytes,
       maxInlineLines: diffInfo.maxInlineLines,
       truncated: diffInfo.truncated,

@@ -174,6 +174,7 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      hostRisk: context.policy.hostRisk,
       stateDir: context.stateDir,
       publicBaseUrl: context.publicBaseUrl,
       toolName: name,
@@ -185,6 +186,7 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      hostRisk: context.policy.hostRisk,
       stateDir: context.stateDir,
       publicBaseUrl: context.publicBaseUrl,
       toolName: name,
@@ -197,6 +199,7 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      hostRisk: context.policy.hostRisk,
       audit: context.audit,
       toolName: name,
     });
@@ -206,6 +209,7 @@ export async function callBuiltIn(
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
+      hostRisk: context.policy.hostRisk,
       audit: context.audit,
       toolName: name,
     });

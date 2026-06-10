@@ -97,7 +97,7 @@ export const passThroughToolSchema = z
     outputSchema: z.record(z.string(), z.unknown()).optional(),
     annotations: annotationsSchema.optional(),
     _meta: metaSchema.optional(),
-    inputPolicy: inputPolicySchema.optional(),
+    inputPolicy: inputPolicySchema,
     mapInput: z.unknown().optional(),
     mapOutput: z.unknown().optional(),
   })
@@ -105,15 +105,17 @@ export const passThroughToolSchema = z
 
 export const workflowStepSchema = z
   .object({
-    call: z.object({
-      upstream: z.string(),
-      tool: z.string(),
-      input: z.unknown(),
-    }),
+    call: z
+      .object({
+        upstream: z.string(),
+        tool: z.string(),
+        input: z.unknown(),
+      })
+      .strict(),
     saveAs: z.string().optional(),
     optional: z.boolean().optional(),
   })
-  .passthrough();
+  .strict();
 
 export const workflowToolSchema = z
   .object({
@@ -162,6 +164,56 @@ export const toolPolicySchema = z.discriminatedUnion("type", [
 ]);
 
 const positiveInteger = z.number().int().positive();
+
+export const defaultHostRisk = {
+  rawShellShape: "manualFirst",
+  unknownTask: "manualFirst",
+  largeDiffBytes: defaultLimits.change.maxInlineDiffBytes,
+  deleteFileCount: 3,
+} as const;
+
+export const hostRiskSchema = z
+  .object({
+    rawShellShape: z.enum(["manualFirst"]).default(defaultHostRisk.rawShellShape),
+    unknownTask: z.enum(["manualFirst"]).default(defaultHostRisk.unknownTask),
+    largeDiffBytes: positiveInteger.default(defaultHostRisk.largeDiffBytes),
+    deleteFileCount: positiveInteger.default(defaultHostRisk.deleteFileCount),
+  })
+  .strict();
+
+export const taskCatalogResolverSchema = z.enum([
+  "nodeScript",
+  "nodeScriptOrTool",
+  "manifestCommand",
+  "taskFileTarget",
+  "codegenTool",
+]);
+
+export const taskCatalogEntrySchema = z
+  .object({
+    family: z.string(),
+    intent: z.string(),
+    resolver: taskCatalogResolverSchema,
+    scriptNames: z.array(z.string()).optional(),
+    taskIds: z.array(z.string()).optional(),
+    taskFiles: z.array(z.string()).optional(),
+    fallbackTools: z
+      .array(
+        z
+          .object({
+            executable: z.string(),
+            args: z.array(z.string()).default([]),
+            requiredFiles: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    hostRisk: z.enum(["low", "medium", "high"]).default("medium"),
+    description: z.string().optional(),
+  })
+  .strict();
+
+export const taskCatalogSchema = z.record(z.string(), taskCatalogEntrySchema).default({});
 
 export const outputLimitsSchema = z
   .object({
@@ -411,7 +463,7 @@ export const profileSchema = z
 
 export const policyInputSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(3),
     profile: z.string().default("chatgptWebDefault"),
     mode: modeSchema.optional(),
     extends: z.string().optional(),
@@ -424,6 +476,8 @@ export const policyInputSchema = z
     profiles: z.record(z.string(), profileSchema).default({}),
     taskBundles: taskBundlesSchema.optional(),
     editMode: editModeSchema.default({ mode: "single", batch: { enabled: false } }),
+    hostRisk: hostRiskSchema.optional(),
+    taskCatalog: taskCatalogSchema.optional(),
     upstreams: z
       .record(
         z.string(),
@@ -473,7 +527,7 @@ export const policyInputSchema = z
 
 export const policySchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(3),
     profile: z.string(),
     activeProfile: z.string(),
     mode: modeSchema.optional(),
@@ -487,6 +541,8 @@ export const policySchema = z
     profiles: z.record(z.string(), profileSchema),
     taskBundles: taskBundlesSchema.optional(),
     editMode: editModeSchema.default({ mode: "single", batch: { enabled: false } }),
+    hostRisk: hostRiskSchema.default(defaultHostRisk),
+    taskCatalog: taskCatalogSchema,
     upstreams: z
       .record(
         z.string(),

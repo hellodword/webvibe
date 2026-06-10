@@ -1,11 +1,52 @@
-version: 2
+version: 3
 mode: dev
 profile: chatgptWebDefault
 
+# editMode keeps default write tools to one logical change per preview/apply.
+# batch.enabled must stay false unless the policy also exposes batch tools.
 editMode:
   mode: single
   batch:
     enabled: false
+
+# hostRisk controls routing hints for host-sensitive work. rawShellShape and
+# unknownTask are manual-first by policy; change previews use the thresholds.
+hostRisk:
+  rawShellShape: manualFirst
+  unknownTask: manualFirst
+  largeDiffBytes: 12288
+  deleteFileCount: 3
+
+# taskCatalog documents capabilities the resolver may consider. It is not a
+# runnable command catalog; task.run remains limited to resolved task IDs.
+taskCatalog:
+  node.test:
+    family: node
+    intent: test
+    resolver: nodeScript
+    scriptNames: [test]
+    taskIds: [node.test]
+    hostRisk: medium
+    description: Run the package test script when present.
+  node.build:
+    family: node
+    intent: build
+    resolver: nodeScript
+    scriptNames: [build]
+    taskIds: [node.build]
+    hostRisk: medium
+    description: Run the package build script when present.
+  node.lint:
+    family: node
+    intent: lint
+    resolver: nodeScriptOrTool
+    scriptNames: [lint]
+    taskIds: [node.lint]
+    fallbackTools:
+      - executable: npx
+        args: [eslint, .]
+    hostRisk: medium
+    description: Run configured lint checks when present.
 
 profiles:
   chatgptWebDefault:
@@ -51,6 +92,7 @@ profiles:
 
 workspace:
   root: "${workspaceRoot}"
+  # protected paths are never bypassed by fs, change, git, manual, or pass-through path policies.
   protected:
     - ".git/**"
     - ".env"
@@ -272,6 +314,8 @@ upstreams:
         defaultTimeoutSeconds: 3000
         maxTimeoutSeconds: 36000
 
+# Built-in presets expose no passThrough or workflow tools. Any passThrough tool
+# added here must declare inputPolicy; any workflow tool must declare fixed steps.
 tools:
   - name: workspace.context
     type: builtIn
@@ -596,6 +640,7 @@ tools:
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
 
+  # manual.* tools coordinate external steps without putting commands, diffs, or logs in tool arguments.
   - name: manual.prepare
     type: builtIn
     description: Prepare low-risk manual continuation metadata before showing manual instructions and opening manual.gate.

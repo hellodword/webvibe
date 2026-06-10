@@ -1,11 +1,23 @@
-version: 2
+version: 3
 mode: read-only
 profile: chatgptWebDefault
 
+# editMode is still reported in read-only mode so clients know batch writes are disabled.
 editMode:
   mode: single
   batch:
     enabled: false
+
+# hostRisk is policy metadata for routing host-sensitive work to manual-first.
+hostRisk:
+  rawShellShape: manualFirst
+  unknownTask: manualFirst
+  largeDiffBytes: 12288
+  deleteFileCount: 3
+
+# taskCatalog declares capabilities the resolver can explain. It does not make
+# a command runnable; task.run availability is decided by resolver checks.
+taskCatalog: {}
 
 profiles:
   chatgptWebDefault:
@@ -51,6 +63,7 @@ profiles:
 
 workspace:
   root: "${workspaceRoot}"
+  # protected paths are never bypassed by fs, git, or pass-through path policies.
   protected:
     - ".git/**"
     - ".env"
@@ -83,6 +96,8 @@ taskBundles:
 
 upstreams: {}
 
+# This read-only preset exposes no passThrough, workflow, or manual tools. Any
+# added passThrough tool must declare inputPolicy; workflows must declare fixed steps.
 tools:
   - name: workspace.context
     type: builtIn

@@ -54,6 +54,14 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     low: ["read", "search", "stat", "status", "symbols"],
     medium: ["file.apply", "task.run", "git.commit"],
     high: ["batch.apply", "large-payload", "delete-heavy", "unknown-task", "manual-first"],
+    routes: {
+      rawShellShape: context.policy.hostRisk.rawShellShape,
+      unknownTask: context.policy.hostRisk.unknownTask,
+    },
+    thresholds: {
+      largeDiffBytes: context.policy.hostRisk.largeDiffBytes,
+      deleteFileCount: context.policy.hostRisk.deleteFileCount,
+    },
   };
   const capabilities = {
     rawShell: false,

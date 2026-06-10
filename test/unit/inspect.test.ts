@@ -648,7 +648,7 @@ describe("workspace inspection built-ins", () => {
 
 function policyFor(root: string): RelayPolicy {
   return {
-    version: 2,
+    version: 3,
     profile: "chatgptWebDefault",
     activeProfile: "chatgptWebDefault",
     mode: "dev",
@@ -681,6 +681,13 @@ function policyFor(root: string): RelayPolicy {
       go: { tasks: ["test_all", "vet", "fmt"] },
       rust: { tasks: ["test", "check", "clippy", "fmt", "build"] },
     },
+    hostRisk: {
+      rawShellShape: "manualFirst",
+      unknownTask: "manualFirst",
+      largeDiffBytes: defaultLimits.change.maxInlineDiffBytes,
+      deleteFileCount: 3,
+    },
+    taskCatalog: {},
     limits: limitsPolicySchema.parse(defaultLimits),
     audit: {
       enabled: true,

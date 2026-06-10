@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -19,13 +19,24 @@ describe("default policies", () => {
       stateDir: path.join(root, "state"),
     });
 
-    expect(readOnly.version).toBe(2);
-    expect(dev.version).toBe(2);
+    expect(readOnly.version).toBe(3);
+    expect(dev.version).toBe(3);
     expect(readOnly.mode).toBe("read-only");
     expect(dev.mode).toBe("dev");
     expect(dev.activeProfile).toBe("chatgptWebDefault");
     expect(readOnly.editMode).toEqual({ mode: "single", batch: { enabled: false } });
     expect(dev.editMode).toEqual({ mode: "single", batch: { enabled: false } });
+    expect(readOnly.hostRisk).toEqual({
+      rawShellShape: "manualFirst",
+      unknownTask: "manualFirst",
+      largeDiffBytes: 12288,
+      deleteFileCount: 3,
+    });
+    expect(dev.taskCatalog["node.test"]).toMatchObject({
+      resolver: "nodeScript",
+      scriptNames: ["test"],
+      hostRisk: "medium",
+    });
     expect(dev.profiles.chatgptWebDefault).toBeTruthy();
     const readOnlyTools = readOnly.tools.map((tool) => tool.name);
     const devTools = dev.tools.map((tool) => tool.name);
@@ -282,7 +293,7 @@ describe("default policies", () => {
     const policyPath = path.join(root, "policy.yaml");
     await writeFile(
       policyPath,
-      `version: 2
+      `version: 3
 profile: custom
 profiles:
   custom:
@@ -326,7 +337,7 @@ limits:
     const policyPath = path.join(root, "policy.yaml");
     await writeFile(
       policyPath,
-      `version: 2
+      `version: 3
 tools:
   - name: workspace.context
     type: builtIn
@@ -343,5 +354,47 @@ limits:
         stateDir: path.join(root, "state"),
       }),
     ).rejects.toThrow(/preferredToolOutputBytes/);
+  });
+
+  it("rejects pass-through tools without inputPolicy", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-passthrough-"));
+    const policyPath = path.join(root, "policy.yaml");
+    await writeFile(
+      policyPath,
+      `version: 3
+upstreams:
+  main:
+    transport: stdio
+    command: "${process.execPath}"
+tools:
+  - name: x.raw
+    type: passThrough
+    upstream: main
+    upstreamTool: raw
+`,
+    );
+
+    await expect(
+      loadPolicy(policyPath, {
+        workspaceRoot: root,
+        stateDir: path.join(root, "state"),
+      }),
+    ).rejects.toThrow(/inputPolicy/);
+  });
+
+  it("ships generated v3 policy schema metadata for YAML editors", async () => {
+    const schema = JSON.parse(await readFile("policies/schema.json", "utf8"));
+
+    expect(schema.properties.version.const).toBe(3);
+    expect(schema.properties.editMode.description).toContain("single-change");
+    expect(schema.properties.hostRisk.description).toContain("manual-first");
+    expect(schema.properties.taskCatalog.description).toContain("capability");
+    expect(schema.$defs.hostRisk.properties.largeDiffBytes.default).toBe(12288);
+    expect(schema.$defs.hostRisk.properties.rawShellShape.default).toBe("manualFirst");
+    expect(schema.$defs.editMode.properties.batch.properties.enabled.default).toBe(false);
+    expect(schema.$defs.passThroughTool.required).toContain("inputPolicy");
+    expect(schema.$defs.workflowTool.properties.steps.description).toContain("fixed");
+    expect(schema.$defs.taskCatalogEntry.description).toContain("not a runnable command");
+    expect(schema.$defs.task.properties.allowExtraArgs.deprecated).toBe(true);
   });
 });

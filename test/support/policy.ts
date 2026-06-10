@@ -6,7 +6,7 @@ export async function writeFakePolicy(dir: string): Promise<string> {
   const policyPath = path.join(dir, "policy.yaml");
   await writeFile(
     policyPath,
-    `version: 2
+    `version: 3
 mode: dev
 workspace:
   root: "\${workspaceRoot}"
@@ -176,6 +176,7 @@ tools:
     upstream: missing
     upstreamTool: read
     optional: true
+    inputPolicy: {}
   - name: x.edit_preview
     type: passThrough
     upstream: main
