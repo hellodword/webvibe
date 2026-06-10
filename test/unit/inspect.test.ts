@@ -136,6 +136,55 @@ describe("workspace inspection built-ins", () => {
     );
   });
 
+  it("paginates fs.search and fs.tree with opaque cursors", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-cursors-"));
+    await mkdir(path.join(root, "src"));
+    for (let index = 0; index < 5; index += 1) {
+      await writeFile(path.join(root, "src", `file-${index}.txt`), `needle ${index}\n`);
+    }
+    await writeFile(path.join(root, "large.txt"), `${"x".repeat(1024 * 1024 + 10)}\nneedle-large\n`);
+    const policy = policyFor(root);
+    const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
+
+    const jsContext = {
+      ...context,
+      limits: { ...policy.limits, search: { ...policy.limits.search, engine: "js" as const } },
+    };
+    const firstSearch = await searchCode({ query: "needle", maxResults: 2 }, jsContext);
+    expect(firstSearch.matches).toHaveLength(2);
+    expect(firstSearch.truncated).toBe(true);
+    expect(firstSearch.nextCursor).toBeTruthy();
+
+    const secondSearch = await searchCode(
+      { query: "needle", maxResults: 10, cursor: firstSearch.nextCursor },
+      jsContext,
+    );
+    expect(secondSearch.matches.map((match) => match.path)).toContain("src/file-4.txt");
+
+    const defaultSearch = await searchCode(
+      { query: "needle", maxResults: 10 },
+      context,
+    );
+    expect(defaultSearch.matches.map((match) => match.path).sort()).toEqual(
+      secondSearch.matches
+        .concat(firstSearch.matches)
+        .map((match) => match.path)
+        .sort(),
+    );
+
+    const firstTree = await fileTree({ path: "src", maxEntries: 2 }, context);
+    expect(firstTree.entries).toHaveLength(2);
+    expect(firstTree.truncated).toBe(true);
+    expect(firstTree.nextCursor).toBeTruthy();
+    const secondTree = await fileTree({ path: "src", maxEntries: 10, cursor: firstTree.nextCursor }, context);
+    expect(secondTree.entries.map((entry) => entry.path)).toEqual([
+      "src/file-1.txt",
+      "src/file-2.txt",
+      "src/file-3.txt",
+      "src/file-4.txt",
+    ]);
+  });
+
   it("reads text files in bounded UTF-8 byte chunks", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-read-files-"));
     await writeFile(path.join(root, "small.txt"), "hello");

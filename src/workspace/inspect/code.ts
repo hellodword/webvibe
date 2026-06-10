@@ -8,6 +8,7 @@ import { minimatch } from "minimatch";
 
 import { defaultLimits, limitsPolicySchema } from "../../policy/schema.js";
 import { BadRequestError } from "../../util/errors.js";
+import { findExecutable, runFixedCommand } from "./command.js";
 import type { InspectWorkspaceContext } from "./path.js";
 import { isProtectedPath, normalizeWorkspacePath, safeLstat } from "./path.js";
 
@@ -26,6 +27,7 @@ type WalkCounters = {
   binary: number;
   tooLarge: number;
   missing: number;
+  permissionDenied?: number;
 };
 
 const fallbackLimits = limitsPolicySchema.parse(defaultLimits);
@@ -56,6 +58,27 @@ type FileReadResult = {
   error?: string;
 };
 
+type SearchOptions = {
+  query: string;
+  mode: "fixed" | "regex";
+  caseMode: "smart" | "sensitive" | "insensitive";
+  caseSensitive: boolean;
+  include: string[];
+  exclude: string[];
+  contextLines: number;
+  maxColumns: number;
+  maxResults: number;
+  cursorOffset: number;
+  respectGitignore: boolean;
+  includeHidden: boolean;
+  includeIgnored: boolean;
+};
+
+type CursorPayload = {
+  tool: "fs.search" | "fs.tree";
+  offset: number;
+};
+
 export async function searchCode(
   args: Record<string, unknown>,
   context: InspectWorkspaceContext,
@@ -68,6 +91,8 @@ export async function searchCode(
   searchedFiles: number;
   skipped: WalkCounters;
   truncated: boolean;
+  nextCursor: string | null;
+  engine: "rg" | "js";
 }> {
   const query = requiredString(args.query, "query");
   if (query.length === 0) throw new BadRequestError("query must not be empty");
@@ -91,25 +116,63 @@ export async function searchCode(
   const caseSensitive = caseMode === "sensitive" || (caseMode === "smart" && /[A-Z]/.test(query));
   const include = globList(args.include, typeof args.glob === "string" ? [args.glob] : []);
   const exclude = globList(args.exclude);
-  const matcher = buildMatcher(query, mode, caseSensitive);
+  const cursorOffset = decodeCursor(args.cursor, "fs.search");
+  const options: SearchOptions = {
+    query,
+    mode,
+    caseMode,
+    caseSensitive,
+    include,
+    exclude,
+    contextLines,
+    maxColumns,
+    maxResults,
+    cursorOffset,
+    respectGitignore: args.respectGitignore !== false,
+    includeHidden: args.includeHidden === true,
+    includeIgnored: args.includeIgnored === true,
+  };
+  if (limits.search.engine === "rg" && limits.search.maxScannedBytesPerFile === null) {
+    const rg = await searchWithRg(root, context, options);
+    if (rg) return rg;
+  }
+  return searchWithJs(root, context, options, limits.search.maxScannedBytesPerFile);
+}
+
+async function searchWithJs(
+  root: { absolutePath: string; relativePath: string },
+  context: InspectWorkspaceContext,
+  options: SearchOptions,
+  maxScannedBytesPerFile: number | null,
+): Promise<{
+  status: "ok";
+  query: string;
+  mode: "fixed" | "regex";
+  case: "smart" | "sensitive" | "insensitive";
+  matches: SearchMatch[];
+  searchedFiles: number;
+  skipped: WalkCounters;
+  truncated: boolean;
+  nextCursor: string | null;
+  engine: "js";
+}> {
+  const matcher = buildMatcher(options.query, options.mode, options.caseSensitive);
   const matches: SearchMatch[] = [];
   const skipped: WalkCounters = { protected: 0, binary: 0, tooLarge: 0, missing: 0 };
   let searchedFiles = 0;
   let truncated = false;
+  let seenMatches = 0;
 
   await walkFiles(root.absolutePath, root.relativePath, context, skipped, async (filePath, relativePath) => {
     if (truncated) return;
-    if (include.length > 0 && !include.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
-    if (exclude.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
+    if (options.include.length > 0 && !options.include.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
+    if (options.exclude.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
     const stat = await safeLstat(filePath);
     if (!stat) {
       skipped.missing += 1;
       return;
     }
-    if (
-      limits.search.maxScannedBytesPerFile !== null &&
-      stat.size > limits.search.maxScannedBytesPerFile
-    ) {
+    if (maxScannedBytesPerFile !== null && stat.size > maxScannedBytesPerFile) {
       skipped.tooLarge += 1;
       return;
     }
@@ -124,23 +187,227 @@ export async function searchCode(
     for (let index = 0; index < lines.length; index += 1) {
       const submatches = findSubmatches(lines[index], matcher);
       if (submatches.length === 0) continue;
+      seenMatches += 1;
+      if (seenMatches <= options.cursorOffset) continue;
       matches.push({
         path: relativePath,
         line: index + 1,
         column: submatches[0].start + 1,
-        text: lines[index].slice(0, maxColumns),
+        text: lines[index].slice(0, options.maxColumns),
         submatches,
-        before: lines.slice(Math.max(0, index - contextLines), index).map((line) => line.slice(0, maxColumns)),
-        after: lines.slice(index + 1, index + 1 + contextLines).map((line) => line.slice(0, maxColumns)),
+        before: lines.slice(Math.max(0, index - options.contextLines), index).map((line) => line.slice(0, options.maxColumns)),
+        after: lines.slice(index + 1, index + 1 + options.contextLines).map((line) => line.slice(0, options.maxColumns)),
       });
-      if (matches.length >= maxResults) {
+      if (matches.length >= options.maxResults) {
         truncated = true;
         return;
       }
     }
   });
 
-  return { status: "ok", query, mode, case: caseMode, matches, searchedFiles, skipped, truncated };
+  return {
+    status: "ok",
+    query: options.query,
+    mode: options.mode,
+    case: options.caseMode,
+    matches,
+    searchedFiles,
+    skipped,
+    truncated,
+    nextCursor: truncated ? encodeCursor("fs.search", options.cursorOffset + matches.length) : null,
+    engine: "js",
+  };
+}
+
+async function searchWithRg(
+  root: { absolutePath: string; relativePath: string },
+  context: InspectWorkspaceContext,
+  options: SearchOptions,
+): Promise<{
+  status: "ok";
+  query: string;
+  mode: "fixed" | "regex";
+  case: "smart" | "sensitive" | "insensitive";
+  matches: SearchMatch[];
+  searchedFiles: number;
+  skipped: WalkCounters;
+  truncated: boolean;
+  nextCursor: string | null;
+  engine: "rg";
+} | undefined> {
+  const rg = await findExecutable("rg", process.env, context.workspaceRoot);
+  if (rg.status !== "available") return undefined;
+  const args = rgArgs(root.relativePath, context, options);
+  const result = await runFixedCommand({
+    executable: "rg",
+    args,
+    cwd: context.workspaceRoot,
+    timeoutMs: 30_000,
+  });
+  if (result.status === "unavailable" || result.status === "timeout") return undefined;
+  if (result.status === "failed" && result.exitCode !== 1) return undefined;
+  const parsed = await parseRgJson(result.stdout, context, options);
+  const protectedSkipped = await countProtectedChildren(root.absolutePath, root.relativePath, context);
+  return {
+    status: "ok",
+    query: options.query,
+    mode: options.mode,
+    case: options.caseMode,
+    matches: parsed.matches,
+    searchedFiles: parsed.searchedFiles,
+    skipped: { protected: protectedSkipped, binary: 0, tooLarge: 0, missing: 0 },
+    truncated: parsed.truncated,
+    nextCursor: parsed.truncated
+      ? encodeCursor("fs.search", options.cursorOffset + parsed.matches.length)
+      : null,
+    engine: "rg",
+  };
+}
+
+function rgArgs(rootPath: string, context: InspectWorkspaceContext, options: SearchOptions): string[] {
+  const args = ["--json", "--line-number", "--column"];
+  if (options.mode === "fixed") args.push("--fixed-strings");
+  if (options.caseMode === "insensitive") args.push("--ignore-case");
+  if (options.caseMode === "smart") args.push("--smart-case");
+  if (options.includeHidden) args.push("--hidden");
+  if (options.includeIgnored) args.push("--no-ignore");
+  if (!options.respectGitignore) args.push("--no-ignore");
+  for (const glob of options.include) args.push("--glob", glob);
+  for (const glob of options.exclude) args.push("--glob", `!${glob}`);
+  for (const glob of context.workspace.protected) args.push("--glob", `!${glob}`);
+  args.push("--", options.query, rootPath === "." ? "." : rootPath);
+  return args;
+}
+
+async function parseRgJson(
+  stdout: string,
+  context: InspectWorkspaceContext,
+  options: SearchOptions,
+): Promise<{ matches: SearchMatch[]; searchedFiles: number; truncated: boolean }> {
+  const rawMatches: Array<{
+    path: string;
+    line: number;
+    column: number;
+    text: string;
+    submatches: Array<{ start: number; end: number }>;
+  }> = [];
+  const searched = new Set<string>();
+  let seen = 0;
+  let truncated = false;
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line) continue;
+    let item: unknown;
+    try {
+      item = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRgMatch(item)) continue;
+    const relativePath = stripLeadingDotSlash(item.data.path.text.replaceAll("\\", "/"));
+    searched.add(relativePath);
+    if (isProtectedPath(relativePath, context.workspace.protected)) continue;
+    seen += 1;
+    if (seen <= options.cursorOffset) continue;
+    rawMatches.push({
+      path: relativePath,
+      line: item.data.line_number,
+      column: item.data.submatches[0]?.start + 1 || 1,
+      text: item.data.lines.text.replace(/\r?\n$/, "").slice(0, options.maxColumns),
+      submatches: item.data.submatches.map((match) => ({ start: match.start, end: match.end })),
+    });
+    if (rawMatches.length >= options.maxResults) {
+      truncated = true;
+      break;
+    }
+  }
+  const matches = await hydrateMatchContext(rawMatches, context, options);
+  return { matches, searchedFiles: searched.size, truncated };
+}
+
+function isRgMatch(value: unknown): value is {
+  type: "match";
+  data: {
+    path: { text: string };
+    lines: { text: string };
+    line_number: number;
+    submatches: Array<{ start: number; end: number }>;
+  };
+} {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const data = objectRecord(record.data);
+  const pathData = objectRecord(data?.path);
+  const linesData = objectRecord(data?.lines);
+  return (
+    record.type === "match" &&
+    typeof pathData?.text === "string" &&
+    typeof linesData?.text === "string" &&
+    typeof data?.line_number === "number" &&
+    Array.isArray(data?.submatches)
+  );
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+async function hydrateMatchContext(
+  rawMatches: Array<{
+    path: string;
+    line: number;
+    column: number;
+    text: string;
+    submatches: Array<{ start: number; end: number }>;
+  }>,
+  context: InspectWorkspaceContext,
+  options: SearchOptions,
+): Promise<SearchMatch[]> {
+  const cache = new Map<string, string[]>();
+  const result: SearchMatch[] = [];
+  for (const match of rawMatches) {
+    let lines = cache.get(match.path);
+    if (!lines) {
+      const resolved = normalizeWorkspacePath(match.path, context, { allowRoot: false });
+      const text = await readFile(resolved.absolutePath, "utf8");
+      lines = text.split(/\r?\n/);
+      cache.set(match.path, lines);
+    }
+    const index = match.line - 1;
+    result.push({
+      ...match,
+      before: lines.slice(Math.max(0, index - options.contextLines), index).map((line) => line.slice(0, options.maxColumns)),
+      after: lines.slice(index + 1, index + 1 + options.contextLines).map((line) => line.slice(0, options.maxColumns)),
+    });
+  }
+  return result;
+}
+
+async function countProtectedChildren(
+  absolutePath: string,
+  relativePath: string,
+  context: InspectWorkspaceContext,
+): Promise<number> {
+  const stat = await safeLstat(absolutePath);
+  if (!stat?.isDirectory()) return 0;
+  let count = 0;
+  const children = await readdir(absolutePath, { withFileTypes: true });
+  for (const child of children) {
+    const childRelative = relativePath === "." ? child.name : `${relativePath}/${child.name}`;
+    if (isProtectedPath(childRelative, context.workspace.protected)) {
+      count += 1;
+      continue;
+    }
+    if (child.isDirectory() && !child.isSymbolicLink()) {
+      count += await countProtectedChildren(path.join(absolutePath, child.name), childRelative, context);
+    }
+  }
+  return count;
+}
+
+function stripLeadingDotSlash(value: string): string {
+  return value.startsWith("./") ? value.slice(2) : value;
 }
 
 function globList(value: unknown, fallback: string[] = []): string[] {
@@ -201,6 +468,7 @@ export async function fileTree(
   stats: { filesSeen: number; dirsSeen: number; protectedSkipped: number };
   omitted: Array<{ path: string; reason: string }>;
   truncated: boolean;
+  nextCursor: string | null;
 }> {
   const limits = context.limits ?? fallbackLimits;
   const root = normalizeWorkspacePath(args.path, context);
@@ -210,6 +478,7 @@ export async function fileTree(
   const respectGitignore = args.respectGitignore !== false;
   const includeHidden = args.includeHidden === true;
   const gitignore = respectGitignore ? await readGitignore(context.workspaceRoot) : [];
+  const cursorOffset = decodeCursor(args.cursor, "fs.tree");
   const depth = clampInteger(args.depth, 3, 0, limits.tree.maxDepth);
   const maxEntries = clampInteger(
     args.maxEntries,
@@ -222,6 +491,7 @@ export async function fileTree(
   const stats = { filesSeen: 0, dirsSeen: 0, protectedSkipped: 0 };
   const omitted: Array<{ path: string; reason: string }> = [];
   let truncated = false;
+  let seenEntries = 0;
 
   const visit = async (absolutePath: string, relativePath: string, currentDepth: number): Promise<void> => {
     if (truncated) return;
@@ -244,14 +514,17 @@ export async function fileTree(
       (mode !== "packages" || isPackageManifest(relativePath)) &&
       (include.length === 0 || include.some((glob) => minimatch(relativePath, glob, { dot: true })));
     if (shouldEmit) {
-      entries.push({
-        path: relativePath,
-        type,
-        ...(stat.isFile() ? { size: stat.size } : {}),
-      });
-      if (entries.length >= maxEntries) {
-        truncated = true;
-        return;
+      seenEntries += 1;
+      if (seenEntries > cursorOffset) {
+        entries.push({
+          path: relativePath,
+          type,
+          ...(stat.isFile() ? { size: stat.size } : {}),
+        });
+        if (entries.length >= maxEntries) {
+          truncated = true;
+          return;
+        }
       }
     }
     if (!stat.isDirectory() || stat.isSymbolicLink() || currentDepth >= depth) return;
@@ -286,7 +559,16 @@ export async function fileTree(
   };
 
   await visit(root.absolutePath, root.relativePath, 0);
-  return { status: "ok", root: root.relativePath, entries, skipped, stats, omitted, truncated };
+  return {
+    status: "ok",
+    root: root.relativePath,
+    entries,
+    skipped,
+    stats,
+    omitted,
+    truncated,
+    nextCursor: truncated ? encodeCursor("fs.tree", cursorOffset + entries.length) : null,
+  };
 }
 
 async function readGitignore(workspaceRoot: string): Promise<string[]> {
@@ -615,6 +897,26 @@ async function statOnePath(
 
 function sha256Buffer(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
+}
+
+function encodeCursor(tool: CursorPayload["tool"], offset: number): string {
+  return Buffer.from(JSON.stringify({ tool, offset } satisfies CursorPayload), "utf8").toString("base64url");
+}
+
+function decodeCursor(value: unknown, tool: CursorPayload["tool"]): number {
+  if (value === undefined || value === null || value === "") return 0;
+  if (typeof value !== "string") throw new BadRequestError("cursor must be string");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+  } catch {
+    throw new BadRequestError("cursor is invalid");
+  }
+  const record = objectRecord(parsed);
+  if (record?.tool !== tool || !Number.isInteger(record.offset) || (record.offset as number) < 0) {
+    throw new BadRequestError("cursor is invalid");
+  }
+  return record.offset as number;
 }
 
 async function walkFiles(
