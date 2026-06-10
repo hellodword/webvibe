@@ -73,6 +73,9 @@ const defaultAuditOptions: AuditOptions = {
   redact: true,
 };
 
+const MAX_INLINE_AUDIT_PAYLOAD_BYTES = 64 * 1024;
+const AUDIT_PAYLOAD_EDGE_BYTES = 2048;
+
 export class AuditLog {
   private readonly options: AuditOptions;
 
@@ -92,9 +95,10 @@ export class AuditLog {
     await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
     await this.rotateIfNeeded();
     const filtered = this.filterRecord(record);
-    const output = this.options.redact
+    const redacted = this.options.redact
       ? redactJson(filtered, { redactManualTokens: true })
       : filtered;
+    const output = summarizeLargeAuditPayloads(redacted as AuditRecord);
     await appendFile(this.filePath, `${JSON.stringify(output)}\n`, { mode: 0o600 });
   }
 
@@ -131,6 +135,39 @@ export class AuditLog {
     }
     return filtered;
   }
+}
+
+function summarizeLargeAuditPayloads(record: AuditRecord): AuditRecord {
+  const output: AuditRecord = { ...record };
+  for (const field of ["input", "rawOutput", "clientOutput"] as const) {
+    if (field in output) {
+      (output as any)[field] = summarizeLargePayload((output as any)[field]);
+    }
+  }
+  return output;
+}
+
+function summarizeLargePayload(value: unknown): unknown {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? null);
+  const bytes = Buffer.byteLength(text);
+  if (bytes <= MAX_INLINE_AUDIT_PAYLOAD_BYTES) return value;
+  return {
+    summarized: true,
+    truncated: true,
+    bytes,
+    sha256: sha256(text),
+    head: textEdge(text, "head"),
+    tail: textEdge(text, "tail"),
+  };
+}
+
+function textEdge(text: string, edge: "head" | "tail"): string {
+  const buffer = Buffer.from(text, "utf8");
+  const slice =
+    edge === "head"
+      ? buffer.subarray(0, AUDIT_PAYLOAD_EDGE_BYTES)
+      : buffer.subarray(Math.max(0, buffer.byteLength - AUDIT_PAYLOAD_EDGE_BYTES));
+  return slice.toString("utf8");
 }
 
 export function buildAuditRecord(input: {
