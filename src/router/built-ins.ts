@@ -15,6 +15,7 @@ import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/
 import { workspaceScan } from "../workspace/inspect/scan.js";
 import { workspaceSymbols } from "../workspace/inspect/symbols.js";
 import {
+  gitChanged,
   gitCommitPaths,
   gitDiffStaged,
   gitDiffUnstaged,
@@ -122,7 +123,7 @@ export async function callBuiltIn(
     });
   }
   if (name === "git.changed") {
-    return gitStatus(args, {
+    return gitChanged(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
     });

@@ -10,10 +10,40 @@ type GitContext = {
 
 export type GitToolResult = FixedCommandResult & {
   command: string;
+  [key: string]: unknown;
 };
 
 export async function gitStatus(_args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
-  return runGit(["status", "--short", "--branch"], context, "git status --short --branch");
+  const status = await runGit(["status", "--short", "--branch"], context, "git status --short --branch");
+  if (status.status !== "ok") return status;
+  const branch = parseBranchLine(status.stdout.split(/\r?\n/)[0] ?? "");
+  const head = await runGit(["rev-parse", "--short", "HEAD"], context, "git rev-parse --short HEAD");
+  return {
+    ...status,
+    branch: branch.branch,
+    head: head.status === "ok" ? head.stdout.trim() : null,
+    upstream: branch.upstream,
+    aheadBehind: { ahead: branch.ahead, behind: branch.behind },
+    clean: status.stdout
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0 && !line.startsWith("##")).length === 0,
+  };
+}
+
+export async function gitChanged(_args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
+  const result = await runGit(["status", "--porcelain=v1", "--branch"], context, "git status --porcelain");
+  if (result.status !== "ok") return result;
+  const changes = result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0 && !line.startsWith("##"))
+    .map(parsePorcelainLine);
+  return {
+    ...result,
+    staged: changes.filter((change) => change.index !== " " && change.index !== "?"),
+    unstaged: changes.filter((change) => change.worktree !== " " && change.index !== "?"),
+    untracked: changes.filter((change) => change.index === "?" && change.worktree === "?"),
+    changes,
+  };
 }
 
 export async function gitDiffUnstaged(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
@@ -136,3 +166,45 @@ function unavailable(command: string, reason: string, base: FixedCommandResult):
   };
 }
 
+function parseBranchLine(line: string): {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+} {
+  if (!line.startsWith("## ")) return { branch: null, upstream: null, ahead: 0, behind: 0 };
+  const text = line.slice(3);
+  const [left, meta = ""] = text.split(" [");
+  const [branch, upstream = null] = left.split("...");
+  return {
+    branch: branch || null,
+    upstream,
+    ahead: numberFromMeta(meta, "ahead"),
+    behind: numberFromMeta(meta, "behind"),
+  };
+}
+
+function numberFromMeta(meta: string, key: "ahead" | "behind"): number {
+  const match = new RegExp(`${key} (\\d+)`).exec(meta);
+  return match ? Number(match[1]) : 0;
+}
+
+function parsePorcelainLine(line: string): {
+  path: string;
+  index: string;
+  worktree: string;
+  nameStatus: string;
+  originalPath?: string;
+} {
+  const index = line[0] ?? " ";
+  const worktree = line[1] ?? " ";
+  const rawPath = line.slice(3);
+  const rename = rawPath.includes(" -> ") ? rawPath.split(" -> ") : undefined;
+  return {
+    path: rename ? rename[1] : rawPath,
+    ...(rename ? { originalPath: rename[0] } : {}),
+    index,
+    worktree,
+    nameStatus: `${index}${worktree}`.trim() || "clean",
+  };
+}

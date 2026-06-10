@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { WorkspacePolicy } from "../../src/policy/policy.js";
 import { findExecutable } from "../../src/workspace/inspect/command.js";
-import { gitCommitPaths, gitStatus } from "../../src/workspace/inspect/git.js";
+import { gitChanged, gitCommitPaths, gitStatus } from "../../src/workspace/inspect/git.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -40,8 +40,19 @@ describe("Git built-ins", () => {
     const committedFiles = await gitRun(root, ["show", "--name-only", "--format=", "HEAD"]);
     expect(committedFiles.stdout.trim()).toBe("a.txt");
     expect(await readFile(path.join(root, "b.txt"), "utf8")).toBe("b2\n");
+    await writeFile(path.join(root, "c.txt"), "c1\n");
     const status = await gitStatus({}, context);
     expect(status.stdout).toContain("b.txt");
+    expect(status).toMatchObject({
+      branch: expect.any(String),
+      head: expect.any(String),
+      clean: false,
+    });
+    const changed = await gitChanged({}, context);
+    expect(changed).toMatchObject({
+      staged: [expect.objectContaining({ path: "b.txt", index: "M" })],
+      untracked: [expect.objectContaining({ path: "c.txt", nameStatus: "??" })],
+    });
 
     await expect(gitCommitPaths({ paths: ["a.txt"], message: "empty" }, context)).resolves.toMatchObject({
       status: "failed",
@@ -61,4 +72,3 @@ function workspace(root: string): WorkspacePolicy {
     protected: [".env", ".git/**"],
   };
 }
-
