@@ -124,6 +124,9 @@ tools:
       properties:
         taskId:
           type: string
+        mode:
+          type: string
+          enum: [foreground, background]
       required: [taskId]
       additionalProperties: false
   - name: task.result

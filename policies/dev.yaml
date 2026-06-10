@@ -726,6 +726,9 @@ tools:
           type: string
           minLength: 1
           maxLength: 500
+        mode:
+          type: string
+          enum: [foreground, background]
       required: [taskId]
       additionalProperties: false
     outputSchema:
@@ -733,7 +736,7 @@ tools:
       properties:
         status:
           type: string
-          enum: [ok, failed, timeout, unavailable]
+          enum: [running, ok, failed, timeout, unavailable]
         taskId:
           type: string
         runId:

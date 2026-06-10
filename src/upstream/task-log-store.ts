@@ -122,6 +122,10 @@ export class TaskOutputCapture {
     return this.bytes > 0;
   }
 
+  get logPath(): string {
+    return this.options.logPath;
+  }
+
   write(chunk: Buffer): void {
     const data = Buffer.from(chunk);
     this.hash.update(data);

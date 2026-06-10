@@ -88,6 +88,10 @@ describe("local task runner upstream", () => {
         }),
       }),
     ]);
+    const descriptor = (await runner.listTools())[0] as any;
+    expect(descriptor.inputSchema.properties).toMatchObject({
+      mode: { type: "string", enum: ["foreground", "background"] },
+    });
     await expect(runner.callTool("run_task", { taskId: "unknown" })).rejects.toThrow("Unknown");
     const ok = (await runner.callTool("run_task", { taskId: "ok" })) as any;
     expect(ok).toMatchObject({
@@ -190,5 +194,42 @@ describe("local task runner upstream", () => {
       logPath: expect.stringContaining(".webvibe/task-logs/"),
     });
     expect((await readFile(path.join(root, result.stdout.logPath), "utf8")).length).toBe(10000);
+  });
+
+  it("returns running records for background tasks and updates result logs", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-task-background-"));
+    const policy: UpstreamPolicy = {
+      transport: "local-task-runner",
+      cwd: root,
+      tasks: {
+        background: {
+          executable: process.execPath,
+          args: ["-e", "setTimeout(() => console.log('done'), 300)"],
+          defaultTimeoutSeconds: 2,
+        },
+      },
+    };
+    const runner = new LocalTaskRunnerClient("tasks", policy, root, { root, protected: [] });
+    await runner.initialize();
+
+    const running = (await runner.callTool("run_task", {
+      taskId: "background",
+      mode: "background",
+    })) as any;
+
+    expect(running).toMatchObject({
+      status: "running",
+      runId: expect.stringMatching(/^tr_/),
+      stdout: expect.objectContaining({ logPath: expect.stringContaining(".webvibe/task-logs/") }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const record = JSON.parse(
+      await readFile(path.join(root, ".webvibe/task-logs", `${running.runId}.json`), "utf8"),
+    );
+    expect(record).toMatchObject({
+      status: "ok",
+      runId: running.runId,
+      stdout: expect.objectContaining({ head: "done" }),
+    });
   });
 });

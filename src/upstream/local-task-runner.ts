@@ -17,7 +17,7 @@ import {
 } from "./task-log-store.js";
 
 type TaskResult = {
-  status: "ok" | "failed" | "timeout" | "unavailable";
+  status: "running" | "ok" | "failed" | "timeout" | "unavailable";
   runId: string;
   taskId: string;
   exitCode: number | null;
@@ -91,6 +91,10 @@ export class LocalTaskRunnerClient implements UpstreamClient {
               maxLength: 500,
               description: "Workspace-relative task working directory.",
             },
+            mode: {
+              type: "string",
+              enum: ["foreground", "background"],
+            },
           },
           required: ["taskId"],
           additionalProperties: false,
@@ -98,7 +102,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         outputSchema: {
           type: "object",
           properties: {
-            status: { type: "string", enum: ["ok", "failed", "timeout", "unavailable"] },
+            status: { type: "string", enum: ["running", "ok", "failed", "timeout", "unavailable"] },
             runId: { type: "string" },
             taskId: { type: "string" },
             exitCode: { type: ["integer", "null"] },
@@ -168,6 +172,7 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     const timeoutSeconds = this.effectiveTimeoutSeconds(taskId, args.timeoutSeconds);
     const cwd = await this.resolveTaskCwd(task, args.cwd);
     const extraArgs = this.extraArgsForTask(task, args.extraArgs);
+    const background = args.mode === "background";
     const store = new TaskLogStore(this.workspaceRoot, this.outputLimits);
     const runId = store.newRunId();
     const stdoutCapture = await store.createCapture(runId, "stdout");
@@ -188,9 +193,22 @@ export class LocalTaskRunnerClient implements UpstreamClient {
     );
     if (unavailable) return unavailable;
 
+    const running = background
+      ? runningResult({
+          runId,
+          taskId,
+          timeoutSeconds,
+          cwd: toWorkspaceRelative(this.workspaceRoot, cwd) || ".",
+          startedAt: startedAtIso,
+          stdoutLogPath: stdoutCapture.logPath,
+          stderrLogPath: stderrCapture.logPath,
+        })
+      : undefined;
+    if (running) await store.writeRecord(running);
+
     const env = { ...process.env, ...this.policy.env, ...task.env };
 
-    return new Promise<TaskResult>((resolve) => {
+    const completion = new Promise<TaskResult>((resolve) => {
       const child = spawn(task.executable, [...(task.args ?? []), ...extraArgs], {
         cwd,
         env,
@@ -274,6 +292,12 @@ export class LocalTaskRunnerClient implements UpstreamClient {
         });
       });
     });
+    if (!background) return completion;
+
+    void completion.catch((error) => {
+      this.lastError = error instanceof Error ? error.message : String(error);
+    });
+    return running!;
   }
 
   private async checkAvailability(
@@ -456,6 +480,40 @@ function recordFromResult(
     stderr: result.stderr,
     ...(result.unavailableReason ? { unavailableReason: result.unavailableReason } : {}),
     ...(result.manualRequired ? { manualRequired: result.manualRequired } : {}),
+  };
+}
+
+function runningResult(input: {
+  runId: string;
+  taskId: string;
+  timeoutSeconds: number;
+  cwd: string;
+  startedAt: string;
+  stdoutLogPath: string;
+  stderrLogPath: string;
+}): TaskRunRecord {
+  return {
+    runId: input.runId,
+    taskId: input.taskId,
+    status: "running",
+    exitCode: null,
+    durationMs: 0,
+    timeoutSeconds: input.timeoutSeconds,
+    cwd: input.cwd,
+    startedAt: input.startedAt,
+    stdout: emptySummary(input.stdoutLogPath),
+    stderr: emptySummary(input.stderrLogPath),
+  };
+}
+
+function emptySummary(logPath: string): TaskOutputSummary {
+  return {
+    head: "",
+    tail: "",
+    truncated: false,
+    sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    bytes: 0,
+    logPath,
   };
 }
 

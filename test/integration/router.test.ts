@@ -78,6 +78,38 @@ describe("tool router", () => {
           stdout: expect.objectContaining({ head: "task-ok" }),
         },
       });
+      const background = (await setup.router.call(
+        "task.run",
+        { taskId: "slow_task", mode: "background" },
+        { clientId: "c1" },
+      )) as any;
+      expect(background).toMatchObject({
+        ok: true,
+        data: {
+          status: "running",
+          runId: expect.stringMatching(/^tr_/),
+        },
+      });
+      await expect(
+        setup.router.call("task.result", { runId: background.data.runId }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        data: {
+          status: "running",
+          runId: background.data.runId,
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await expect(
+        setup.router.call("task.result", { runId: background.data.runId }, { clientId: "c1" }),
+      ).resolves.toMatchObject({
+        ok: true,
+        data: {
+          status: "ok",
+          runId: background.data.runId,
+          stdout: expect.objectContaining({ head: "slow-task-ok" }),
+        },
+      });
       await expect(setup.router.call("read.files", {}, { clientId: "c1" })).rejects.toThrow(
         "UNKNOWN_TOOL_SURFACE",
       );
