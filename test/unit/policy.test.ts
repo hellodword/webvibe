@@ -288,6 +288,52 @@ describe("default policies", () => {
     expect(editItem.required).toEqual(["oldText", "newText"]);
   });
 
+  it("normalizes core built-in descriptors with precise output schemas and short invocation metadata", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-descriptors-"));
+    const dev = await loadPolicy("policies/dev.yaml", {
+      workspaceRoot: root,
+      stateDir: path.join(root, "state"),
+    });
+    const readOnly = await loadPolicy("policies/read-only.yaml", {
+      workspaceRoot: root,
+      stateDir: path.join(root, "state"),
+    });
+    const coreNames = new Set([
+      "workspace.context",
+      "workspace.scan",
+      "fs.tree",
+      "fs.search",
+      "fs.read",
+      "file.change_preview",
+      "file.change_apply",
+      "task.list",
+      "task.explain",
+      "task.run",
+      "manual.prepare",
+      "manual.gate",
+      "manual.status",
+      "manual.resume",
+      "git.commit_preview",
+      "git.commit",
+    ]);
+
+    for (const tool of [...readOnly.tools, ...dev.tools]) {
+      const descriptor = normalizeDescriptor(tool);
+      expect(descriptor.description).not.toMatch(/returns unavailable until|stub/i);
+      if (tool.type === "builtIn") {
+        expect(descriptor._meta?.["openai/toolInvocation/invoking"]).toEqual(expect.any(String));
+        expect(String(descriptor._meta?.["openai/toolInvocation/invoking"]).length).toBeLessThanOrEqual(64);
+        expect(descriptor._meta?.["openai/toolInvocation/invoked"]).toEqual(expect.any(String));
+        expect(String(descriptor._meta?.["openai/toolInvocation/invoked"]).length).toBeLessThanOrEqual(64);
+      }
+      if (coreNames.has(tool.name)) {
+        expect(descriptor.outputSchema).toBeTruthy();
+        expect((descriptor.outputSchema as any).properties).toBeTruthy();
+        expect(isGenericObjectOutputSchema(descriptor.outputSchema)).toBe(false);
+      }
+    }
+  });
+
   it("merges profile defaults with explicit nested limit overrides", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-v2-"));
     const policyPath = path.join(root, "policy.yaml");
@@ -398,3 +444,14 @@ tools:
     expect(schema.$defs.task.properties.allowExtraArgs.deprecated).toBe(true);
   });
 });
+
+function isGenericObjectOutputSchema(schema: unknown): boolean {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    !Array.isArray(schema) &&
+    (schema as any).type === "object" &&
+    (schema as any).additionalProperties === true &&
+    !("properties" in (schema as any))
+  );
+}

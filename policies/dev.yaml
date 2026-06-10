@@ -347,7 +347,7 @@ tools:
 
   - name: workspace.symbols
     type: builtIn
-    description: Query workspace symbol map. Returns unavailable until symbol support is enabled.
+    description: Query workspace symbol definitions and imports.
     inputSchema:
       type: object
       properties:
@@ -1156,7 +1156,7 @@ tools:
 
   - name: git.blame
     type: builtIn
-    description: Show line blame. Returns unavailable until blame support is enabled.
+    description: Show Git line blame for a workspace file.
     inputSchema:
       type: object
       properties:
@@ -1175,7 +1175,7 @@ tools:
 
   - name: git.commit_preview
     type: builtIn
-    description: Preview an explicit-path commit. Returns unavailable until commit preview support is enabled.
+    description: Preview an explicit-path Git commit without writing it.
     inputSchema:
       type: object
       properties:
