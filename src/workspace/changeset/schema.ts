@@ -76,6 +76,14 @@ export const changeSchema = z.discriminatedUnion("op", [
     .strict(),
   z
     .object({
+      op: z.literal("unified_diff"),
+      path: z.string().min(1),
+      expectedSha256: z.string().regex(sha256Pattern),
+      diff: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       op: z.literal("delete"),
       path: z.string().min(1),
       expectedSha256: z.string().regex(sha256Pattern),

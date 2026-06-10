@@ -232,6 +232,34 @@ describe("workspace changesets", () => {
     expect(await readFile(path.join(root, "nested/new.txt"), "utf8")).toBe("move me\n");
   });
 
+  it("applies unified diff hunks through preview hash", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-unified-diff-"));
+    const context = testContext(root);
+    await writeFile(path.join(root, "a.txt"), "one\ntwo\nthree\n");
+    const changes = [
+      {
+        op: "unified_diff" as const,
+        path: "a.txt",
+        expectedSha256: sha256("one\ntwo\nthree\n"),
+        diff: [
+          "--- a/a.txt",
+          "+++ b/a.txt",
+          "@@ -1,3 +1,3 @@",
+          " one",
+          "-two",
+          "+TWO",
+          " three",
+        ].join("\n"),
+      },
+    ];
+    const preview = await previewChangeset({ changes }, context);
+    expect(preview.valid).toBe(true);
+    expect(preview.diff).toContain("TWO");
+
+    await applyChangeset({ changes, previewHash: preview.previewHash }, context);
+    expect(await readFile(path.join(root, "a.txt"), "utf8")).toBe("one\nTWO\nthree\n");
+  });
+
   it("rejects ambiguous plans before writing", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-plan-guards-"));
     const context = testContext(root);

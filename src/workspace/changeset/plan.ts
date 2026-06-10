@@ -203,6 +203,21 @@ async function planAction(
     };
   }
 
+  if (change.op === "unified_diff") {
+    const afterContent = applyUnifiedDiff(before.content, change.diff, resolved.relativePath);
+    assertContent(afterContent, resolved.relativePath, limits);
+    const afterSha256 = sha256Text(afterContent);
+    return {
+      op: change.op,
+      path: resolved.relativePath,
+      absolutePath: resolved.absolutePath,
+      before,
+      afterContent,
+      afterSha256,
+      diff: unifiedDiff(resolved.relativePath, before.content, afterContent),
+    };
+  }
+
   const afterContent =
     change.op === "replace"
       ? change.content
@@ -236,12 +251,69 @@ function summarize(changes: ParsedChange[]): ChangesetSummary {
   return {
     total: changes.length,
     creates: changes.filter((change) => change.op === "create" || change.op === "write").length,
-    edits: changes.filter((change) => change.op === "edit" || change.op === "text_edit" || change.op === "json_patch").length,
+    edits: changes.filter((change) => change.op === "edit" || change.op === "text_edit" || change.op === "json_patch" || change.op === "unified_diff").length,
     replaces: changes.filter((change) => change.op === "replace").length,
     deletes: changes.filter((change) => change.op === "delete").length,
     renames: changes.filter((change) => change.op === "rename").length,
     mkdirs: changes.filter((change) => change.op === "mkdir").length,
   };
+}
+
+function applyUnifiedDiff(content: string, diff: string, relativePath: string): string {
+  const sourceLines = splitPatchLines(content);
+  const patchLines = diff.split(/\r?\n/);
+  const output: string[] = [];
+  let sourceIndex = 0;
+  let patchIndex = 0;
+  while (patchIndex < patchLines.length) {
+    const line = patchLines[patchIndex];
+    if (line.startsWith("--- ") || line.startsWith("+++ ") || line === "") {
+      patchIndex += 1;
+      continue;
+    }
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (!hunk) throw new BadRequestError(`Invalid unified diff hunk: ${relativePath}`);
+    const hunkStart = Number(hunk[1]) - 1;
+    while (sourceIndex < hunkStart) output.push(sourceLines[sourceIndex++]);
+    patchIndex += 1;
+    while (patchIndex < patchLines.length && !patchLines[patchIndex].startsWith("@@ ")) {
+      const patchLine = patchLines[patchIndex];
+      if (patchLine === "\\ No newline at end of file") {
+        patchIndex += 1;
+        continue;
+      }
+      const marker = patchLine[0];
+      const text = patchLine.slice(1);
+      if (marker === " ") {
+        if (sourceLines[sourceIndex] !== text) {
+          throw new BadRequestError(`Unified diff context mismatch: ${relativePath}`);
+        }
+        output.push(sourceLines[sourceIndex++]);
+      } else if (marker === "-") {
+        if (sourceLines[sourceIndex] !== text) {
+          throw new BadRequestError(`Unified diff removal mismatch: ${relativePath}`);
+        }
+        sourceIndex += 1;
+      } else if (marker === "+") {
+        output.push(text);
+      } else {
+        throw new BadRequestError(`Invalid unified diff line: ${relativePath}`);
+      }
+      patchIndex += 1;
+    }
+  }
+  while (sourceIndex < sourceLines.length) output.push(sourceLines[sourceIndex++]);
+  return joinPatchLines(output, content.endsWith("\n"));
+}
+
+function splitPatchLines(content: string): string[] {
+  const lines = content.split(/\n/);
+  if (content.endsWith("\n")) lines.pop();
+  return lines.map((line) => line.replace(/\r$/, ""));
+}
+
+function joinPatchLines(lines: string[], trailingNewline: boolean): string {
+  return `${lines.join("\n")}${trailingNewline ? "\n" : ""}`;
 }
 
 function applyJsonPatch(

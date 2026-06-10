@@ -501,7 +501,7 @@ tools:
             properties:
               op:
                 type: string
-                enum: [write, replace, text_edit, json_patch, rename, create, edit, delete, mkdir]
+                enum: [write, replace, text_edit, json_patch, unified_diff, rename, create, edit, delete, mkdir]
               path:
                 type: string
               from:
@@ -540,6 +540,8 @@ tools:
                     value: true
                   required: [op, path]
                   additionalProperties: false
+              diff:
+                type: string
             required: [op, path]
             additionalProperties: false
       required: [changes]
