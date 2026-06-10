@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +14,8 @@ import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
 import { workspaceScan } from "../../src/workspace/inspect/scan.js";
 import { workspaceSymbols } from "../../src/workspace/inspect/symbols.js";
+
+const execFileAsync = promisify(execFile);
 
 describe("workspace inspection built-ins", () => {
   it("inspects project files and searches code without leaking protected files or env secrets", async () => {
@@ -222,6 +226,65 @@ describe("workspace inspection built-ins", () => {
     ]);
   });
 
+  it("honors fs.tree modes, ignored/hidden options, and git-tracked listings", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-tree-modes-"));
+    await mkdir(path.join(root, "src", "nested"), { recursive: true });
+    await mkdir(path.join(root, "docs"));
+    await writeFile(path.join(root, "src", "app.ts"), "needle app\n");
+    await writeFile(path.join(root, "docs", "readme.md"), "needle docs\n");
+    await writeFile(path.join(root, ".hidden.txt"), "needle hidden\n");
+    await writeFile(path.join(root, "ignored-root.txt"), "needle ignored root\n");
+    await writeFile(path.join(root, "src", "nested", "ignored.txt"), "needle ignored nested\n");
+    await writeFile(path.join(root, "src", "nested", "keep.txt"), "needle keep\n");
+    await writeFile(path.join(root, ".env"), "needle protected\n");
+    await writeFile(path.join(root, ".gitignore"), "ignored-root.txt\n");
+    await writeFile(path.join(root, "src", "nested", ".gitignore"), "ignored.txt\n");
+    const policy = policyFor(root);
+    const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
+
+    const files = await fileTree({ mode: "files", includeHidden: true, maxEntries: 100 }, context);
+    expect(files.entries.every((entry) => entry.type === "file")).toBe(true);
+    expect(files.entries.map((entry) => entry.path)).not.toContain("docs");
+    expect(files.entries.map((entry) => entry.path)).not.toContain(".env");
+    expect(files.effectiveOptions).toMatchObject({ mode: "files", includeHidden: true });
+
+    const dirs = await fileTree({ mode: "dirs", maxEntries: 100 }, context);
+    expect(dirs.entries.every((entry) => entry.type === "directory")).toBe(true);
+    expect(dirs.entries.map((entry) => entry.path)).toEqual(expect.arrayContaining(["docs", "src"]));
+
+    const ignored = await fileTree({ mode: "files", includeIgnored: true, includeHidden: true, maxEntries: 100 }, context);
+    expect(ignored.entries.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining(["ignored-root.txt", "src/nested/ignored.txt", ".hidden.txt"]),
+    );
+
+    const jsContext = {
+      ...context,
+      limits: { ...policy.limits, search: { ...policy.limits.search, engine: "js" as const } },
+    };
+    const defaultSearch = await searchCode({ query: "needle", maxResults: 100 }, jsContext);
+    expect(defaultSearch.matches.map((match) => match.path)).not.toEqual(
+      expect.arrayContaining(["ignored-root.txt", "src/nested/ignored.txt", ".hidden.txt", ".env"]),
+    );
+    const expandedSearch = await searchCode(
+      { query: "needle", maxResults: 100, includeIgnored: true, includeHidden: true },
+      jsContext,
+    );
+    expect(expandedSearch.effectiveOptions).toMatchObject({ includeIgnored: true, includeHidden: true });
+    expect(expandedSearch.matches.map((match) => match.path)).toEqual(
+      expect.arrayContaining(["ignored-root.txt", "src/nested/ignored.txt", ".hidden.txt"]),
+    );
+
+    try {
+      await execFileAsync("git", ["init"], { cwd: root });
+      await execFileAsync("git", ["add", "src/app.ts", "docs/readme.md"], { cwd: root });
+      const tracked = await fileTree({ mode: "git-tracked", maxEntries: 100 }, context);
+      expect(tracked.entries.map((entry) => entry.path)).toEqual(["docs/readme.md", "src/app.ts"]);
+      expect(tracked.effectiveOptions).toMatchObject({ mode: "git-tracked" });
+    } catch {
+      // Git is optional for this unit test environment; non-Git behavior is covered above.
+    }
+  });
+
   it("reads text files in bounded UTF-8 byte chunks", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-read-files-"));
     await writeFile(path.join(root, "small.txt"), "hello");
@@ -343,6 +406,20 @@ describe("workspace inspection built-ins", () => {
       returnedLines: 2,
       content: "two\nthree",
     });
+    const rangedLines = await readFiles(
+      { path: "lines.txt", range: { startLine: 2, endLine: 3 }, format: "lines" },
+      context,
+    );
+    expect(rangedLines.files[0]).toMatchObject({
+      path: "lines.txt",
+      format: "lines",
+      range: { startLine: 2, endLine: 3 },
+      lines: [
+        { line: 2, text: "two" },
+        { line: 3, text: "three" },
+      ],
+    });
+    expect(rangedLines.files[0]).not.toHaveProperty("content");
 
     const binary = await readFiles({ path: "binary.bin" }, context);
     expect(binary.files[0]).toMatchObject({

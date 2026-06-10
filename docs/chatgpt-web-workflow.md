@@ -30,6 +30,9 @@ Recommended order:
 includes `nextOffsetBytes`; continue that file by passing the value as
 `byteOffset`. If the ChatGPT Web host still truncates the result, retry the same
 offset with a smaller `maxBytes`. This is output sizing for a relay result.
+Use `format: "lines"` for line-numbered snippets. `fs.tree` and `fs.search`
+return `effectiveOptions`; adjust include/hidden/ignored options deliberately
+instead of repeating the same query.
 Host-side truncation examples are tracked in
 [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 

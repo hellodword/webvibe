@@ -144,6 +144,8 @@ describe("default policies", () => {
       "--if-present",
     );
     const taskRun = normalizeDescriptor(dev.tools.find((tool) => tool.name === "task.run")!);
+    const fsSearch = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.search")!);
+    const fsRead = normalizeDescriptor(dev.tools.find((tool) => tool.name === "fs.read")!);
     expect((taskRun.inputSchema as any).properties.cwd).toEqual({
       type: "string",
       minLength: 1,
@@ -151,6 +153,13 @@ describe("default policies", () => {
     });
     expect((taskRun.inputSchema as any).properties.extraArgs).toBeUndefined();
     expect((taskRun.inputSchema as any).properties.extra.type).toBe("object");
+    expect((fsSearch.inputSchema as any).properties).toMatchObject({
+      respectGitignore: { type: "boolean" },
+      includeHidden: { type: "boolean" },
+      includeIgnored: { type: "boolean" },
+      cursor: { type: "string" },
+    });
+    expect((fsRead.inputSchema as any).properties.format).toEqual({ type: "string", enum: ["content", "lines"] });
     expect(dev.limits.output).toMatchObject({
       preferredToolOutputBytes: 12000,
       maxToolOutputBytes: 60000,

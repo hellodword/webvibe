@@ -39,6 +39,7 @@ type ReadFileRequest = {
   offsetBytes?: unknown;
   maxBytes?: unknown;
   range?: unknown;
+  format?: unknown;
 };
 
 type FileReadResult = {
@@ -53,6 +54,8 @@ type FileReadResult = {
   nextOffsetBytes?: number;
   range?: { startLine: number; endLine: number };
   returnedLines?: number;
+  format?: "content" | "lines";
+  lines?: Array<{ line: number; text: string }>;
   content?: string;
   truncated?: boolean;
   error?: string;
@@ -74,6 +77,22 @@ type SearchOptions = {
   includeIgnored: boolean;
 };
 
+type TreeMode = "all" | "files" | "dirs" | "packages" | "git-tracked";
+
+type TreeOptions = {
+  mode: TreeMode;
+  include: string[];
+  exclude: string[];
+  respectGitignore: boolean;
+  includeHidden: boolean;
+  includeIgnored: boolean;
+  depth: number;
+  maxEntries: number;
+  cursorOffset: number;
+};
+
+type EffectiveOptions = Record<string, unknown>;
+
 type CursorPayload = {
   tool: "fs.search" | "fs.tree";
   offset: number;
@@ -93,6 +112,7 @@ export async function searchCode(
   truncated: boolean;
   nextCursor: string | null;
   engine: "rg" | "js";
+  effectiveOptions: EffectiveOptions;
 }> {
   const query = requiredString(args.query, "query");
   if (query.length === 0) throw new BadRequestError("query must not be empty");
@@ -155,6 +175,7 @@ async function searchWithJs(
   truncated: boolean;
   nextCursor: string | null;
   engine: "js";
+  effectiveOptions: EffectiveOptions;
 }> {
   const matcher = buildMatcher(options.query, options.mode, options.caseSensitive);
   const matches: SearchMatch[] = [];
@@ -163,7 +184,15 @@ async function searchWithJs(
   let truncated = false;
   let seenMatches = 0;
 
-  await walkFiles(root.absolutePath, root.relativePath, context, skipped, async (filePath, relativePath) => {
+  const gitignore = options.respectGitignore && !options.includeIgnored
+    ? await readGitignorePatterns(context)
+    : [];
+  await walkFiles(root.absolutePath, root.relativePath, context, skipped, {
+    includeHidden: options.includeHidden,
+    includeIgnored: options.includeIgnored,
+    respectGitignore: options.respectGitignore,
+    gitignore,
+  }, async (filePath, relativePath) => {
     if (truncated) return;
     if (options.include.length > 0 && !options.include.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
     if (options.exclude.some((glob) => minimatch(relativePath, glob, { dot: true }))) return;
@@ -216,6 +245,7 @@ async function searchWithJs(
     truncated,
     nextCursor: truncated ? encodeCursor("fs.search", options.cursorOffset + matches.length) : null,
     engine: "js",
+    effectiveOptions: searchEffectiveOptions(options),
   };
 }
 
@@ -234,6 +264,7 @@ async function searchWithRg(
   truncated: boolean;
   nextCursor: string | null;
   engine: "rg";
+  effectiveOptions: EffectiveOptions;
 } | undefined> {
   const rg = await findExecutable("rg", process.env, context.workspaceRoot);
   if (rg.status !== "available") return undefined;
@@ -261,6 +292,7 @@ async function searchWithRg(
       ? encodeCursor("fs.search", options.cursorOffset + parsed.matches.length)
       : null,
     engine: "rg",
+    effectiveOptions: searchEffectiveOptions(options),
   };
 }
 
@@ -270,13 +302,29 @@ function rgArgs(rootPath: string, context: InspectWorkspaceContext, options: Sea
   if (options.caseMode === "insensitive") args.push("--ignore-case");
   if (options.caseMode === "smart") args.push("--smart-case");
   if (options.includeHidden) args.push("--hidden");
-  if (options.includeIgnored) args.push("--no-ignore");
-  if (!options.respectGitignore) args.push("--no-ignore");
+  if (options.includeIgnored || !options.respectGitignore) args.push("--no-ignore");
   for (const glob of options.include) args.push("--glob", glob);
   for (const glob of options.exclude) args.push("--glob", `!${glob}`);
   for (const glob of context.workspace.protected) args.push("--glob", `!${glob}`);
   args.push("--", options.query, rootPath === "." ? "." : rootPath);
   return args;
+}
+
+function searchEffectiveOptions(options: SearchOptions): EffectiveOptions {
+  return {
+    mode: options.mode,
+    case: options.caseMode,
+    caseSensitive: options.caseSensitive,
+    include: options.include,
+    exclude: options.exclude,
+    contextLines: options.contextLines,
+    maxColumns: options.maxColumns,
+    maxResults: options.maxResults,
+    cursorOffset: options.cursorOffset,
+    respectGitignore: options.respectGitignore,
+    includeHidden: options.includeHidden,
+    includeIgnored: options.includeIgnored,
+  };
 }
 
 async function parseRgJson(
@@ -469,23 +517,33 @@ export async function fileTree(
   omitted: Array<{ path: string; reason: string }>;
   truncated: boolean;
   nextCursor: string | null;
+  effectiveOptions: EffectiveOptions;
 }> {
   const limits = context.limits ?? fallbackLimits;
   const root = normalizeWorkspacePath(args.path, context);
-  const mode = args.mode === "packages" ? "packages" : "all";
-  const include = globList(args.include);
-  const exclude = globList(args.exclude);
-  const respectGitignore = args.respectGitignore !== false;
-  const includeHidden = args.includeHidden === true;
-  const gitignore = respectGitignore ? await readGitignore(context.workspaceRoot) : [];
-  const cursorOffset = decodeCursor(args.cursor, "fs.tree");
-  const depth = clampInteger(args.depth, 3, 0, limits.tree.maxDepth);
-  const maxEntries = clampInteger(
-    args.maxEntries,
-    limits.tree.defaultMaxEntries,
-    1,
-    limits.tree.maxEntries,
-  );
+  const options: TreeOptions = {
+    mode: treeMode(args.mode),
+    include: globList(args.include),
+    exclude: globList(args.exclude),
+    respectGitignore: args.respectGitignore !== false,
+    includeHidden: args.includeHidden === true,
+    includeIgnored: args.includeIgnored === true,
+    cursorOffset: decodeCursor(args.cursor, "fs.tree"),
+    depth: clampInteger(args.depth, 3, 0, limits.tree.maxDepth),
+    maxEntries: clampInteger(
+      args.maxEntries,
+      limits.tree.defaultMaxEntries,
+      1,
+      limits.tree.maxEntries,
+    ),
+  };
+  if (options.mode === "git-tracked") {
+    const tracked = await gitTrackedTree(root, context, options);
+    if (tracked) return tracked;
+  }
+  const gitignore = options.respectGitignore && !options.includeIgnored
+    ? await readGitignorePatterns(context)
+    : [];
   const entries: Array<{ path: string; type: "directory" | "file" | "symlink" | "other"; size?: number }> = [];
   const skipped = { protected: 0, missing: 0 };
   const stats = { filesSeen: 0, dirsSeen: 0, protectedSkipped: 0 };
@@ -511,23 +569,23 @@ export async function fileTree(
     if (stat.isFile()) stats.filesSeen += 1;
     const shouldEmit =
       relativePath !== "." &&
-      (mode !== "packages" || isPackageManifest(relativePath)) &&
-      (include.length === 0 || include.some((glob) => minimatch(relativePath, glob, { dot: true })));
+      shouldEmitTreeEntry(options.mode, relativePath, type) &&
+      (options.include.length === 0 || options.include.some((glob) => minimatch(relativePath, glob, { dot: true })));
     if (shouldEmit) {
       seenEntries += 1;
-      if (seenEntries > cursorOffset) {
+      if (seenEntries > options.cursorOffset) {
         entries.push({
           path: relativePath,
           type,
           ...(stat.isFile() ? { size: stat.size } : {}),
         });
-        if (entries.length >= maxEntries) {
+        if (entries.length >= options.maxEntries) {
           truncated = true;
           return;
         }
       }
     }
-    if (!stat.isDirectory() || stat.isSymbolicLink() || currentDepth >= depth) return;
+    if (!stat.isDirectory() || stat.isSymbolicLink() || currentDepth >= options.depth) return;
     const children = await readdir(absolutePath, { withFileTypes: true });
     children.sort((left, right) => {
       if (left.isDirectory() !== right.isDirectory()) return left.isDirectory() ? -1 : 1;
@@ -541,11 +599,11 @@ export async function fileTree(
         omitted.push({ path: childRelative, reason: "protected" });
         continue;
       }
-      if (!includeHidden && child.name.startsWith(".")) {
+      if (!options.includeHidden && child.name.startsWith(".")) {
         omitted.push({ path: childRelative, reason: "hidden" });
         continue;
       }
-      if (exclude.some((glob) => minimatch(childRelative, glob, { dot: true }))) {
+      if (options.exclude.some((glob) => minimatch(childRelative, glob, { dot: true }))) {
         omitted.push({ path: childRelative, reason: "excluded" });
         continue;
       }
@@ -567,21 +625,128 @@ export async function fileTree(
     stats,
     omitted,
     truncated,
-    nextCursor: truncated ? encodeCursor("fs.tree", cursorOffset + entries.length) : null,
+    nextCursor: truncated ? encodeCursor("fs.tree", options.cursorOffset + entries.length) : null,
+    effectiveOptions: treeEffectiveOptions(options),
   };
 }
 
-async function readGitignore(workspaceRoot: string): Promise<string[]> {
-  try {
-    const text = await readFile(path.join(workspaceRoot, ".gitignore"), "utf8");
-    return text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith("#"));
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return [];
-    throw error;
+function treeMode(value: unknown): TreeMode {
+  if (value === undefined || value === null) return "all";
+  if (value === "all" || value === "files" || value === "dirs" || value === "packages" || value === "git-tracked") {
+    return value;
   }
+  throw new BadRequestError("mode is invalid");
+}
+
+function shouldEmitTreeEntry(
+  mode: TreeMode,
+  relativePath: string,
+  type: "directory" | "file" | "symlink" | "other",
+): boolean {
+  if (mode === "all") return true;
+  if (mode === "files") return type === "file";
+  if (mode === "dirs") return type === "directory";
+  if (mode === "packages") return type === "file" && isPackageManifest(relativePath);
+  return type === "file";
+}
+
+function treeEffectiveOptions(options: TreeOptions): EffectiveOptions {
+  return {
+    mode: options.mode,
+    include: options.include,
+    exclude: options.exclude,
+    respectGitignore: options.respectGitignore,
+    includeHidden: options.includeHidden,
+    includeIgnored: options.includeIgnored,
+    depth: options.depth,
+    maxEntries: options.maxEntries,
+    cursorOffset: options.cursorOffset,
+  };
+}
+
+async function gitTrackedTree(
+  root: { absolutePath: string; relativePath: string },
+  context: InspectWorkspaceContext,
+  options: TreeOptions,
+): Promise<Awaited<ReturnType<typeof fileTree>> | undefined> {
+  const result = await runFixedCommand({
+    executable: "git",
+    args: ["ls-files", "-z", "--", root.relativePath === "." ? "." : root.relativePath],
+    cwd: context.workspaceRoot,
+    timeoutMs: 30_000,
+  });
+  if (result.status !== "ok" || result.exitCode !== 0) return undefined;
+  const allPaths = result.stdout
+    .split("\0")
+    .map((item) => stripLeadingDotSlash(item.replaceAll("\\", "/")))
+    .filter((item) => item.length > 0)
+    .filter((item) => !isProtectedPath(item, context.workspace.protected))
+    .filter((item) => options.includeHidden || !item.split("/").some((part) => part.startsWith(".")))
+    .filter((item) => options.include.length === 0 || options.include.some((glob) => minimatch(item, glob, { dot: true })))
+    .filter((item) => !options.exclude.some((glob) => minimatch(item, glob, { dot: true })))
+    .sort();
+  const page = allPaths.slice(options.cursorOffset, options.cursorOffset + options.maxEntries);
+  const entries = [];
+  for (const relativePath of page) {
+    const stat = await safeLstat(path.join(context.workspaceRoot, relativePath));
+    entries.push({
+      path: relativePath,
+      type: "file" as const,
+      ...(stat?.isFile() ? { size: stat.size } : {}),
+    });
+  }
+  const truncated = options.cursorOffset + page.length < allPaths.length;
+  return {
+    status: "ok",
+    root: root.relativePath,
+    entries,
+    skipped: { protected: 0, missing: 0 },
+    stats: { filesSeen: allPaths.length, dirsSeen: 0, protectedSkipped: 0 },
+    omitted: [],
+    truncated,
+    nextCursor: truncated ? encodeCursor("fs.tree", options.cursorOffset + page.length) : null,
+    effectiveOptions: treeEffectiveOptions(options),
+  };
+}
+
+async function readGitignorePatterns(context: InspectWorkspaceContext): Promise<string[]> {
+  const patterns: string[] = [];
+  const visit = async (absoluteDir: string, relativeDir: string): Promise<void> => {
+    const gitignorePath = path.join(absoluteDir, ".gitignore");
+    try {
+      const text = await readFile(gitignorePath, "utf8");
+      patterns.push(...gitignoreLinesToGlobs(text, relativeDir));
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    const children = await readdir(absoluteDir, { withFileTypes: true });
+    for (const child of children) {
+      if (!child.isDirectory() || child.isSymbolicLink()) continue;
+      const childRelative = relativeDir === "." ? child.name : `${relativeDir}/${child.name}`;
+      if (isProtectedPath(childRelative, context.workspace.protected)) continue;
+      if (child.name === ".git") continue;
+      await visit(path.join(absoluteDir, child.name), childRelative);
+    }
+  };
+  await visit(context.workspaceRoot, ".");
+  return patterns;
+}
+
+function gitignoreLinesToGlobs(text: string, relativeDir: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("!"))
+    .flatMap((line) => gitignoreLineToGlobs(line, relativeDir));
+}
+
+function gitignoreLineToGlobs(line: string, relativeDir: string): string[] {
+  const clean = line.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!clean) return [];
+  const prefixed = relativeDir === "." ? clean : `${relativeDir}/${clean}`;
+  if (line.endsWith("/")) return [`${prefixed}/**`];
+  if (clean.includes("/")) return [prefixed];
+  return [prefixed, relativeDir === "." ? `**/${clean}` : `${relativeDir}/**/${clean}`];
 }
 
 function isPackageManifest(relativePath: string): boolean {
@@ -596,6 +761,7 @@ export async function readFiles(
 ): Promise<{
   status: "ok";
   files: FileReadResult[];
+  effectiveOptions: EffectiveOptions;
 }> {
   const limits = context.limits ?? fallbackLimits;
   const requests = readRequests(args);
@@ -647,9 +813,10 @@ export async function readFiles(
       });
       continue;
     }
-    const range = parseLineRange(request.range);
+    const format = request.format === "lines" ? "lines" : "content";
+    const range = parseLineRange(request.range) ?? (format === "lines" ? { startLine: 1, endLine: 200 } : undefined);
     if (range) {
-      files.push(readLineRange(resolved.relativePath, stat.size, sha256, text, range));
+      files.push(readLineRange(resolved.relativePath, stat.size, sha256, text, range, format));
       continue;
     }
     const offsetField = request.byteOffset === undefined ? "offsetBytes" : "byteOffset";
@@ -682,7 +849,15 @@ export async function readFiles(
       content: chunk.content,
     });
   }
-  return { status: "ok", files };
+  return {
+    status: "ok",
+    files,
+    effectiveOptions: {
+      defaultMaxBytes,
+      maxReadManyFiles: limits.read.maxReadManyFiles,
+      format: args.format === "lines" ? "lines" : "content",
+    },
+  };
 }
 
 function readRequests(args: Record<string, unknown>): ReadFileRequest[] {
@@ -702,6 +877,7 @@ function readRequests(args: Record<string, unknown>): ReadFileRequest[] {
       path: item,
       offsetBytes: args.offsetBytes,
       maxBytes: args.maxBytes,
+      format: args.format,
     }));
   }
   if ("path" in args) return [{ ...args, path: args.path }];
@@ -725,6 +901,7 @@ function readLineRange(
   sha256: string,
   text: string,
   range: { startLine: number; endLine: number },
+  format: "content" | "lines",
 ): FileReadResult {
   const lines = text.split(/\r?\n/);
   const selected = lines.slice(range.startLine - 1, range.endLine);
@@ -736,11 +913,19 @@ function readLineRange(
     kind: "text",
     size,
     sha256,
+    format,
     range,
     returnedLines: selected.length,
     returnedBytes: Buffer.byteLength(content, "utf8"),
     truncated: range.endLine < lines.length,
-    content,
+    ...(format === "lines"
+      ? {
+          lines: selected.map((line, index) => ({
+            line: range.startLine + index,
+            text: line,
+          })),
+        }
+      : { content }),
   };
 }
 
@@ -924,6 +1109,12 @@ async function walkFiles(
   relativePath: string,
   context: InspectWorkspaceContext,
   skipped: WalkCounters,
+  options: {
+    includeHidden: boolean;
+    includeIgnored: boolean;
+    respectGitignore: boolean;
+    gitignore: string[];
+  },
   onFile: (filePath: string, relativePath: string) => Promise<void>,
 ): Promise<void> {
   const stat = await safeLstat(absolutePath);
@@ -945,7 +1136,15 @@ async function walkFiles(
       skipped.protected += 1;
       continue;
     }
-    await walkFiles(path.join(absolutePath, child.name), childRelative, context, skipped, onFile);
+    if (!options.includeHidden && child.name.startsWith(".")) continue;
+    if (
+      options.respectGitignore &&
+      !options.includeIgnored &&
+      options.gitignore.some((glob) => minimatch(childRelative, glob, { dot: true }))
+    ) {
+      continue;
+    }
+    await walkFiles(path.join(absolutePath, child.name), childRelative, context, skipped, options, onFile);
   }
 }
 

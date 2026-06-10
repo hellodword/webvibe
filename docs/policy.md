@@ -76,11 +76,18 @@ filesystem pass-through tools. This keeps path protection, output truncation,
 and result shape under webvibe control. Host-side output truncation is still
 possible; see [ChatGPT Web Constraint Adaptation](chatgpt-web-known-limits.md).
 
+`fs.tree` supports `all`, `files`, `dirs`, `packages`, and `git-tracked` modes.
+`includeHidden`, `includeIgnored`, and `respectGitignore` affect visible
+workspace files but never bypass protected paths. `fs.search` exposes the same
+hidden/ignored/gitignore controls and reports `effectiveOptions` so the model can
+avoid repeating equivalent searches.
+
 `fs.read` and `fs.read_many` read bounded UTF-8 byte chunks. Results include
 continuation metadata before `content`: `offsetBytes`, `returnedBytes`,
 optional `nextOffsetBytes`, and `truncated`. When `truncated` is true, call
 `fs.read` again with `byteOffset` set to `nextOffsetBytes`. UTF-8 characters are
-not split across chunk boundaries.
+not split across chunk boundaries. Use `format: "lines"` with an optional line
+range when line numbers are more useful than raw content.
 
 ## Workspace Changes
 

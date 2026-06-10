@@ -400,6 +400,14 @@ tools:
           type: integer
           minimum: 1
           maximum: 300
+        respectGitignore:
+          type: boolean
+        includeHidden:
+          type: boolean
+        includeIgnored:
+          type: boolean
+        cursor:
+          type: string
       required: [query]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
@@ -427,6 +435,9 @@ tools:
               minimum: 1
           required: [startLine, endLine]
           additionalProperties: false
+        format:
+          type: string
+          enum: [content, lines]
         maxBytes:
           type: integer
           minimum: 1
@@ -469,6 +480,9 @@ tools:
                     minimum: 1
                 required: [startLine, endLine]
                 additionalProperties: false
+              format:
+                type: string
+                enum: [content, lines]
             required: [path]
             additionalProperties: false
         maxBytesPerFile:
