@@ -37,6 +37,17 @@ tools:
         byteOffset:
           type: integer
           minimum: 0
+        range:
+          type: object
+          properties:
+            startLine:
+              type: integer
+              minimum: 1
+            endLine:
+              type: integer
+              minimum: 1
+          required: [startLine, endLine]
+          additionalProperties: false
         maxBytes:
           type: integer
           minimum: 1
@@ -57,6 +68,24 @@ tools:
             properties:
               path:
                 type: string
+              byteOffset:
+                type: integer
+                minimum: 0
+              maxBytes:
+                type: integer
+                minimum: 1
+                maximum: 131072
+              range:
+                type: object
+                properties:
+                  startLine:
+                    type: integer
+                    minimum: 1
+                  endLine:
+                    type: integer
+                    minimum: 1
+                required: [startLine, endLine]
+                additionalProperties: false
             required: [path]
             additionalProperties: false
         maxBytesPerFile:

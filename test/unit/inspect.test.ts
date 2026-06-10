@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { RelayPolicy } from "../../src/policy/policy.js";
 import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
 import { getContext } from "../../src/router/context.js";
-import { fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
+import { fileStat, fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
 
@@ -38,12 +38,50 @@ describe("workspace inspection built-ins", () => {
       await expect(
         searchCode({ query: "target", maxResults: 10 }, { workspaceRoot: root, workspace: policy.workspace }),
       ).resolves.toMatchObject({
-        matches: [{ path: "src/app.ts", line: 1 }],
+        matches: [{ path: "src/app.ts", line: 1, submatches: [{ start: 13, end: 19 }] }],
         skipped: { protected: 1 },
+      });
+      await expect(
+        searchCode(
+          {
+            query: "TARGET",
+            mode: "fixed",
+            case: "insensitive",
+            include: ["src/**/*.ts"],
+            exclude: ["**/*.md"],
+            contextLines: 1,
+            maxResults: 10,
+          },
+          { workspaceRoot: root, workspace: policy.workspace },
+        ),
+      ).resolves.toMatchObject({
+        matches: [
+          {
+            path: "src/app.ts",
+            line: 1,
+            before: [],
+            after: [""],
+          },
+        ],
+      });
+      await expect(
+        searchCode(
+          { query: "target\\s*=", mode: "regex", include: ["src/**/*.ts"], maxResults: 10 },
+          { workspaceRoot: root, workspace: policy.workspace },
+        ),
+      ).resolves.toMatchObject({
+        matches: [{ path: "src/app.ts", line: 1, column: 14 }],
       });
       await expect(fileTree({}, { workspaceRoot: root, workspace: policy.workspace })).resolves.toMatchObject({
         entries: expect.arrayContaining([{ path: "src", type: "directory" }]),
         skipped: { protected: 1, missing: 0 },
+        stats: { protectedSkipped: 1 },
+        omitted: expect.arrayContaining([{ path: ".env", reason: "protected" }]),
+      });
+      await expect(
+        fileTree({ mode: "packages" }, { workspaceRoot: root, workspace: policy.workspace }),
+      ).resolves.toMatchObject({
+        entries: expect.arrayContaining([expect.objectContaining({ path: "package.json", type: "file" })]),
       });
       const env = await inspectEnvironment({ registry, policy, workspaceRoot: root });
       const serialized = JSON.stringify(env);
@@ -103,6 +141,8 @@ describe("workspace inspection built-ins", () => {
     await writeFile(path.join(root, "small.txt"), "hello");
     await writeFile(path.join(root, "big.txt"), `${"x".repeat(13050)}tail`);
     await writeFile(path.join(root, "unicode.txt"), "aébc");
+    await writeFile(path.join(root, "lines.txt"), "one\ntwo\nthree\nfour\n");
+    await writeFile(path.join(root, "binary.bin"), Buffer.from([0, 1, 2, 3]));
     const policy = policyFor(root);
     const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
 
@@ -117,6 +157,7 @@ describe("workspace inspection built-ins", () => {
 
     expect(small.files[0]).toMatchObject({
       path: "small.txt",
+      kind: "text",
       offsetBytes: 0,
       returnedBytes: 5,
       truncated: false,
@@ -140,7 +181,9 @@ describe("workspace inspection built-ins", () => {
       "path",
       "exists",
       "type",
+      "kind",
       "size",
+      "sha256",
       "offsetBytes",
       "returnedBytes",
       "nextOffsetBytes",
@@ -202,6 +245,35 @@ describe("workspace inspection built-ins", () => {
       content: "",
     });
     expect(eof.files[0]).not.toHaveProperty("nextOffsetBytes");
+
+    const ranged = await readFiles(
+      { path: "lines.txt", range: { startLine: 2, endLine: 3 } },
+      context,
+    );
+    expect(ranged.files[0]).toMatchObject({
+      path: "lines.txt",
+      kind: "text",
+      range: { startLine: 2, endLine: 3 },
+      returnedLines: 2,
+      content: "two\nthree",
+    });
+
+    const binary = await readFiles({ path: "binary.bin" }, context);
+    expect(binary.files[0]).toMatchObject({
+      path: "binary.bin",
+      kind: "binary",
+      sha256: expect.any(String),
+      truncated: false,
+    });
+    expect(binary.files[0]).not.toHaveProperty("content");
+
+    const stat = await fileStat({ paths: ["small.txt", "binary.bin"] }, context);
+    expect(stat.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "small.txt", kind: "text", sha256: expect.any(String) }),
+        expect.objectContaining({ path: "binary.bin", kind: "binary", sha256: expect.any(String) }),
+      ]),
+    );
   });
 
   it("keeps read.files protected, missing, and non-file behavior unchanged", async () => {

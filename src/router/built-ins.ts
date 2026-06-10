@@ -73,14 +73,14 @@ export function callBuiltIn(
     });
   }
   if (name === "fs.read") {
-    return readFiles(fsReadToReadManyArgs(args), {
+    return readFiles(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
     });
   }
   if (name === "fs.read_many") {
-    return readFiles(fsReadManyArgs(args), {
+    return readFiles(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
       limits: context.policy.limits,
@@ -214,26 +214,6 @@ function unavailable(toolName: string, reason: string): {
     status: "unavailable",
     toolName,
     unavailableReason: reason,
-  };
-}
-
-function fsReadToReadManyArgs(args: Record<string, unknown>): Record<string, unknown> {
-  return {
-    paths: [args.path],
-    offsetBytes: args.byteOffset,
-    maxBytes: args.maxBytes,
-  };
-}
-
-function fsReadManyArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const files = Array.isArray(args.files) ? args.files : [];
-  return {
-    paths: files.map((file) =>
-      typeof file === "object" && file !== null && "path" in file
-        ? (file as Record<string, unknown>).path
-        : file,
-    ),
-    maxBytes: args.maxBytesPerFile,
   };
 }
 
