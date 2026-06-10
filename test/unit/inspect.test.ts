@@ -10,6 +10,8 @@ import { getContext } from "../../src/router/context.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
+import { workspaceScan } from "../../src/workspace/inspect/scan.js";
+import { workspaceSymbols } from "../../src/workspace/inspect/symbols.js";
 
 describe("workspace inspection built-ins", () => {
   it("inspects project files and searches code without leaking protected files or env secrets", async () => {
@@ -133,6 +135,41 @@ describe("workspace inspection built-ins", () => {
     });
     expect((context.tasks as any).available).toEqual(
       expect.arrayContaining([expect.objectContaining({ taskId: "go_test", acceptsCwd: true })]),
+    );
+  });
+
+  it("scans the current TypeScript npm repo and maps router symbols", async () => {
+    const root = process.cwd();
+    const policy = policyFor(root);
+    const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
+
+    const scan = await workspaceScan({}, context);
+    expect(scan.project.manifests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "package.json", type: "npm", name: "webvibe" }),
+      ]),
+    );
+    expect(scan.project.npmScripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "test" }),
+        expect.objectContaining({ name: "lint" }),
+      ]),
+    );
+    expect(scan.languages).toContain("typescript");
+    expect(scan.frontend).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "vitest.config.ts", kind: "frontend:vitest" }),
+        expect.objectContaining({ path: "eslint.config.js", kind: "frontend:eslint" }),
+      ]),
+    );
+
+    const symbols = await workspaceSymbols({ path: "src/router/tools-call.ts" }, context);
+    expect(symbols.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "ToolRouter", kind: "class", path: "src/router/tools-call.ts" }),
+        expect.objectContaining({ name: "call", kind: "method", path: "src/router/tools-call.ts" }),
+        expect.objectContaining({ name: "manualPendingBlock", kind: "method", path: "src/router/tools-call.ts" }),
+      ]),
     );
   });
 

@@ -7,6 +7,8 @@ import type { UpstreamManager } from "../upstream/manager.js";
 import { ForbiddenError } from "../util/errors.js";
 import { applyChangeset, fileManifest, previewChangeset } from "../workspace/changeset.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../workspace/inspect/code.js";
+import { workspaceScan } from "../workspace/inspect/scan.js";
+import { workspaceSymbols } from "../workspace/inspect/symbols.js";
 import {
   gitCommitPaths,
   gitDiffStaged,
@@ -45,10 +47,18 @@ export function callBuiltIn(
     });
   }
   if (name === "workspace.scan") {
-    return unavailable(name, "workspace.scan is not implemented in this phase");
+    return workspaceScan(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+    });
   }
   if (name === "workspace.symbols") {
-    return unavailable(name, "workspace.symbols is not implemented in this phase");
+    return workspaceSymbols(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+      limits: context.policy.limits,
+    });
   }
   if (name === "diagnostics.health") {
     return getDiagnostics({
