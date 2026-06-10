@@ -62,8 +62,8 @@ control, wide file mutation, and session state. It also gives ChatGPT Web a
 narrow named task call instead of free-form command text. Policy must define each
 task ID, executable, arguments, cwd, and timeout. A task call may pass a
 workspace-relative cwd, which is checked against workspace and protected-path
-rules before spawning. `workspace.context` reports available task IDs and argument
-rules.
+rules before spawning. `workspace.context` reports task counts and task ID
+summaries; `task.list` reports full availability, checks, and argument rules.
 
 Some dependency tasks accept package/module names. Those are still not command
 strings: policy must enable `allowExtraArgs`, set a maximum argument count, and
@@ -191,6 +191,8 @@ written wholesale. Download tokens are never logged in plaintext.
 - Container, devcontainer, CI, and editor detection returns confidence and
   sanitized evidence labels, not container IDs, pod names, hostnames, or user
   home paths.
+- Project and task details are summarized; full manifests, scripts, candidates,
+  and resolver checks are returned by `workspace.scan` and `task.list`.
 
 This lets the model choose realistic tools without exposing local secrets or
 high-cardinality machine identifiers.

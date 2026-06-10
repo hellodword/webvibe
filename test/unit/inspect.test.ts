@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RelayPolicy } from "../../src/policy/policy.js";
 import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
-import { getContext } from "../../src/router/context.js";
+import { getContext, getTaskList } from "../../src/router/context.js";
 import { fileStat, fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
 import { inspectProject } from "../../src/workspace/inspect/project.js";
@@ -127,13 +127,13 @@ describe("workspace inspection built-ins", () => {
     expect(env.webvibe.missingTasks).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ taskId: "go_test" })]),
     );
-    const context = await getContext({
+    const taskList = await getTaskList({
       registry,
       policy,
       upstreams: { listHealth: () => [] } as any,
       workspaceRoot: root,
     });
-    expect((context.tasks as any).available).toEqual(
+    expect((taskList.tasks as any).available).toEqual(
       expect.arrayContaining([expect.objectContaining({ taskId: "go_test", acceptsCwd: true })]),
     );
   });
@@ -408,6 +408,12 @@ describe("workspace inspection built-ins", () => {
       upstreams: { listHealth: () => [] } as any,
       workspaceRoot: root,
     });
+    const taskList = await getTaskList({
+      registry,
+      policy,
+      upstreams: { listHealth: () => [] } as any,
+      workspaceRoot: root,
+    });
 
     expect(context.manualFallback).toMatchObject({
       nextTool: "manual.gate",
@@ -418,7 +424,7 @@ describe("workspace inspection built-ins", () => {
         outputText: "manual step required because required execution capability is unavailable",
       },
     });
-    expect((context.tasks as any).unavailable).toEqual(
+    expect((taskList.tasks as any).unavailable).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           taskId: "missing_node_check",
@@ -475,14 +481,14 @@ describe("workspace inspection built-ins", () => {
       ["task.run", {} as any],
     ]);
 
-    const context = await getContext({
+    const taskList = await getTaskList({
       registry,
       policy,
       upstreams: { listHealth: () => [] } as any,
       workspaceRoot: root,
     });
 
-    expect((context.tasks as any).candidates).toEqual(
+    expect((taskList.tasks as any).candidates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           family: "node",
@@ -557,7 +563,7 @@ describe("workspace inspection built-ins", () => {
         }),
       ]),
     );
-    expect((context.tasks as any).candidates).not.toEqual(
+    expect((taskList.tasks as any).candidates).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ script: "deploy" })]),
     );
   });

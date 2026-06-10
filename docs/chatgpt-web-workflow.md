@@ -103,10 +103,11 @@ only `manualFormatVersion`, `manualMessageHash`, `operation`, `reason`, `prepare
 `outputText: "manual step required because required execution capability is unavailable"`.
 
 `task.run` runs only preconfigured task IDs. It does not accept free-form
-command text. `workspace.context` returns available task IDs, unavailable reasons, timeout
-defaults, cwd support, extra argument rules, and manual fallback guidance. If
-there is no matching task ID for a required command, the model uses the same
-manual gate flow instead of ending with an inability statement.
+command text. `workspace.context` returns task ID summaries and next routes;
+`task.list` returns availability, unavailable reasons, timeout defaults, cwd
+support, extra argument rules, and manual fallback guidance. If there is no
+matching task ID for a required command, the model uses the same manual gate flow
+instead of ending with an inability statement.
 
 `diagnostics.health` is for connector diagnostics. It reports relay mode,
 server version, active profile, effective limits, tool surface version/hash,

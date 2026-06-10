@@ -25,6 +25,11 @@ export async function workspaceScan(
   database: DetectedFile[];
   workspaceCandidates: string[];
   truncated: boolean;
+  nextCursor: string | null;
+  next: {
+    tool: "task.list";
+    reason: string;
+  };
 }> {
   const project = await inspectProject({ maxDepth: args.maxDepth ?? 6, maxManifests: 200 }, context);
   const detected: DetectedFile[] = [];
@@ -79,6 +84,11 @@ export async function workspaceScan(
     database: detected.filter((file) => file.kind.startsWith("database:")),
     workspaceCandidates: sortedUnique(project.manifests.map((manifest) => path.posix.dirname(manifest.path))),
     truncated,
+    nextCursor: null,
+    next: {
+      tool: "task.list",
+      reason: "Inspect runnable task capabilities after reviewing project shape.",
+    },
   };
 }
 

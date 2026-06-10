@@ -348,7 +348,7 @@ describe("local task runner upstream", () => {
       runId: expect.stringMatching(/^tr_/),
       stdout: expect.objectContaining({ logPath: expect.stringContaining(".webvibe/task-logs/") }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     const record = JSON.parse(
       await readFile(path.join(root, ".webvibe/task-logs", `${running.runId}.json`), "utf8"),
     );

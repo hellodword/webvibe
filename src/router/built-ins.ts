@@ -29,7 +29,7 @@ import {
   gitStatus,
 } from "../workspace/inspect/git.js";
 import type { CallerIdentity } from "./tools-call.js";
-import { getContext, getDiagnostics, type RecentToolError } from "./context.js";
+import { getContext, getDiagnostics, getTaskList, type RecentToolError } from "./context.js";
 
 export type BuiltInContext = {
   registry: Map<string, RegisteredTool>;
@@ -244,15 +244,15 @@ export async function callBuiltIn(
     });
   }
   if (name === "task.list") {
-    return getContext({
+    return getTaskList({
       registry: context.registry,
       policy: context.policy,
       upstreams: context.upstreams,
       workspaceRoot: context.workspaceRoot,
-    }).then((result) => ({ status: "ok", tasks: result.tasks }));
+    });
   }
   if (name === "task.explain") {
-    return getContext({
+    return getTaskList({
       registry: context.registry,
       policy: context.policy,
       upstreams: context.upstreams,

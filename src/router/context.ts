@@ -65,23 +65,10 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     gitRead: tools.some((tool) => tool.startsWith("git.")),
     gitCommit: tools.includes("git.commit"),
   };
-  const workflow = [
-    "Use workspace.context before workspace tools.",
-    "Use fs.tree, fs.search, fs.read, and fs.read_many to inspect only relevant files.",
-    "fs.read and fs.read_many return bounded content bytes; when truncated is true, continue the same file with nextOffsetBytes, and reduce maxBytes if the host still truncates the result.",
-    "Prefer small single-logical-change payloads; use the edit tools reported by the current policy.",
-    "In default single edit mode, use file.change_preview before file.change_apply for one logical file change.",
-    "Use batch.change_preview and batch.change_apply only when policy explicitly enables batch edit mode and workspace.context reports those tools.",
-    "If ChatGPT Web returns the exact OpenAI safety block text, retry the same tool once with identical arguments before manual.gate.",
-    "If the identical safety-block retry fails again or an unavailable tool capability prevents the best next step, call manual.prepare when available, show manual details in chat, then call manual.gate with minimal low-risk gate fields only, stop the turn immediately, and wait for a next user message that starts with /resume.",
-    "Use task.explain when task routing is unclear; use task.run only with taskIds reported as available by task.list or workspace.context; pass cwd from project.manifests for monorepos.",
-    "If task.run returns manualRequired, call manual.prepare when available, show userInstructions in chat, call manual.gate with reason and hostObservation only, then stop the turn.",
-    "If no taskId matches a required command or the needed capability is outside the fixed tool surface, use manualFallback instead of ending with an inability statement.",
-    "After manual.resume returns confirmed, verify current state and continue the original interrupted user request; do not continue on cancelled, expired, not_found, blocked, or verification_failed.",
-    "Use git.status, git.changed, and git.diff after changes; use git.commit only with explicit paths.",
-  ];
   return {
     status: "ok",
+    truncated: false,
+    nextCursor: null,
     toolSurface: {
       version: TOOL_SURFACE_VERSION,
       hash: toolSurfaceHash,
@@ -91,6 +78,10 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
       profile: context.policy.activeProfile,
       hash: policyHash,
       effectiveLimits: context.policy.limits,
+    },
+    editMode: {
+      mode: editMode,
+      batchEnabled: batchEditEnabled,
     },
     validFor: diagnostics.validFor,
     workspace: {
@@ -106,14 +97,17 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     capabilities,
     hostConstraints,
     hostRiskProfile,
-    project: env.project,
+    project: projectBrief(env.project),
     git,
-    tasks,
+    tasks: taskBrief(tasks),
     manualFallback: manualFallbackGuide(),
     upstreams: diagnostics.upstreams,
-    warnings: env.guidance,
-    workflow,
-    nextBestActions: workflow.slice(1),
+    warnings: env.guidance.slice(0, 5),
+    next: {
+      tool: "task.list",
+      reason: "Use task.list for full task resolver details; use workspace.scan for full project details.",
+      alternatives: ["workspace.scan", "fs.tree", "fs.search"],
+    },
   };
 }
 
@@ -122,6 +116,8 @@ export function getDiagnostics(context: ContextToolContext): Record<string, unkn
   const instructionHash = sha256(webvibeServerInstructions);
   return {
     status: "ok",
+    truncated: false,
+    nextCursor: null,
     name: WEBVIBE_SERVER_NAME,
     server: {
       name: WEBVIBE_SERVER_NAME,
@@ -146,6 +142,28 @@ export function getDiagnostics(context: ContextToolContext): Record<string, unkn
     validFor: buildPreflightFingerprint(context),
     upstreams: context.upstreams.listHealth(),
     recentToolErrors: context.recentToolErrors ?? [],
+    next: {
+      tool: "workspace.context",
+      reason: "Refresh coding preflight before workspace tools.",
+    },
+  };
+}
+
+export async function getTaskList(context: ContextToolContext): Promise<Record<string, unknown>> {
+  const env = await inspectEnvironment({
+    registry: context.registry,
+    policy: context.policy,
+    workspaceRoot: context.workspaceRoot,
+  });
+  return {
+    status: "ok",
+    tasks: taskSummary(context.policy, env.webvibe.missingTasks, env.project, env.path.commands),
+    truncated: false,
+    nextCursor: null,
+    next: {
+      tool: "task.explain",
+      reason: "Call task.explain with a taskId when routing is unclear.",
+    },
   };
 }
 
@@ -187,6 +205,61 @@ function taskSummary(
     unavailable,
     candidates: taskCandidates(policy.taskBundles ?? {}, project, commands, available),
   };
+}
+
+function projectBrief(project: Awaited<ReturnType<typeof inspectEnvironment>>["project"]): Record<string, unknown> {
+  return {
+    root: project.root,
+    truncated: project.truncated,
+    languages: project.languages,
+    packageManagers: project.packageManagers,
+    counts: {
+      manifests: project.manifests.length,
+      lockfiles: project.lockfiles.length,
+      npmScripts: project.npmScripts.length,
+      taskFiles: project.taskFiles.length,
+      configFiles: project.configFiles.length,
+    },
+    manifestTypes: countBy(project.manifests.map((manifest) => manifest.type)),
+    configKinds: countBy(project.configFiles.map((file) => file.kind)),
+    next: {
+      tool: "workspace.scan",
+      reason: "Use workspace.scan for manifest paths, scripts, task files, and config files.",
+    },
+  };
+}
+
+function taskBrief(tasks: {
+  available: Array<Record<string, unknown>>;
+  unavailable: Array<Record<string, unknown>>;
+  candidates: Array<Record<string, unknown>>;
+}): Record<string, unknown> {
+  const manualFirstCandidates = tasks.candidates.filter((task) => task.manualFirst === true);
+  return {
+    counts: {
+      available: tasks.available.length,
+      unavailable: tasks.unavailable.length,
+      candidates: tasks.candidates.length,
+      manualFirst: manualFirstCandidates.length,
+    },
+    availableTaskIds: tasks.available.map((task) => String(task.taskId)).slice(0, 50),
+    unavailableTaskIds: tasks.unavailable.map((task) => String(task.taskId)).slice(0, 50),
+    candidateSummary: {
+      runnable: tasks.candidates.filter((task) => task.runnable === true).length,
+      manualFirst: manualFirstCandidates.length,
+      families: countBy(tasks.candidates.map((task) => String(task.family ?? "unknown"))),
+    },
+    next: {
+      tool: "task.list",
+      reason: "Use task.list for resolver checks, candidate commands, cwd, and manualRequired details.",
+    },
+  };
+}
+
+function countBy(values: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+  return counts;
 }
 
 function taskInfo(

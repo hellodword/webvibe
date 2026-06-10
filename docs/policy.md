@@ -59,10 +59,12 @@ The built-in ChatGPT Web tool surface is intentionally compact:
 - `git.commit` in dev mode
 - `diagnostics.health`
 
-`workspace.context` is the first tool for coding work. It returns project manifests,
-task availability, upstream health, tool surface version, warnings, and the
-recommended workflow. All workspace tools except `diagnostics.health` require a
-successful `workspace.context` call for the same caller and current tool surface.
+`workspace.context` is the first tool for coding work. It returns a short
+preflight: tool surface version, policy/workspace summaries, project and task
+counts, upstream health, host constraints, warnings, and a `next` route. Full
+project details live in `workspace.scan`; full task resolver details live in
+`task.list`. All workspace tools except `diagnostics.health` require a successful
+`workspace.context` call for the same caller and current tool surface.
 
 If a workspace tool is called too early, webvibe returns a normal blocked tool
 result with `code: "CONTEXT_REQUIRED"` and `nextTool: "workspace.context"`.
@@ -127,9 +129,9 @@ model continue the original interrupted request.
 `task.run` runs one policy-defined task by capability-style `taskId`, such as
 `node.test`, `node.build`, or `node.typecheck`. It does not accept free-form
 command text or stdin. Callers may pass a workspace-relative `cwd` to run a
-fixed task in a nested package or module. Available task IDs, resolver checks,
-timeout defaults, cwd support, extra argument rules, and unavailable reasons
-are returned by `workspace.context`.
+fixed task in a nested package or module. `workspace.context` returns task
+counts and task ID summaries; `task.list` returns resolver checks, timeout
+defaults, cwd support, extra argument rules, and unavailable reasons.
 Use `task.explain` when a task or candidate route is unclear; it reports
 available, unavailable, candidate, or manual-first decisions with the next tool.
 Tasks that need user-selected packages/modules use typed `extra` input, for
@@ -142,7 +144,7 @@ unavailable instead of succeeding as empty runs. Task availability changes do
 not change the public tool list, so ChatGPT Web does not need a manual tool
 refresh when a command is missing.
 
-`taskBundles` controls candidate discovery. `workspace.context` and `task.list`
+`taskBundles` controls candidate discovery. `workspace.scan` and `task.list`
 report candidates from package scripts, Go and Rust manifests, Dart/Flutter
 `pubspec.yaml`, frontend test/lint/typecheck configs, Prisma/Drizzle/buf/sqlc/
 OpenAPI configs, and Make/just/Taskfile targets. Candidates are not arbitrary

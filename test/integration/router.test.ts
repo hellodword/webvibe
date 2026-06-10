@@ -30,12 +30,15 @@ describe("tool router", () => {
           nextTool: "workspace.context",
         },
       });
-      await expect(setup.router.call("workspace.context", {}, { clientId: "c1" })).resolves.toMatchObject({
+      const contextResult = (await setup.router.call("workspace.context", {}, { clientId: "c1" })) as any;
+      expect(contextResult).toMatchObject({
         ok: true,
         status: "ok",
         data: {
           status: "ok",
           hostRisk: "low",
+          truncated: false,
+          next: { tool: "task.list" },
           toolSurface: { version: "4.0.4" },
           policy: { profile: "chatgptWebDefault" },
           capabilities: { editMode: "single" },
@@ -51,8 +54,23 @@ describe("tool router", () => {
             medium: expect.arrayContaining(["task.run", "git.commit"]),
             high: expect.arrayContaining(["large-payload", "manual-first"]),
           },
+          project: {
+            counts: expect.any(Object),
+            next: { tool: "workspace.scan" },
+          },
+          tasks: {
+            counts: expect.any(Object),
+            next: { tool: "task.list" },
+          },
         },
       });
+      expect(contextResult.data.project.manifests).toBeUndefined();
+      expect(contextResult.data.tasks.available).toBeUndefined();
+      expect(contextResult.data.workflow).toBeUndefined();
+      expect(contextResult.data.nextBestActions).toBeUndefined();
+      expect(JSON.stringify(contextResult.data).length).toBeLessThan(
+        setup.policy.limits.output.preferredToolOutputBytes,
+      );
       await expect(setup.router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
       );
@@ -293,7 +311,6 @@ describe("tool router", () => {
       ).rejects.toThrow("Rate limit");
 
       setup.policy.limits.rate.maxCallsPerMinute = 120;
-      setup.policy.limits.task.defaultTimeoutSeconds = 1;
       await setup.router.call("workspace.context", {}, { clientId: "task-timeout-client" });
       await expect(
         setup.router.call("task.run", { taskId: "slow_task" }, { clientId: "task-timeout-client" }),

@@ -63,16 +63,15 @@ upstreams fail startup.
 
 ## Environment Awareness
 
-`workspace.context` is the ChatGPT Web coding preflight. It collects the facts a
-coding model usually needs: OS/architecture, container/devcontainer/editor/CI
-signals, PATH categories, command availability, project manifests, lockfiles,
-npm scripts, current webvibe tools, upstream health, missing task reasons, and
-guidance.
+`workspace.context` is the ChatGPT Web coding preflight. It returns the short
+facts a coding model needs before tool use: tool surface, policy/workspace
+summary, edit mode, host constraints, upstream health, project/task summaries,
+and next routes. Full project details are returned by `workspace.scan`.
 
-The same context also reports task candidates from project shape: package
-scripts, Go/Rust manifests, Dart/Flutter manifests, frontend and codegen config
-files, and Make/just/Taskfile targets. Candidate reporting is separate from
-execution; `task.run` still accepts only policy-defined task IDs.
+`task.list` reports task candidates from project shape: package scripts, Go/Rust
+manifests, Dart/Flutter manifests, frontend and codegen config files, and
+Make/just/Taskfile targets. Candidate reporting is separate from execution;
+`task.run` still accepts only policy-defined task IDs.
 
 The module deliberately returns categorized and bounded data. ENV values are
 redacted except a small safe allowlist, PATH entries are categories rather than
@@ -87,9 +86,9 @@ over stale descriptors; see
 Default webvibe policies keep the public tool list stable and gate execution
 inside tools. If a task executable such as `cargo`, `make`, or `pip` is missing,
 the named task returns `status: "unavailable"` with `unavailableReason`. Project
-manifests and package scripts are reported by `workspace.context`; they do not
-hide or disable task IDs. The public task tools remain `task.list`, `task.run`,
-and `task.result`.
+manifests and package scripts are reported by `workspace.scan` and `task.list`;
+they do not hide or disable task IDs. The public task tools remain `task.list`,
+`task.run`, and `task.result`.
 
 ## Why Local Task Runner
 
