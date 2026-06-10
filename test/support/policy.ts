@@ -214,6 +214,9 @@ tools:
           input:
             delayMs: "\${input.delayMs}"
 limits:
+  http:
+    oauthMaxBodyBytes: 200
+    mcpMaxBodyBytes: 2000
   output:
     maxToolOutputBytes: 60000
   task:

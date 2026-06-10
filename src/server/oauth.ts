@@ -5,7 +5,12 @@ import type { PairingManager } from "../auth/pairing.js";
 import { DEFAULT_SCOPES } from "../auth/scopes.js";
 import type { OAuthStore } from "../auth/oauth-store.js";
 import { randomToken } from "../util/hash.js";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../util/errors.js";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  RequestBodyTooLargeError,
+} from "../util/errors.js";
 import { authorizationServerMetadata, protectedResourceMetadata } from "./metadata.js";
 
 type AuthorizationCode = {
@@ -27,6 +32,7 @@ export class OAuthServer {
       store: OAuthStore;
       pairing: PairingManager;
       accessTokenTtlDays: number;
+      bodyLimitBytes: number;
     },
   ) {}
 
@@ -59,7 +65,7 @@ export class OAuthServer {
   }
 
   private async register(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const body = await readBodyAsJson(request);
+    const body = await readBodyAsJson(request, this.options.bodyLimitBytes);
     const redirectUris = Array.isArray(body.redirect_uris)
       ? body.redirect_uris.filter((item): item is string => typeof item === "string")
       : [];
@@ -98,7 +104,7 @@ export class OAuthServer {
   }
 
   private async authorizePost(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const body = await readBodyAsForm(request);
+    const body = await readBodyAsForm(request, this.options.bodyLimitBytes);
     await this.completeAuthorize(request, response, body);
   }
 
@@ -132,7 +138,7 @@ export class OAuthServer {
   }
 
   private async token(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const body = await readBodyAsFormOrJson(request);
+    const body = await readBodyAsFormOrJson(request, this.options.bodyLimitBytes);
     if (body.grant_type !== "authorization_code")
       throw new BadRequestError("unsupported grant_type");
     const code = this.codes.get(body.code);
@@ -192,29 +198,41 @@ ${hidden}
 </body></html>`;
 }
 
-export async function readBody(request: IncomingMessage): Promise<string> {
+export async function readLimitedBody(request: IncomingMessage, maxBytes: number): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let totalBytes = 0;
+  for await (const chunk of request) {
+    const data = Buffer.from(chunk);
+    totalBytes += data.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new RequestBodyTooLargeError(`Request body exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(data);
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function readBodyAsJson(request: IncomingMessage): Promise<Record<string, any>> {
-  const text = await readBody(request);
-  return text.trim() ? (JSON.parse(text) as Record<string, any>) : {};
+async function readBodyAsJson(request: IncomingMessage, maxBytes: number): Promise<Record<string, any>> {
+  const text = await readLimitedBody(request, maxBytes);
+  try {
+    return text.trim() ? (JSON.parse(text) as Record<string, any>) : {};
+  } catch {
+    throw new BadRequestError("Malformed JSON request body");
+  }
 }
 
-async function readBodyAsForm(request: IncomingMessage): Promise<Record<string, string>> {
-  const text = await readBody(request);
+async function readBodyAsForm(request: IncomingMessage, maxBytes: number): Promise<Record<string, string>> {
+  const text = await readLimitedBody(request, maxBytes);
   return Object.fromEntries(new URLSearchParams(text).entries());
 }
 
-async function readBodyAsFormOrJson(request: IncomingMessage): Promise<Record<string, string>> {
+async function readBodyAsFormOrJson(request: IncomingMessage, maxBytes: number): Promise<Record<string, string>> {
   const contentType = request.headers["content-type"] ?? "";
   if (String(contentType).includes("application/json")) {
-    const body = await readBodyAsJson(request);
+    const body = await readBodyAsJson(request, maxBytes);
     return Object.fromEntries(Object.entries(body).map(([key, value]) => [key, String(value)]));
   }
-  return readBodyAsForm(request);
+  return readBodyAsForm(request, maxBytes);
 }
 
 export function sendJson(response: ServerResponse, status: number, body: unknown): void {

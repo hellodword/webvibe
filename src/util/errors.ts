@@ -15,6 +15,12 @@ export class BadRequestError extends WebvibeError {
   }
 }
 
+export class RequestBodyTooLargeError extends WebvibeError {
+  constructor(message = "Request body too large") {
+    super(message, "REQUEST_BODY_TOO_LARGE", 413);
+  }
+}
+
 export class UnauthorizedError extends WebvibeError {
   constructor(message = "Unauthorized") {
     super(message, "UNAUTHORIZED", 401);

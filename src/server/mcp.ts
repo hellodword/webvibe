@@ -14,7 +14,7 @@ import {
 } from "../util/errors.js";
 import { failure, parseJsonRpcRequest, success, type JsonRpcRequest } from "../util/json-rpc.js";
 import { webvibeServerInstructions } from "./instructions.js";
-import { readBody } from "./oauth.js";
+import { readLimitedBody } from "./oauth.js";
 
 export type McpHandlerOptions = {
   store: OAuthStore;
@@ -22,6 +22,7 @@ export type McpHandlerOptions = {
   router: ToolRouter;
   publicBaseUrl: string;
   audit: AuditLog;
+  bodyLimitBytes: number;
 };
 
 export async function handleMcp(
@@ -43,8 +44,13 @@ export async function handleMcp(
     response.end("Unauthorized");
     return;
   }
-  const text = await readBody(request);
-  const payload = JSON.parse(text);
+  const text = await readLimitedBody(request, options.bodyLimitBytes);
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new BadRequestError("Malformed JSON request body");
+  }
   const requests = Array.isArray(payload) ? payload : [payload];
   const responses = [];
   for (const item of requests) {

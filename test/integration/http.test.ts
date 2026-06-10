@@ -58,6 +58,23 @@ auth:
       expect(register.status).toBe(201);
       const client = (await register.json()) as any;
 
+      const malformedRegister = await fetch(`${firstBase}/oauth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      });
+      expect(malformedRegister.status).toBe(400);
+
+      const largeRegister = await fetch(`${firstBase}/oauth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: ["http://client.test/callback"],
+          padding: "x".repeat(300),
+        }),
+      });
+      expect(largeRegister.status).toBe(413);
+
       const authorize = await fetch(
         `${firstBase}/oauth/authorize?${new URLSearchParams({
           response_type: "code",
@@ -94,6 +111,18 @@ auth:
       const tools = await mcp(firstBase, token.access_token, "tools/list", {});
       expect(tools.result.tools.map((tool: any) => tool.name)).toContain("x.read");
       expect(tools.result.nextCursor).toBeNull();
+
+      const largeMcp = await fetch(`${firstBase}/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token.access_token}` },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: { padding: "x".repeat(3000) },
+        }),
+      });
+      expect(largeMcp.status).toBe(413);
 
       const context = await mcp(firstBase, token.access_token, "tools/call", {
         name: "workspace.context",

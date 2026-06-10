@@ -51,6 +51,7 @@ export async function startHttpServer(options: HttpServerOptions): Promise<Webvi
     store: options.store,
     pairing: options.pairing,
     accessTokenTtlDays: options.accessTokenTtlDays,
+    bodyLimitBytes: options.policy.limits.http.oauthMaxBodyBytes,
   });
   const server = createServer(async (request, response) => {
     try {
@@ -103,6 +104,7 @@ async function route(
       router,
       publicBaseUrl: options.publicBaseUrl,
       audit,
+      bodyLimitBytes: options.policy.limits.http.mcpMaxBodyBytes,
     });
     return;
   }
