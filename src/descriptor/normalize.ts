@@ -266,7 +266,7 @@ function builtInOutputSchema(name: string): Record<string, unknown> | undefined 
         task: recordSchema(),
         decision: stringSchema(),
         next: recordSchema(),
-      });
+      }, ["status", "hostRisk", "taskId", "decision", "next"]);
     case "task.run":
     case "task.result":
       return taskRunResultSchema();
@@ -288,24 +288,34 @@ function builtInOutputSchema(name: string): Record<string, unknown> | undefined 
       }, ["hostRisk", "structuredContent", "content"]);
     case "manual.gate":
       return objectSchema({
-        status: stringEnum(["awaiting_manual_completion"]),
         hostRisk: hostRiskSchema(),
-        operationId: stringSchema(),
-        operation: recordSchema(),
-        manualFormatVersion: stringSchema(),
-        manualMessageHash: stringSchema(),
-        pendingId: stringSchema(),
-        preparedId: stringSchema(),
         reason: stringEnum(["openai_safety_block", "manual_review_requested", "external_manual_step"]),
-        expiresAt: stringSchema(),
-        resumeTool: stringEnum(["manual.resume"]),
         continuation: objectSchema({
           mode: stringEnum(["await_resume_command"]),
           modelShouldStop: booleanSchema(),
           mustEndTurn: booleanSchema(),
           resumeMode: stringEnum(["resume_interrupted_workflow"]),
         }),
-      }, ["status", "hostRisk", "operationId", "operation", "manualFormatVersion", "manualMessageHash", "pendingId", "reason", "expiresAt", "resumeTool", "continuation"]);
+        structuredContent: objectSchema({
+          status: stringEnum(["awaiting_manual_completion"]),
+          operationId: stringSchema(),
+          operation: recordSchema(),
+          manualFormatVersion: stringSchema(),
+          manualMessageHash: stringSchema(),
+          pendingId: stringSchema(),
+          preparedId: stringSchema(),
+          reason: stringEnum(["openai_safety_block", "manual_review_requested", "external_manual_step"]),
+          expiresAt: stringSchema(),
+          resumeTool: stringEnum(["manual.resume"]),
+          continuation: objectSchema({
+            mode: stringEnum(["await_resume_command"]),
+            modelShouldStop: booleanSchema(),
+            mustEndTurn: booleanSchema(),
+            resumeMode: stringEnum(["resume_interrupted_workflow"]),
+          }),
+        }, ["status", "operationId", "operation", "manualFormatVersion", "manualMessageHash", "pendingId", "reason", "expiresAt", "resumeTool", "continuation"]),
+        content: contentArraySchema(),
+      }, ["hostRisk", "structuredContent", "content"]);
     case "manual.status":
       return objectSchema({
         status: stringEnum(["pending", "none"]),
@@ -416,7 +426,7 @@ function taskRunResultSchema(): Record<string, unknown> {
     unavailableReason: stringSchema(),
     manualRequired: recordSchema(),
     next: recordSchema(),
-  }, ["status", "hostRisk", "runId", "taskId", "exitCode", "stdout", "stderr", "diagnostics", "durationMs", "timeoutSeconds", "effectiveCommand", "checks", "next"]);
+  }, ["status", "hostRisk"]);
 }
 
 function gitResultSchema(): Record<string, unknown> {

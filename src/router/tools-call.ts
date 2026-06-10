@@ -2,7 +2,7 @@ import { interpolateValue } from "../config/interpolation.js";
 import { ManualPendingStore } from "../manual/pending-store.js";
 import { buildManualActionScope } from "../manual/scope.js";
 import type { ManualActionRecord } from "../manual/types.js";
-import { assertToolInput } from "../policy/engine.js";
+import { assertToolInput, assertToolOutput } from "../policy/engine.js";
 import { assertInputPolicy } from "../policy/matcher.js";
 import type { RelayPolicy, ToolPolicy } from "../policy/policy.js";
 import { AuditLog, buildAuditRecord } from "../state/audit.js";
@@ -116,6 +116,7 @@ export class ToolRouter {
         name,
       );
       const outputWithRisk = attachHostRisk(output, hostRiskForTool(entry.policy));
+      assertToolOutput(entry.descriptor.outputSchema, outputWithRisk);
       if (name === "workspace.context") {
         this.preflight.set(this.callerKey(caller), {
           inspectedAt: new Date().toISOString(),

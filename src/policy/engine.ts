@@ -1,81 +1,157 @@
+import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
+
 import type { ToolPolicy } from "./policy.js";
 import { BadRequestError } from "../util/errors.js";
 import { isJsonObject } from "../util/json-rpc.js";
 
+const maxSchemaBytes = 512 * 1024;
+const maxSchemaDepth = 64;
+const maxPatternLength = 500;
+const validatorCache = new WeakMap<object, ValidateFunction>();
+
+const ajv = new Ajv2020({
+  allErrors: true,
+  strict: true,
+  validateSchema: true,
+});
+
+for (const keyword of ["enumDescriptions", "markdownDescription"]) {
+  try {
+    ajv.addKeyword({ keyword, schemaType: ["array", "string"] });
+  } catch {
+    // Already registered by the active Ajv build.
+  }
+}
+
 export function validateJsonSchema(schema: unknown, value: unknown, path = "input"): void {
+  if (typeof schema === "boolean") {
+    if (!schema) throw new BadRequestError(`${path} is not allowed`);
+    return;
+  }
   if (!isJsonObject(schema)) return;
-  const type = schema.type;
-  if (type === "object") validateObjectSchema(schema, value, path);
-  if (type === "array") validateArraySchema(schema, value, path);
-  if (type === "string" && typeof value !== "string")
-    throw new BadRequestError(`${path} must be string`);
-  if (type === "boolean" && typeof value !== "boolean")
-    throw new BadRequestError(`${path} must be boolean`);
-  if (type === "number" && typeof value !== "number")
-    throw new BadRequestError(`${path} must be number`);
-  if (type === "integer" && !Number.isInteger(value))
-    throw new BadRequestError(`${path} must be integer`);
-  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-    throw new BadRequestError(`${path} must be one of enum values`);
-  }
-  if (typeof value === "string") {
-    if (typeof schema.minLength === "number" && value.length < schema.minLength) {
-      throw new BadRequestError(`${path} is below minimum length`);
-    }
-    if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
-      throw new BadRequestError(`${path} is above maximum length`);
-    }
-    if (typeof schema.pattern === "string" && !new RegExp(schema.pattern).test(value)) {
-      throw new BadRequestError(`${path} does not match pattern`);
-    }
-  }
-  if (typeof value === "number") {
-    if (typeof schema.minimum === "number" && value < schema.minimum) {
-      throw new BadRequestError(`${path} is below minimum`);
-    }
-    if (typeof schema.maximum === "number" && value > schema.maximum) {
-      throw new BadRequestError(`${path} is above maximum`);
-    }
-  }
+  const validate = compileValidator(schema, path);
+  if (validate(value)) return;
+  throw new BadRequestError(formatAjvError(validate.errors?.[0], path));
 }
 
 export function assertToolInput(tool: ToolPolicy, args: unknown): Record<string, unknown> {
   const normalized = isJsonObject(args) ? args : {};
   const schema = "inputSchema" in tool ? tool.inputSchema : undefined;
-  if (schema) validateJsonSchema(schema, normalized);
+  if (schema) validateJsonSchema(schema, normalized, "input");
   return normalized;
 }
 
-function validateArraySchema(schema: Record<string, unknown>, value: unknown, path: string): void {
-  if (!Array.isArray(value)) throw new BadRequestError(`${path} must be array`);
-  if (typeof schema.minItems === "number" && value.length < schema.minItems) {
-    throw new BadRequestError(`${path} has too few items`);
-  }
-  if (typeof schema.maxItems === "number" && value.length > schema.maxItems) {
-    throw new BadRequestError(`${path} has too many items`);
-  }
-  if (schema.items) {
-    for (let index = 0; index < value.length; index += 1) {
-      validateJsonSchema(schema.items, value[index], `${path}[${index}]`);
-    }
+export function assertToolOutput(schema: unknown, output: unknown): void {
+  if (schema) validateJsonSchema(schema, output, "output");
+}
+
+function compileValidator(schema: Record<string, unknown>, path: string): ValidateFunction {
+  const cached = validatorCache.get(schema);
+  if (cached) return cached;
+  assertSchemaConstraints(schema, path);
+  try {
+    const validate = ajv.compile(schema);
+    validatorCache.set(schema, validate);
+    return validate;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new BadRequestError(`${path} schema is invalid: ${message}`);
   }
 }
 
-function validateObjectSchema(schema: Record<string, unknown>, value: unknown, path: string): void {
-  if (!isJsonObject(value)) throw new BadRequestError(`${path} must be object`);
-  const required = Array.isArray(schema.required) ? schema.required : [];
-  for (const key of required) {
-    if (typeof key === "string" && !(key in value)) {
-      throw new BadRequestError(`${path}.${key} is required`);
+function assertSchemaConstraints(schema: unknown, path: string): void {
+  const stats = walkSchema(schema, path, 0, { bytes: Buffer.byteLength(JSON.stringify(schema), "utf8") });
+  if (stats.bytes > maxSchemaBytes) {
+    throw new BadRequestError(`${path} schema is too large`);
+  }
+}
+
+function walkSchema(
+  value: unknown,
+  path: string,
+  depth: number,
+  stats: { bytes: number },
+): { bytes: number } {
+  if (depth > maxSchemaDepth) throw new BadRequestError(`${path} schema is too deep`);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => walkSchema(item, `${path}[${index}]`, depth + 1, stats));
+    return stats;
+  }
+  if (!isJsonObject(value)) return stats;
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (key === "$ref" && typeof child === "string" && !child.startsWith("#")) {
+      throw new BadRequestError(`${childPath} remote refs are not allowed`);
     }
+    if (key === "pattern" && typeof child === "string") assertSafePattern(child, childPath);
+    walkSchema(child, childPath, depth + 1, stats);
   }
-  const properties = isJsonObject(schema.properties) ? schema.properties : {};
-  if (schema.additionalProperties === false) {
-    for (const key of Object.keys(value)) {
-      if (!(key in properties)) throw new BadRequestError(`${path}.${key} is not allowed`);
+  return stats;
+}
+
+function assertSafePattern(pattern: string, path: string): void {
+  if (pattern.length > maxPatternLength) {
+    throw new BadRequestError(`${path} pattern is too large`);
+  }
+  if (/(?:\([^)]*[+*][^)]*\)|\[[^\]]+[+*][^\]]*\])[+*{]/.test(pattern)) {
+    throw new BadRequestError(`${path} pattern is too complex`);
+  }
+  if (/\\[1-9]/.test(pattern)) {
+    throw new BadRequestError(`${path} pattern backreferences are not allowed`);
+  }
+}
+
+function formatAjvError(error: ErrorObject | undefined, rootPath: string): string {
+  if (!error) return `${rootPath} failed schema validation`;
+  const location = pointerToPath(rootPath, error.instancePath);
+  switch (error.keyword) {
+    case "additionalProperties": {
+      const key = stringParam(error.params, "additionalProperty");
+      return key ? `${location}.${key} is not allowed` : `${location} has unknown properties`;
     }
+    case "required": {
+      const key = stringParam(error.params, "missingProperty");
+      return key ? `${location}.${key} is required` : `${location} is missing required fields`;
+    }
+    case "type":
+      return `${location} must be ${String((error.params as { type?: unknown }).type ?? "valid type")}`;
+    case "enum":
+      return `${location} must be one of enum values`;
+    case "minLength":
+      return `${location} is below minimum length`;
+    case "maxLength":
+      return `${location} is above maximum length`;
+    case "minimum":
+      return `${location} is below minimum`;
+    case "maximum":
+      return `${location} is above maximum`;
+    case "minItems":
+      return `${location} has too few items`;
+    case "maxItems":
+      return `${location} has too many items`;
+    case "pattern":
+      return `${location} does not match pattern`;
+    case "const":
+      return `${location} must equal required constant`;
+    case "oneOf":
+    case "anyOf":
+    case "allOf":
+      return `${location} must match schema`;
+    default:
+      return `${location} ${error.message ?? "failed schema validation"}`;
   }
-  for (const [key, propertySchema] of Object.entries(properties)) {
-    if (key in value) validateJsonSchema(propertySchema, value[key], `${path}.${key}`);
-  }
+}
+
+function pointerToPath(rootPath: string, pointer: string): string {
+  if (!pointer) return rootPath;
+  const parts = pointer
+    .split("/")
+    .slice(1)
+    .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
+  return parts.reduce((acc, part) => (/^\d+$/.test(part) ? `${acc}[${part}]` : `${acc}.${part}`), rootPath);
+}
+
+function stringParam(params: Record<string, unknown>, key: string): string | undefined {
+  const value = params[key];
+  return typeof value === "string" ? value : undefined;
 }
