@@ -21,13 +21,21 @@ describe("tool router", () => {
       await expect(
         setup.router.call("read.files", { paths: ["README.md"] }, { clientId: "c1" }),
       ).resolves.toMatchObject({
+        ok: false,
         status: "blocked",
-        code: "CONTEXT_REQUIRED",
-        nextTool: "context.get",
+        data: {
+          code: "CONTEXT_REQUIRED",
+          nextTool: "context.get",
+        },
       });
       await expect(setup.router.call("context.get", {}, { clientId: "c1" })).resolves.toMatchObject({
+        ok: true,
         status: "ok",
-        toolSurface: { version: "3.2.0" },
+        data: {
+          status: "ok",
+          toolSurface: { version: "3.2.0" },
+          policy: { profile: "chatgptWebDefault" },
+        },
       });
       await expect(setup.router.call("x.read", { path: ".env" }, { clientId: "c1" })).rejects.toThrow(
         "protected",
@@ -42,11 +50,14 @@ describe("tool router", () => {
           },
           { clientId: "c1" },
         ),
-      ).resolves.toMatchObject({ ok: true, applied: true });
+      ).resolves.toMatchObject({ ok: true, data: { ok: true, applied: true } });
       await expect(setup.router.call("x.run", { timeoutSeconds: 2 }, { clientId: "c1" })).resolves.toMatchObject({
         ok: true,
-        command: "npm test",
-        timeout: 2000,
+        data: {
+          ok: true,
+          command: "npm test",
+          timeout: 2000,
+        },
       });
       await expect(setup.router.call("x.nope", {}, { clientId: "c1" })).rejects.toThrow("not exposed");
     } finally {
@@ -67,19 +78,23 @@ describe("tool router", () => {
       );
 
       expect(first).toMatchObject({
+        ok: true,
         status: "ok",
-        files: [
-          {
-            path: "large.txt",
-            size: 12050,
-            offsetBytes: 0,
-            returnedBytes: 10000,
-            nextOffsetBytes: 10000,
-            truncated: true,
-          },
-        ],
+        data: {
+          status: "ok",
+          files: [
+            {
+              path: "large.txt",
+              size: 12050,
+              offsetBytes: 0,
+              returnedBytes: 12000,
+              nextOffsetBytes: 12000,
+              truncated: true,
+            },
+          ],
+        },
       });
-      expect((first as any).truncated).toBeUndefined();
+      expect((first as any).truncated).toBe(false);
       expect((first as any).text).toBeUndefined();
 
       await expect(
@@ -89,17 +104,21 @@ describe("tool router", () => {
           { clientId: "read-client" },
         ),
       ).resolves.toMatchObject({
+        ok: true,
         status: "ok",
-        files: [
-          {
-            path: "large.txt",
-            offsetBytes: 10000,
-            returnedBytes: 50,
-            nextOffsetBytes: 10050,
-            truncated: true,
-            content: "a".repeat(50),
-          },
-        ],
+        data: {
+          status: "ok",
+          files: [
+            {
+              path: "large.txt",
+              offsetBytes: 10000,
+              returnedBytes: 50,
+              nextOffsetBytes: 10050,
+              truncated: true,
+              content: "a".repeat(50),
+            },
+          ],
+        },
       });
     } finally {
       await setup.close();
@@ -122,7 +141,7 @@ describe("tool router", () => {
         { clientId: "audit-client" },
       );
 
-      setup.policy.limits.maxToolOutputBytes = 10;
+      setup.policy.limits.output.maxToolOutputBytes = 10;
       await setup.router.call("context.get", {}, { clientId: "audit-client" });
       await expect(
         setup.router.call("x.read", { path: "README.md" }, { clientId: "audit-client" }),
@@ -145,14 +164,14 @@ describe("tool router", () => {
   it("enforces per-client rate limits and tool call timeout", async () => {
     const setup = await setupRouter("webvibe-router-limits-");
     try {
-      setup.policy.limits.maxCallsPerMinute = 2;
+      setup.policy.limits.rate.maxCallsPerMinute = 2;
       await setup.router.call("context.get", {}, { clientId: "rate-client" });
       await setup.router.call("x.read", { path: "README.md" }, { clientId: "rate-client" });
       await expect(
         setup.router.call("x.read", { path: "README.md" }, { clientId: "rate-client" }),
       ).rejects.toThrow("Rate limit");
 
-      setup.policy.limits.maxCallsPerMinute = 120;
+      setup.policy.limits.rate.maxCallsPerMinute = 120;
       await setup.router.call("context.get", {}, { clientId: "timeout-client" });
       await expect(
         setup.router.call("x.slow", { delayMs: 7000 }, { clientId: "timeout-client" }),

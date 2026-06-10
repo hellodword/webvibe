@@ -4,13 +4,14 @@ import path from "node:path";
 
 import { minimatch } from "minimatch";
 
-import type { WorkspacePolicy } from "../../policy/policy.js";
+import type { LimitsPolicy, WorkspacePolicy } from "../../policy/policy.js";
 import { BadRequestError, ForbiddenError } from "../../util/errors.js";
 import { isInside, toWorkspaceRelative } from "../../util/paths.js";
 
 export type InspectWorkspaceContext = {
   workspaceRoot: string;
   workspace: WorkspacePolicy;
+  limits?: LimitsPolicy;
 };
 
 export type ResolvedInspectPath = {

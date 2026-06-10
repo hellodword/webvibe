@@ -58,9 +58,14 @@ export class ToolRouter {
     try {
       assertToolAllowed(name, this.options.registry);
       entry = this.options.registry.get(name)!;
-      this.rateLimiter.assertAllowed(caller, this.options.policy.limits.maxCallsPerMinute);
+      this.rateLimiter.assertAllowed(caller, this.options.policy.limits.rate.maxCallsPerMinute);
       const manualBlock = await this.manualPendingBlock(name, caller);
       if (manualBlock) {
+        const finalOutput = prepareToolOutput(
+          manualBlock,
+          this.options.policy.limits.output.maxToolOutputBytes,
+          this.toolOutputLimits(),
+        );
         await this.options.audit.write(
           buildAuditRecord({
             clientId: caller.clientId,
@@ -72,13 +77,19 @@ export class ToolRouter {
             startedAt,
             input: args,
             output: manualBlock,
+            clientOutput: finalOutput,
             errorCode: manualBlock.code,
           }),
         );
-        return manualBlock;
+        return finalOutput;
       }
       const contextBlock = this.contextBlock(name, caller);
       if (contextBlock) {
+        const finalOutput = prepareToolOutput(
+          contextBlock,
+          this.options.policy.limits.output.maxToolOutputBytes,
+          this.toolOutputLimits(),
+        );
         await this.options.audit.write(
           buildAuditRecord({
             clientId: caller.clientId,
@@ -90,15 +101,20 @@ export class ToolRouter {
             startedAt,
             input: args,
             output: contextBlock,
+            clientOutput: finalOutput,
             errorCode: contextBlock.code,
           }),
         );
-        return contextBlock;
+        return finalOutput;
       }
       args = assertToolInput(entry.policy, rawArgs);
       const output = await withToolTimeout(
         this.execute(entry.policy, args, caller),
-        toolTimeoutMs(entry.policy, args, this.options.policy.limits.timeoutMs),
+        toolTimeoutMs(
+          entry.policy,
+          args,
+          this.options.policy.limits.task.defaultTimeoutSeconds * 1000,
+        ),
         name,
       );
       if (name === "context.get") {
@@ -107,7 +123,11 @@ export class ToolRouter {
           fingerprint: this.currentFingerprint(),
         });
       }
-      const finalOutput = prepareToolOutput(output, this.options.policy.limits.maxToolOutputBytes);
+      const finalOutput = prepareToolOutput(
+        output,
+        this.options.policy.limits.output.maxToolOutputBytes,
+        this.toolOutputLimits(),
+      );
       await this.options.audit.write(
         buildAuditRecord({
           clientId: caller.clientId,
@@ -199,6 +219,13 @@ export class ToolRouter {
       registry: this.options.registry,
       upstreams: this.options.upstreams,
     });
+  }
+
+  private toolOutputLimits(): Record<string, unknown> {
+    return {
+      output: this.options.policy.limits.output,
+      activeProfile: this.options.policy.activeProfile,
+    };
   }
 
   private async execute(

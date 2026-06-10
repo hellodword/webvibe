@@ -3,16 +3,11 @@ import type { LimitsPolicy } from "../../policy/policy.js";
 import type { ParsedChangeset } from "./schema.js";
 import type { EffectiveLimits } from "./types.js";
 
-const DEFAULT_MAX_CHANGESET_FILES = 80;
-const DEFAULT_MAX_CHANGESET_BYTES = 5 * 1024 * 1024;
-const DEFAULT_MAX_CHANGESET_FILE_BYTES = 1024 * 1024;
-
 export function effectiveLimits(limits: LimitsPolicy): EffectiveLimits {
   return {
-    maxChangesetFiles: limits.maxChangesetFiles ?? DEFAULT_MAX_CHANGESET_FILES,
-    maxChangesetBytes: limits.maxChangesetBytes ?? DEFAULT_MAX_CHANGESET_BYTES,
-    maxChangesetFileBytes:
-      limits.maxChangesetFileBytes ?? DEFAULT_MAX_CHANGESET_FILE_BYTES,
+    maxChangesetFiles: limits.change.maxFiles,
+    maxChangesetBytes: limits.change.maxTotalBytes,
+    maxChangesetFileBytes: limits.change.maxTextFileBytes,
   };
 }
 

@@ -11,6 +11,7 @@ import { ManualPendingStore } from "./pending-store.js";
 import { PreparedManualActionStore } from "./prepared-store.js";
 import { buildManualActionScope } from "./scope.js";
 import type { ManualActionReason, ManualArtifactRef, ManualCheck } from "./types.js";
+import type { LimitsPolicy } from "../policy/policy.js";
 import type { CallerIdentity } from "../router/tools-call.js";
 import type { AuditLog } from "../state/audit.js";
 import { BadRequestError } from "../util/errors.js";
@@ -39,6 +40,7 @@ export async function openManualGate(
   context: {
     workspaceRoot: string;
     stateDir: string;
+    limits?: LimitsPolicy;
     caller: CallerIdentity;
     audit?: AuditLog;
   },
@@ -81,7 +83,8 @@ export async function openManualGate(
   }
 
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + MANUAL_PENDING_TTL_MS).toISOString();
+  const ttlMs = (context.limits?.manual.ttlSeconds ?? MANUAL_PENDING_TTL_MS / 1000) * 1000;
+  const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
   const pendingStore = new ManualPendingStore(context.stateDir);
   const pendingId = pendingStore.newPendingId();
   const scope = buildManualActionScope({

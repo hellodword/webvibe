@@ -5,7 +5,8 @@
   "required": ["version", "tools"],
   "additionalProperties": true,
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
+    "profile": { "type": "string" },
     "mode": { "enum": ["read-only", "dev"] },
     "extends": { "type": "string" },
     "workspace": {
@@ -15,6 +16,14 @@
         "root": { "type": "string" },
         "protected": { "type": "array", "items": { "type": "string" } }
       }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    },
+    "taskBundles": {
+      "type": "object",
+      "additionalProperties": true
     },
     "upstreams": {
       "type": "object",
@@ -31,16 +40,7 @@
       }
     },
     "limits": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "maxToolOutputBytes": { "type": "integer", "minimum": 1 },
-        "timeoutMs": { "type": "integer", "minimum": 1 },
-        "maxCallsPerMinute": { "type": "integer", "minimum": 1 },
-        "maxChangesetFiles": { "type": "integer", "minimum": 1 },
-        "maxChangesetBytes": { "type": "integer", "minimum": 1 },
-        "maxChangesetFileBytes": { "type": "integer", "minimum": 1 }
-      }
+      "$ref": "#/$defs/limits"
     },
     "audit": {
       "type": "object",
@@ -79,6 +79,111 @@
         "deny": { "type": "object", "additionalProperties": true },
         "pathFields": { "type": "array", "items": { "type": "string" } },
         "protectedPathPolicy": { "enum": ["deny", "allow"] }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "limits": { "$ref": "#/$defs/limits" },
+        "taskBundles": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "preferredToolOutputBytes": { "type": "integer", "minimum": 1 },
+            "maxToolOutputBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "oauthMaxBodyBytes": { "type": "integer", "minimum": 1 },
+            "mcpMaxBodyBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "tree": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaultMaxEntries": { "type": "integer", "minimum": 1 },
+            "maxEntries": { "type": "integer", "minimum": 1 },
+            "maxDepth": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "search": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "enum": ["rg", "js"] },
+            "defaultMaxResults": { "type": "integer", "minimum": 1 },
+            "maxResults": { "type": "integer", "minimum": 1 },
+            "maxColumns": { "type": "integer", "minimum": 1 },
+            "maxContextLines": { "type": "integer", "minimum": 0 },
+            "maxScannedBytesPerFile": {
+              "anyOf": [
+                { "type": "integer", "minimum": 1 },
+                { "type": "null" }
+              ]
+            }
+          }
+        },
+        "read": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaultMaxBytes": { "type": "integer", "minimum": 1 },
+            "maxBytes": { "type": "integer", "minimum": 1 },
+            "maxReadManyFiles": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "change": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxFiles": { "type": "integer", "minimum": 1 },
+            "defaultMaxFiles": { "type": "integer", "minimum": 1 },
+            "maxTotalBytes": { "type": "integer", "minimum": 1 },
+            "maxTextFileBytes": { "type": "integer", "minimum": 1 },
+            "maxInlineDiffBytes": { "type": "integer", "minimum": 1 },
+            "maxInlineDiffLines": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "task": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaultTimeoutSeconds": { "type": "integer", "minimum": 1 },
+            "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
+            "outputHeadBytes": { "type": "integer", "minimum": 1 },
+            "outputTailBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "manual": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ttlSeconds": { "type": "integer", "minimum": 1 },
+            "manualMessageMaxBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "rate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxCallsPerMinute": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     },
     "task": {

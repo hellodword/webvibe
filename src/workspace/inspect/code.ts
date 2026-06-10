@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { minimatch } from "minimatch";
 
+import { defaultLimits, limitsPolicySchema } from "../../policy/schema.js";
 import { BadRequestError } from "../../util/errors.js";
 import type { InspectWorkspaceContext } from "./path.js";
 import { isProtectedPath, normalizeWorkspacePath, safeLstat } from "./path.js";
@@ -22,12 +23,7 @@ type WalkCounters = {
   missing: number;
 };
 
-const DEFAULT_MAX_RESULTS = 50;
-const MAX_RESULTS = 200;
-const MAX_TREE_ENTRIES = 1000;
-const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
-const MAX_READ_FILES = 50;
-const MAX_READ_FILE_CHUNK_BYTES = 10000;
+const fallbackLimits = limitsPolicySchema.parse(defaultLimits);
 
 export async function searchCode(
   args: Record<string, unknown>,
@@ -42,8 +38,14 @@ export async function searchCode(
 }> {
   const query = requiredString(args.query, "query");
   if (query.length === 0) throw new BadRequestError("query must not be empty");
+  const limits = context.limits ?? fallbackLimits;
   const root = normalizeWorkspacePath(args.path, context);
-  const maxResults = clampInteger(args.maxResults, DEFAULT_MAX_RESULTS, 1, MAX_RESULTS);
+  const maxResults = clampInteger(
+    args.maxResults,
+    limits.search.defaultMaxResults,
+    1,
+    limits.search.maxResults,
+  );
   const caseSensitive = args.caseSensitive === true;
   const glob = typeof args.glob === "string" && args.glob.length > 0 ? args.glob : undefined;
   const needle = caseSensitive ? query : query.toLowerCase();
@@ -60,7 +62,10 @@ export async function searchCode(
       skipped.missing += 1;
       return;
     }
-    if (stat.size > MAX_SEARCH_FILE_BYTES) {
+    if (
+      limits.search.maxScannedBytesPerFile !== null &&
+      stat.size > limits.search.maxScannedBytesPerFile
+    ) {
       skipped.tooLarge += 1;
       return;
     }
@@ -102,9 +107,15 @@ export async function fileTree(
   skipped: { protected: number; missing: number };
   truncated: boolean;
 }> {
+  const limits = context.limits ?? fallbackLimits;
   const root = normalizeWorkspacePath(args.path, context);
-  const depth = clampInteger(args.depth, 3, 0, 8);
-  const maxEntries = clampInteger(args.maxEntries, 200, 1, MAX_TREE_ENTRIES);
+  const depth = clampInteger(args.depth, 3, 0, limits.tree.maxDepth);
+  const maxEntries = clampInteger(
+    args.maxEntries,
+    limits.tree.defaultMaxEntries,
+    1,
+    limits.tree.maxEntries,
+  );
   const entries: Array<{ path: string; type: "directory" | "file" | "symlink" | "other"; size?: number }> = [];
   const skipped = { protected: 0, missing: 0 };
   let truncated = false;
@@ -173,16 +184,17 @@ export async function readFiles(
     error?: string;
   }>;
 }> {
+  const limits = context.limits ?? fallbackLimits;
   const rawPaths = Array.isArray(args.paths) ? args.paths : undefined;
   if (!rawPaths || rawPaths.length === 0) throw new BadRequestError("paths must be a non-empty array");
-  if (rawPaths.length > MAX_READ_FILES) throw new BadRequestError("paths has too many items");
+  if (rawPaths.length > limits.read.maxReadManyFiles) throw new BadRequestError("paths has too many items");
   const requestedOffset = boundedInteger(args.offsetBytes, "offsetBytes", 0, 0, Number.MAX_SAFE_INTEGER);
   const maxBytes = boundedInteger(
     args.maxBytes,
     "maxBytes",
-    MAX_READ_FILE_CHUNK_BYTES,
+    limits.read.defaultMaxBytes,
     1,
-    MAX_READ_FILE_CHUNK_BYTES,
+    limits.read.maxBytes,
   );
   const files: Array<{
     path: string;

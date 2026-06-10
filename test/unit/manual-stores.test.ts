@@ -9,6 +9,7 @@ import { openManualGate } from "../../src/manual/gate.js";
 import { ManualPendingStore } from "../../src/manual/pending-store.js";
 import { PreparedManualActionStore } from "../../src/manual/prepared-store.js";
 import { resumeManualAction } from "../../src/manual/resume.js";
+import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../../src/policy/policy.js";
 
 describe("manual action stores", () => {
@@ -127,14 +128,7 @@ function testContext(
   return {
     workspaceRoot: root,
     workspace: { root, protected: [".env"] },
-    limits: {
-      maxToolOutputBytes: 60000,
-      timeoutMs: 30000,
-      maxCallsPerMinute: 120,
-      maxChangesetFiles: 80,
-      maxChangesetBytes: 5 * 1024 * 1024,
-      maxChangesetFileBytes: 1024 * 1024,
-    },
+    limits: limitsPolicySchema.parse(defaultLimits),
     stateDir,
     publicBaseUrl: "http://localhost",
     caller: { clientId: "manual-store-test" },

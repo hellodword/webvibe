@@ -8,6 +8,7 @@ export const TOOL_SURFACE_VERSION = "3.2.0";
 export type PreflightFingerprint = {
   workspaceRootHash: string;
   mode?: string;
+  activeProfile: string;
   policyHash: string;
   toolSurfaceVersion: string;
   toolDescriptorHash: string;
@@ -23,6 +24,7 @@ export function buildPreflightFingerprint(input: {
   return {
     workspaceRootHash: sha256(input.workspaceRoot),
     mode: input.policy.mode,
+    activeProfile: input.policy.activeProfile,
     policyHash: sha256(input.policy),
     toolSurfaceVersion: TOOL_SURFACE_VERSION,
     toolDescriptorHash: sha256(Array.from(input.registry.values()).map((entry) => entry.descriptor)),
@@ -34,6 +36,7 @@ export function fingerprintsEqual(left: PreflightFingerprint, right: PreflightFi
   return (
     left.workspaceRootHash === right.workspaceRootHash &&
     left.mode === right.mode &&
+    left.activeProfile === right.activeProfile &&
     left.policyHash === right.policyHash &&
     left.toolSurfaceVersion === right.toolSurfaceVersion &&
     left.toolDescriptorHash === right.toolDescriptorHash &&

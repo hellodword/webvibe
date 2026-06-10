@@ -1,5 +1,48 @@
-version: 1
+version: 2
 mode: dev
+profile: chatgptWebDefault
+
+profiles:
+  chatgptWebDefault:
+    limits:
+      output:
+        preferredToolOutputBytes: 12000
+        maxToolOutputBytes: 60000
+      http:
+        oauthMaxBodyBytes: 1048576
+        mcpMaxBodyBytes: 16777216
+      tree:
+        defaultMaxEntries: 300
+        maxEntries: 5000
+        maxDepth: 12
+      search:
+        engine: rg
+        defaultMaxResults: 80
+        maxResults: 1000
+        maxColumns: 300
+        maxContextLines: 5
+        maxScannedBytesPerFile: null
+      read:
+        defaultMaxBytes: 12000
+        maxBytes: 131072
+        maxReadManyFiles: 50
+      change:
+        maxFiles: 1000
+        defaultMaxFiles: 200
+        maxTotalBytes: 16777216
+        maxTextFileBytes: 2097152
+        maxInlineDiffBytes: 12288
+        maxInlineDiffLines: 200
+      task:
+        defaultTimeoutSeconds: 300
+        maxTimeoutSeconds: 3600
+        outputHeadBytes: 12000
+        outputTailBytes: 12000
+      manual:
+        ttlSeconds: 86400
+        manualMessageMaxBytes: 65536
+      rate:
+        maxCallsPerMinute: 120
 
 workspace:
   root: "${workspaceRoot}"
@@ -223,11 +266,11 @@ tools:
         depth:
           type: integer
           minimum: 0
-          maximum: 8
+          maximum: 12
         maxEntries:
           type: integer
           minimum: 1
-          maximum: 1000
+          maximum: 5000
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
@@ -249,7 +292,7 @@ tools:
         maxResults:
           type: integer
           minimum: 1
-          maximum: 200
+          maximum: 1000
         caseSensitive:
           type: boolean
       required: [query]
@@ -259,7 +302,7 @@ tools:
 
   - name: read.files
     type: builtIn
-    description: Read one or more workspace text files while enforcing protected paths and output limits. Defaults to 10000 content bytes per file; continue truncated files with nextOffsetBytes, and lower maxBytes if the host still truncates the result. Requires context.get first.
+    description: Read one or more workspace text files while enforcing protected paths and output limits. Defaults to 12000 content bytes per file; continue truncated files with nextOffsetBytes, and lower maxBytes if the host still truncates the result. Requires context.get first.
     inputSchema:
       type: object
       properties:
@@ -275,7 +318,7 @@ tools:
         maxBytes:
           type: integer
           minimum: 1
-          maximum: 10000
+          maximum: 131072
       required: [paths]
       additionalProperties: false
     outputSchema: *genericObjectOutputSchema
@@ -747,10 +790,6 @@ tools:
     inputSchema: *emptyInputSchema
     outputSchema: *genericObjectOutputSchema
     annotations: *readOnlyAnnotations
-
-limits:
-  maxToolOutputBytes: 60000
-  timeoutMs: 30000
 
 audit:
   enabled: true

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyChangeset, fileManifest, previewChangeset } from "../../src/workspace/changeset.js";
 import { applyPlan } from "../../src/workspace/changeset/apply.js";
+import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
 import type { LimitsPolicy, WorkspacePolicy } from "../../src/policy/policy.js";
 
 describe("workspace changesets", () => {
@@ -189,7 +190,10 @@ describe("workspace changesets", () => {
         },
         {
           ...context,
-          limits: { ...context.limits, maxChangesetFileBytes: 5 },
+          limits: {
+            ...context.limits,
+            change: { ...context.limits.change, maxTextFileBytes: 5 },
+          },
         },
       ),
     ).rejects.toThrow("maximum is 5");
@@ -254,14 +258,7 @@ function testContext(root: string): {
       root,
       protected: [".env", "dist/**"],
     },
-    limits: {
-      maxToolOutputBytes: 60000,
-      timeoutMs: 30000,
-      maxCallsPerMinute: 120,
-      maxChangesetFiles: 80,
-      maxChangesetBytes: 5 * 1024 * 1024,
-      maxChangesetFileBytes: 1024 * 1024,
-    },
+    limits: limitsPolicySchema.parse(defaultLimits),
   };
 }
 

@@ -7,8 +7,8 @@ import { parse as parseYaml } from "yaml";
 import { defaultPolicyPaths, defaultPublicBaseUrl } from "./defaults.js";
 import { interpolateValue } from "./interpolation.js";
 import { appConfigSchema, type AppConfig } from "./schema.js";
-import { policySchema } from "../policy/schema.js";
-import type { Mode, RelayPolicy } from "../policy/policy.js";
+import { defaultLimits, limitsPolicySchema, policyInputSchema, policySchema } from "../policy/schema.js";
+import type { Mode, PolicyProfile, RelayPolicy, RelayPolicyInput } from "../policy/policy.js";
 import { BadRequestError } from "../util/errors.js";
 import { resolvePath } from "../util/paths.js";
 
@@ -86,7 +86,7 @@ export async function loadPolicy(
   if (seen.has(resolved)) throw new BadRequestError(`Policy extends cycle: ${resolved}`);
   seen.add(resolved);
   const raw = await loadDataFile(resolved);
-  const parsed = policySchema.parse(raw);
+  const parsed = policyInputSchema.parse(raw);
   let merged = parsed;
   if (parsed.extends) {
     const basePath = path.resolve(path.dirname(resolved), parsed.extends);
@@ -97,7 +97,9 @@ export async function loadPolicy(
       workspace: { ...base.workspace, ...parsed.workspace },
       upstreams: { ...base.upstreams, ...parsed.upstreams },
       tools: [...base.tools, ...parsed.tools],
-      limits: { ...base.limits, ...parsed.limits },
+      profiles: deepMergeRecords(base.profiles, parsed.profiles),
+      taskBundles: deepMerge(base.taskBundles ?? {}, parsed.taskBundles ?? {}),
+      limits: deepMerge(base.limits, parsed.limits),
       audit: { ...base.audit, ...parsed.audit },
     };
   }
@@ -106,7 +108,7 @@ export async function loadPolicy(
     stateDir: context.stateDir,
     env: process.env,
   });
-  return policySchema.parse(interpolated) as RelayPolicy;
+  return composeEffectivePolicy(policyInputSchema.parse(interpolated));
 }
 
 async function loadDataFile(filePath: string): Promise<Record<string, unknown>> {
@@ -132,4 +134,55 @@ function parseListen(value: string): { host: string; port: number } {
     throw new BadRequestError(`Invalid listen port: ${value}`);
   }
   return { host, port };
+}
+
+function composeEffectivePolicy(input: RelayPolicyInput): RelayPolicy {
+  const profiles: Record<string, PolicyProfile> = deepMergeRecords(
+    {
+      chatgptWebDefault: {
+        limits: defaultLimits,
+        taskBundles: {},
+      },
+    },
+    input.profiles,
+  );
+  const activeProfile = input.profile;
+  const profile = profiles[activeProfile];
+  if (!profile) throw new BadRequestError(`Unknown policy profile: ${activeProfile}`);
+  const effectiveLimits = limitsPolicySchema.parse(
+    deepMerge(defaultLimits, profile.limits ?? {}, input.limits ?? {}),
+  );
+  const effectiveTaskBundles = deepMerge(profile.taskBundles ?? {}, input.taskBundles ?? {});
+  return policySchema.parse({
+    ...input,
+    profiles,
+    activeProfile,
+    taskBundles: effectiveTaskBundles,
+    limits: effectiveLimits,
+  });
+}
+
+function deepMergeRecords<T extends Record<string, unknown>>(
+  ...items: Array<T | undefined>
+): Record<string, T[keyof T]> {
+  return deepMerge(...items) as Record<string, T[keyof T]>;
+}
+
+function deepMerge<T>(...items: Array<T | undefined>): T {
+  const result: Record<string, unknown> = {};
+  for (const item of items) {
+    if (!isPlainObject(item)) continue;
+    for (const [key, value] of Object.entries(item)) {
+      const current = result[key];
+      result[key] =
+        isPlainObject(current) && isPlainObject(value)
+          ? deepMerge(current, value)
+          : value;
+    }
+  }
+  return result as T;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

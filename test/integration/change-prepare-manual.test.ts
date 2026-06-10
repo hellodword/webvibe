@@ -37,7 +37,7 @@ describe("change.prepare manual fallback", () => {
       const caller = { clientId: "prepare-client" };
       await router.call("context.get", {}, caller);
 
-      const prepared = (await router.call(
+      const preparedEnvelope = (await router.call(
         "change.prepare",
         {
           changes: [
@@ -51,12 +51,17 @@ describe("change.prepare manual fallback", () => {
         },
         caller,
       )) as any;
+      const prepared = preparedEnvelope.data;
 
       expect(await readFile(path.join(root, "code.txt"), "utf8")).toBe("old\n");
-      expect(prepared).toMatchObject({
+      expect(preparedEnvelope).toMatchObject({
+        ok: true,
         status: "prepared",
-        valid: true,
-        manualGate: { nextTool: "manual.gate" },
+        data: {
+          status: "prepared",
+          valid: true,
+          manualGate: { nextTool: "manual.gate" },
+        },
       });
       expect(prepared.manualGate.title).toBeUndefined();
       expect(prepared.manualGate.instructions).toBeUndefined();
@@ -70,7 +75,7 @@ describe("change.prepare manual fallback", () => {
       const preparedRecord = await new PreparedManualActionStore(stateDir).read(prepared.preparedId);
       expect(preparedRecord?.artifacts[0].label).toBe("Workspace change review material");
 
-      const gate = (await router.call(
+      const gateEnvelope = (await router.call(
         "manual.gate",
         {
           preparedId: prepared.preparedId,
@@ -79,6 +84,7 @@ describe("change.prepare manual fallback", () => {
         },
         caller,
       )) as any;
+      const gate = gateEnvelope.data;
       const pending = await new ManualPendingStore(stateDir).read(gate.structuredContent.pendingId);
       expect(pending?.hostObservation?.classification).toBe("blocked_by_openai_safety");
 
@@ -92,8 +98,12 @@ describe("change.prepare manual fallback", () => {
           caller,
         ),
       ).resolves.toMatchObject({
+        ok: true,
         status: "confirmed",
-        verification: { status: "passed" },
+        data: {
+          status: "confirmed",
+          verification: { status: "passed" },
+        },
       });
     } finally {
       await upstreams.close();

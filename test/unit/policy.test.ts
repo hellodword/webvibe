@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -19,8 +19,12 @@ describe("default policies", () => {
       stateDir: path.join(root, "state"),
     });
 
+    expect(readOnly.version).toBe(2);
+    expect(dev.version).toBe(2);
     expect(readOnly.mode).toBe("read-only");
     expect(dev.mode).toBe("dev");
+    expect(dev.activeProfile).toBe("chatgptWebDefault");
+    expect(dev.profiles.chatgptWebDefault).toBeTruthy();
     const readOnlyTools = readOnly.tools.map((tool) => tool.name);
     const devTools = dev.tools.map((tool) => tool.name);
 
@@ -75,7 +79,7 @@ describe("default policies", () => {
       expect(schema.properties.maxBytes).toEqual({
         type: "integer",
         minimum: 1,
-        maximum: 10000,
+        maximum: 131072,
       });
       expect(schema.required).toEqual(["paths"]);
       expect(schema.additionalProperties).toBe(false);
@@ -100,7 +104,21 @@ describe("default policies", () => {
       minLength: 1,
       maxLength: 500,
     });
-    expect(dev.limits.maxChangesetFiles).toBe(80);
+    expect(dev.limits.output).toMatchObject({
+      preferredToolOutputBytes: 12000,
+      maxToolOutputBytes: 60000,
+    });
+    expect(dev.limits.read).toMatchObject({
+      defaultMaxBytes: 12000,
+      maxBytes: 131072,
+      maxReadManyFiles: 50,
+    });
+    expect(dev.limits.change).toMatchObject({
+      maxFiles: 1000,
+      defaultMaxFiles: 200,
+      maxTotalBytes: 16 * 1024 * 1024,
+      maxTextFileBytes: 2 * 1024 * 1024,
+    });
     expect(dev.audit.payloads).toBe("full-redacted");
 
     expect(dev.tools.find((tool) => tool.name === "manual.confirm")).toBeUndefined();
@@ -183,5 +201,73 @@ describe("default policies", () => {
     expect(editItem.properties.oldText).toEqual({ type: "string" });
     expect(editItem.properties.newText).toEqual({ type: "string" });
     expect(editItem.required).toEqual(["oldText", "newText"]);
+  });
+
+  it("merges profile defaults with explicit nested limit overrides", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-v2-"));
+    const policyPath = path.join(root, "policy.yaml");
+    await writeFile(
+      policyPath,
+      `version: 2
+profile: custom
+profiles:
+  custom:
+    limits:
+      output:
+        maxToolOutputBytes: 45000
+      read:
+        defaultMaxBytes: 100
+        maxBytes: 1000
+tools:
+  - name: context.get
+    type: builtIn
+limits:
+  output:
+    preferredToolOutputBytes: 12345
+  rate:
+    maxCallsPerMinute: 9
+`,
+    );
+
+    const policy = await loadPolicy(policyPath, {
+      workspaceRoot: root,
+      stateDir: path.join(root, "state"),
+    });
+
+    expect(policy.activeProfile).toBe("custom");
+    expect(policy.limits.output).toMatchObject({
+      preferredToolOutputBytes: 12345,
+      maxToolOutputBytes: 45000,
+    });
+    expect(policy.limits.read).toMatchObject({
+      defaultMaxBytes: 100,
+      maxBytes: 1000,
+    });
+    expect(policy.limits.rate.maxCallsPerMinute).toBe(9);
+    expect(policy.limits.search.defaultMaxResults).toBe(80);
+  });
+
+  it("rejects invalid effective limits", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-policy-invalid-"));
+    const policyPath = path.join(root, "policy.yaml");
+    await writeFile(
+      policyPath,
+      `version: 2
+tools:
+  - name: context.get
+    type: builtIn
+limits:
+  output:
+    preferredToolOutputBytes: 70000
+    maxToolOutputBytes: 60000
+`,
+    );
+
+    await expect(
+      loadPolicy(policyPath, {
+        workspaceRoot: root,
+        stateDir: path.join(root, "state"),
+      }),
+    ).rejects.toThrow(/preferredToolOutputBytes/);
   });
 });

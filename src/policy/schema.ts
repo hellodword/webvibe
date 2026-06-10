@@ -2,6 +2,56 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["read-only", "dev"]);
 
+export const defaultLimits = {
+  output: {
+    preferredToolOutputBytes: 12000,
+    maxToolOutputBytes: 60000,
+  },
+  http: {
+    oauthMaxBodyBytes: 1024 * 1024,
+    mcpMaxBodyBytes: 16 * 1024 * 1024,
+  },
+  tree: {
+    defaultMaxEntries: 300,
+    maxEntries: 5000,
+    maxDepth: 12,
+  },
+  search: {
+    engine: "rg" as const,
+    defaultMaxResults: 80,
+    maxResults: 1000,
+    maxColumns: 300,
+    maxContextLines: 5,
+    maxScannedBytesPerFile: null as number | null,
+  },
+  read: {
+    defaultMaxBytes: 12000,
+    maxBytes: 128 * 1024,
+    maxReadManyFiles: 50,
+  },
+  change: {
+    maxFiles: 1000,
+    defaultMaxFiles: 200,
+    maxTotalBytes: 16 * 1024 * 1024,
+    maxTextFileBytes: 2 * 1024 * 1024,
+    maxInlineDiffBytes: 12288,
+    maxInlineDiffLines: 200,
+  },
+  task: {
+    defaultTimeoutSeconds: 300,
+    maxTimeoutSeconds: 3600,
+    outputHeadBytes: 12000,
+    outputTailBytes: 12000,
+  },
+  manual: {
+    ttlSeconds: 86400,
+    manualMessageMaxBytes: 65536,
+  },
+  rate: {
+    maxCallsPerMinute: 120,
+  },
+} satisfies Record<string, Record<string, unknown>>;
+
 export const annotationsSchema = z
   .object({
     title: z.string().optional(),
@@ -109,9 +159,246 @@ export const toolPolicySchema = z.discriminatedUnion("type", [
   workflowToolSchema,
 ]);
 
-export const policySchema = z
+const positiveInteger = z.number().int().positive();
+
+export const outputLimitsSchema = z
   .object({
-    version: z.literal(1),
+    preferredToolOutputBytes: positiveInteger.default(defaultLimits.output.preferredToolOutputBytes),
+    maxToolOutputBytes: positiveInteger.default(defaultLimits.output.maxToolOutputBytes),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.preferredToolOutputBytes > limits.maxToolOutputBytes) {
+      context.addIssue({
+        code: "custom",
+        message: "preferredToolOutputBytes must be <= maxToolOutputBytes",
+        path: ["preferredToolOutputBytes"],
+      });
+    }
+  });
+
+export const httpLimitsSchema = z
+  .object({
+    oauthMaxBodyBytes: positiveInteger.default(defaultLimits.http.oauthMaxBodyBytes),
+    mcpMaxBodyBytes: positiveInteger.default(defaultLimits.http.mcpMaxBodyBytes),
+  })
+  .strict();
+
+export const treeLimitsSchema = z
+  .object({
+    defaultMaxEntries: positiveInteger.default(defaultLimits.tree.defaultMaxEntries),
+    maxEntries: positiveInteger.default(defaultLimits.tree.maxEntries),
+    maxDepth: z.number().int().min(0).default(defaultLimits.tree.maxDepth),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.defaultMaxEntries > limits.maxEntries) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultMaxEntries must be <= maxEntries",
+        path: ["defaultMaxEntries"],
+      });
+    }
+  });
+
+export const searchLimitsSchema = z
+  .object({
+    engine: z.enum(["rg", "js"]).default(defaultLimits.search.engine),
+    defaultMaxResults: positiveInteger.default(defaultLimits.search.defaultMaxResults),
+    maxResults: positiveInteger.default(defaultLimits.search.maxResults),
+    maxColumns: positiveInteger.default(defaultLimits.search.maxColumns),
+    maxContextLines: z.number().int().min(0).default(defaultLimits.search.maxContextLines),
+    maxScannedBytesPerFile: positiveInteger.nullable().default(
+      defaultLimits.search.maxScannedBytesPerFile,
+    ),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.defaultMaxResults > limits.maxResults) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultMaxResults must be <= maxResults",
+        path: ["defaultMaxResults"],
+      });
+    }
+  });
+
+export const readLimitsSchema = z
+  .object({
+    defaultMaxBytes: positiveInteger.default(defaultLimits.read.defaultMaxBytes),
+    maxBytes: positiveInteger.default(defaultLimits.read.maxBytes),
+    maxReadManyFiles: positiveInteger.default(defaultLimits.read.maxReadManyFiles),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.defaultMaxBytes > limits.maxBytes) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultMaxBytes must be <= maxBytes",
+        path: ["defaultMaxBytes"],
+      });
+    }
+  });
+
+export const changeLimitsSchema = z
+  .object({
+    maxFiles: positiveInteger.default(defaultLimits.change.maxFiles),
+    defaultMaxFiles: positiveInteger.default(defaultLimits.change.defaultMaxFiles),
+    maxTotalBytes: positiveInteger.default(defaultLimits.change.maxTotalBytes),
+    maxTextFileBytes: positiveInteger.default(defaultLimits.change.maxTextFileBytes),
+    maxInlineDiffBytes: positiveInteger.default(defaultLimits.change.maxInlineDiffBytes),
+    maxInlineDiffLines: positiveInteger.default(defaultLimits.change.maxInlineDiffLines),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.defaultMaxFiles > limits.maxFiles) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultMaxFiles must be <= maxFiles",
+        path: ["defaultMaxFiles"],
+      });
+    }
+  });
+
+export const taskLimitsSchema = z
+  .object({
+    defaultTimeoutSeconds: positiveInteger.default(defaultLimits.task.defaultTimeoutSeconds),
+    maxTimeoutSeconds: positiveInteger.default(defaultLimits.task.maxTimeoutSeconds),
+    outputHeadBytes: positiveInteger.default(defaultLimits.task.outputHeadBytes),
+    outputTailBytes: positiveInteger.default(defaultLimits.task.outputTailBytes),
+  })
+  .strict()
+  .superRefine((limits, context) => {
+    if (limits.defaultTimeoutSeconds > limits.maxTimeoutSeconds) {
+      context.addIssue({
+        code: "custom",
+        message: "defaultTimeoutSeconds must be <= maxTimeoutSeconds",
+        path: ["defaultTimeoutSeconds"],
+      });
+    }
+  });
+
+export const manualLimitsSchema = z
+  .object({
+    ttlSeconds: positiveInteger.default(defaultLimits.manual.ttlSeconds),
+    manualMessageMaxBytes: positiveInteger.default(defaultLimits.manual.manualMessageMaxBytes),
+  })
+  .strict();
+
+export const rateLimitsSchema = z
+  .object({
+    maxCallsPerMinute: positiveInteger.default(defaultLimits.rate.maxCallsPerMinute),
+  })
+  .strict();
+
+export const limitsPolicySchema = z
+  .object({
+    output: outputLimitsSchema.default(defaultLimits.output),
+    http: httpLimitsSchema.default(defaultLimits.http),
+    tree: treeLimitsSchema.default(defaultLimits.tree),
+    search: searchLimitsSchema.default(defaultLimits.search),
+    read: readLimitsSchema.default(defaultLimits.read),
+    change: changeLimitsSchema.default(defaultLimits.change),
+    task: taskLimitsSchema.default(defaultLimits.task),
+    manual: manualLimitsSchema.default(defaultLimits.manual),
+    rate: rateLimitsSchema.default(defaultLimits.rate),
+  })
+  .strict();
+
+export const limitsOverrideSchema = z
+  .object({
+    output: z
+      .object({
+        preferredToolOutputBytes: positiveInteger.optional(),
+        maxToolOutputBytes: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    http: z
+      .object({
+        oauthMaxBodyBytes: positiveInteger.optional(),
+        mcpMaxBodyBytes: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    tree: z
+      .object({
+        defaultMaxEntries: positiveInteger.optional(),
+        maxEntries: positiveInteger.optional(),
+        maxDepth: z.number().int().min(0).optional(),
+      })
+      .strict()
+      .optional(),
+    search: z
+      .object({
+        engine: z.enum(["rg", "js"]).optional(),
+        defaultMaxResults: positiveInteger.optional(),
+        maxResults: positiveInteger.optional(),
+        maxColumns: positiveInteger.optional(),
+        maxContextLines: z.number().int().min(0).optional(),
+        maxScannedBytesPerFile: positiveInteger.nullable().optional(),
+      })
+      .strict()
+      .optional(),
+    read: z
+      .object({
+        defaultMaxBytes: positiveInteger.optional(),
+        maxBytes: positiveInteger.optional(),
+        maxReadManyFiles: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    change: z
+      .object({
+        maxFiles: positiveInteger.optional(),
+        defaultMaxFiles: positiveInteger.optional(),
+        maxTotalBytes: positiveInteger.optional(),
+        maxTextFileBytes: positiveInteger.optional(),
+        maxInlineDiffBytes: positiveInteger.optional(),
+        maxInlineDiffLines: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    task: z
+      .object({
+        defaultTimeoutSeconds: positiveInteger.optional(),
+        maxTimeoutSeconds: positiveInteger.optional(),
+        outputHeadBytes: positiveInteger.optional(),
+        outputTailBytes: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    manual: z
+      .object({
+        ttlSeconds: positiveInteger.optional(),
+        manualMessageMaxBytes: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+    rate: z
+      .object({
+        maxCallsPerMinute: positiveInteger.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const taskBundlesSchema = z
+  .record(z.string(), z.unknown())
+  .default({});
+
+export const profileSchema = z
+  .object({
+    limits: limitsOverrideSchema.optional(),
+    taskBundles: taskBundlesSchema.optional(),
+  })
+  .passthrough();
+
+export const policyInputSchema = z
+  .object({
+    version: z.literal(2),
+    profile: z.string().default("chatgptWebDefault"),
     mode: modeSchema.optional(),
     extends: z.string().optional(),
     workspace: z
@@ -120,6 +407,8 @@ export const policySchema = z
         protected: z.array(z.string()).default([]),
       })
       .default({ root: "${workspaceRoot}", protected: [] }),
+    profiles: z.record(z.string(), profileSchema).default({}),
+    taskBundles: taskBundlesSchema.optional(),
     upstreams: z
       .record(
         z.string(),
@@ -133,38 +422,76 @@ export const policySchema = z
             env: z.record(z.string(), z.string()).optional(),
             headers: z.record(z.string(), z.string()).optional(),
             optional: z.boolean().optional(),
-            timeoutMs: z.number().int().positive().optional(),
+            timeoutMs: positiveInteger.optional(),
             tasks: z.record(z.string(), taskPolicySchema).optional(),
           })
           .passthrough(),
       )
       .default({}),
     tools: z.array(toolPolicySchema),
-    limits: z
+    limits: limitsOverrideSchema.default({}),
+    audit: z
       .object({
-        maxToolOutputBytes: z.number().int().positive().default(60000),
-        timeoutMs: z.number().int().positive().default(30000),
-        maxCallsPerMinute: z.number().int().positive().default(120),
-        maxChangesetFiles: z.number().int().positive().default(80),
-        maxChangesetBytes: z
-          .number()
-          .int()
-          .positive()
-          .default(5 * 1024 * 1024),
-        maxChangesetFileBytes: z
-          .number()
-          .int()
-          .positive()
-          .default(1024 * 1024),
+        enabled: z.boolean().default(true),
+        maxLogBytes: positiveInteger.default(10 * 1024 * 1024),
+        payloads: z.enum(["hash-only", "full-redacted"]).default("hash-only"),
+        includeClientVisibleOutput: z.boolean().default(false),
+        includeRawToolOutput: z.boolean().default(false),
+        includeErrors: z.boolean().default(true),
+        includeErrorStack: z.boolean().default(false),
+        includeManualEvents: z.boolean().default(true),
+        redact: z.boolean().default(true),
       })
       .default({
-        maxToolOutputBytes: 60000,
-        timeoutMs: 30000,
-        maxCallsPerMinute: 120,
-        maxChangesetFiles: 80,
-        maxChangesetBytes: 5 * 1024 * 1024,
-        maxChangesetFileBytes: 1024 * 1024,
+        enabled: true,
+        maxLogBytes: 10 * 1024 * 1024,
+        payloads: "hash-only",
+        includeClientVisibleOutput: false,
+        includeRawToolOutput: false,
+        includeErrors: true,
+        includeErrorStack: false,
+        includeManualEvents: true,
+        redact: true,
       }),
+  })
+  .passthrough();
+
+export const policySchema = z
+  .object({
+    version: z.literal(2),
+    profile: z.string(),
+    activeProfile: z.string(),
+    mode: modeSchema.optional(),
+    extends: z.string().optional(),
+    workspace: z
+      .object({
+        root: z.string(),
+        protected: z.array(z.string()).default([]),
+      })
+      .default({ root: "${workspaceRoot}", protected: [] }),
+    profiles: z.record(z.string(), profileSchema),
+    taskBundles: taskBundlesSchema.optional(),
+    upstreams: z
+      .record(
+        z.string(),
+        z
+          .object({
+            transport: z.enum(["stdio", "streamable-http", "local-task-runner"]),
+            command: z.string().optional(),
+            args: z.array(z.string()).optional(),
+            url: z.string().optional(),
+            cwd: z.string().optional(),
+            env: z.record(z.string(), z.string()).optional(),
+            headers: z.record(z.string(), z.string()).optional(),
+            optional: z.boolean().optional(),
+            timeoutMs: positiveInteger.optional(),
+            tasks: z.record(z.string(), taskPolicySchema).optional(),
+          })
+          .passthrough(),
+      )
+      .default({}),
+    tools: z.array(toolPolicySchema),
+    limits: limitsPolicySchema,
     audit: z
       .object({
         enabled: z.boolean().default(true),

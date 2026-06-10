@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { RelayPolicy } from "../../src/policy/policy.js";
+import { defaultLimits, limitsPolicySchema } from "../../src/policy/schema.js";
 import { getContext } from "../../src/router/context.js";
 import { fileTree, readFiles, searchCode } from "../../src/workspace/inspect/code.js";
 import { inspectEnvironment } from "../../src/workspace/inspect/env.js";
@@ -100,15 +101,15 @@ describe("workspace inspection built-ins", () => {
   it("reads text files in bounded UTF-8 byte chunks", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webvibe-inspect-read-files-"));
     await writeFile(path.join(root, "small.txt"), "hello");
-    await writeFile(path.join(root, "big.txt"), `${"x".repeat(10050)}tail`);
+    await writeFile(path.join(root, "big.txt"), `${"x".repeat(13050)}tail`);
     await writeFile(path.join(root, "unicode.txt"), "aébc");
     const policy = policyFor(root);
-    const context = { workspaceRoot: root, workspace: policy.workspace };
+    const context = { workspaceRoot: root, workspace: policy.workspace, limits: policy.limits };
 
     await expect(readFiles({ paths: ["big.txt"], offsetBytes: -1 }, context)).rejects.toThrow(
       "offsetBytes is below minimum",
     );
-    await expect(readFiles({ paths: ["big.txt"], maxBytes: 10001 }, context)).rejects.toThrow(
+    await expect(readFiles({ paths: ["big.txt"], maxBytes: 131073 }, context)).rejects.toThrow(
       "maxBytes is above maximum",
     );
 
@@ -129,10 +130,10 @@ describe("workspace inspection built-ins", () => {
       path: "big.txt",
       exists: true,
       type: "file",
-      size: 10054,
+      size: 13054,
       offsetBytes: 0,
-      returnedBytes: 10000,
-      nextOffsetBytes: 10000,
+      returnedBytes: 12000,
+      nextOffsetBytes: 12000,
       truncated: true,
     });
     expect(Object.keys(first.files[0]!)).toEqual([
@@ -146,7 +147,7 @@ describe("workspace inspection built-ins", () => {
       "truncated",
       "content",
     ]);
-    expect(Buffer.byteLength(first.files[0]!.content ?? "", "utf8")).toBe(10000);
+    expect(Buffer.byteLength(first.files[0]!.content ?? "", "utf8")).toBe(12000);
 
     const second = await readFiles(
       { paths: ["big.txt"], offsetBytes: first.files[0]!.nextOffsetBytes, maxBytes: 10 },
@@ -155,9 +156,9 @@ describe("workspace inspection built-ins", () => {
 
     expect(second.files[0]).toMatchObject({
       path: "big.txt",
-      offsetBytes: 10000,
+      offsetBytes: 12000,
       returnedBytes: 10,
-      nextOffsetBytes: 10010,
+      nextOffsetBytes: 12010,
       truncated: true,
     });
     expect(second.files[0]!.content).toBe("xxxxxxxxxx");
@@ -280,7 +281,9 @@ describe("workspace inspection built-ins", () => {
 
 function policyFor(root: string): RelayPolicy {
   return {
-    version: 1,
+    version: 2,
+    profile: "chatgptWebDefault",
+    activeProfile: "chatgptWebDefault",
     mode: "dev",
     workspace: {
       root,
@@ -299,14 +302,14 @@ function policyFor(root: string): RelayPolicy {
       },
     },
     tools: [],
-    limits: {
-      maxToolOutputBytes: 60000,
-      timeoutMs: 30000,
-      maxCallsPerMinute: 120,
-      maxChangesetFiles: 80,
-      maxChangesetBytes: 5 * 1024 * 1024,
-      maxChangesetFileBytes: 1024 * 1024,
+    profiles: {
+      chatgptWebDefault: {
+        limits: defaultLimits,
+        taskBundles: {},
+      },
     },
+    taskBundles: {},
+    limits: limitsPolicySchema.parse(defaultLimits),
     audit: {
       enabled: true,
       maxLogBytes: 10 * 1024 * 1024,

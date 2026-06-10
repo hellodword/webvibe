@@ -4,6 +4,7 @@ import type { RegisteredTool } from "../upstream/registry.js";
 import { gitStatus } from "../workspace/inspect/git.js";
 import { inspectEnvironment } from "../workspace/inspect/env.js";
 import { buildPreflightFingerprint, TOOL_SURFACE_VERSION } from "./tool-surface.js";
+import { sha256 } from "../util/hash.js";
 
 export type ContextToolContext = {
   registry: Map<string, RegisteredTool>;
@@ -22,6 +23,8 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
   const diagnostics = getDiagnostics(context);
   const tasks = taskSummary(context.policy, env.webvibe.missingTasks);
   const tools = Array.from(context.registry.keys());
+  const toolSurfaceHash = sha256(Array.from(context.registry.values()).map((entry) => entry.descriptor));
+  const policyHash = sha256(context.policy);
   const capabilities = {
     rawShell: false,
     filesystemRead: tools.some((tool) => tool.startsWith("read.")),
@@ -48,12 +51,19 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
     status: "ok",
     toolSurface: {
       version: TOOL_SURFACE_VERSION,
+      hash: toolSurfaceHash,
       tools,
+    },
+    policy: {
+      profile: context.policy.activeProfile,
+      hash: policyHash,
+      effectiveLimits: context.policy.limits,
     },
     validFor: diagnostics.validFor,
     workspace: {
       root: ".",
       mode: context.policy.mode,
+      profile: context.policy.activeProfile,
       platform: env.summary.platform,
       arch: env.summary.arch,
       container: env.summary.container,
@@ -73,12 +83,19 @@ export async function getContext(context: ContextToolContext): Promise<Record<st
 }
 
 export function getDiagnostics(context: ContextToolContext): Record<string, unknown> {
+  const toolSurfaceHash = sha256(Array.from(context.registry.values()).map((entry) => entry.descriptor));
   return {
     status: "ok",
     name: "webvibe",
     mode: context.policy.mode,
+    activeProfile: context.policy.activeProfile,
+    policy: {
+      hash: sha256(context.policy),
+      effectiveLimits: context.policy.limits,
+    },
     toolSurface: {
       version: TOOL_SURFACE_VERSION,
+      hash: toolSurfaceHash,
       toolCount: context.registry.size,
       tools: Array.from(context.registry.keys()),
     },

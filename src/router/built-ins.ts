@@ -54,24 +54,28 @@ export function callBuiltIn(
     return searchCode(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
+      limits: context.policy.limits,
     });
   }
   if (name === "read.tree") {
     return fileTree(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
+      limits: context.policy.limits,
     });
   }
   if (name === "read.files") {
     return readFiles(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
+      limits: context.policy.limits,
     });
   }
   if (name === "read.stat") {
     return fileStat(args, {
       workspaceRoot: context.workspaceRoot,
       workspace: context.policy.workspace,
+      limits: context.policy.limits,
     });
   }
   if (name === "git.status") {
@@ -134,6 +138,7 @@ export function callBuiltIn(
     return openManualGate(args, {
       workspaceRoot: context.workspaceRoot,
       stateDir: context.stateDir,
+      limits: context.policy.limits,
       caller: context.caller,
       audit: context.audit,
     });

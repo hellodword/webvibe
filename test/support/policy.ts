@@ -6,7 +6,7 @@ export async function writeFakePolicy(dir: string): Promise<string> {
   const policyPath = path.join(dir, "policy.yaml");
   await writeFile(
     policyPath,
-    `version: 1
+    `version: 2
 mode: dev
 workspace:
   root: "\${workspaceRoot}"
@@ -44,7 +44,7 @@ tools:
         maxBytes:
           type: integer
           minimum: 1
-          maximum: 10000
+          maximum: 131072
       required: [paths]
       additionalProperties: false
   - name: change.apply
@@ -129,8 +129,12 @@ tools:
           input:
             delayMs: "\${input.delayMs}"
 limits:
-  maxToolOutputBytes: 60000
-  timeoutMs: 30000
+  output:
+    maxToolOutputBytes: 60000
+  task:
+    defaultTimeoutSeconds: 300
+  rate:
+    maxCallsPerMinute: 120
 audit:
   enabled: true
   maxLogBytes: 10485760
