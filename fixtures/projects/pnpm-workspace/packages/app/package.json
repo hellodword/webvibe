@@ -1,0 +1,7 @@
+{
+  "name": "pnpm-workspace-app",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"console.log('pnpm app test ok')\""
+  }
+}

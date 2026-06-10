@@ -1,0 +1,9 @@
+version: "3"
+
+tasks:
+  test:
+    cmds:
+      - echo task fixture test
+  build:
+    cmds:
+      - echo task fixture build

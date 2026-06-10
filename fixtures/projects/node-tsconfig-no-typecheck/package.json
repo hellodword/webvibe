@@ -1,0 +1,7 @@
+{
+  "name": "node-tsconfig-no-typecheck-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"console.log('fixture test ok')\""
+  }
+}

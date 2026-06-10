@@ -5,3 +5,5 @@ config.yaml
 .env
 *.log
 !.devcontainer/.gitignore
+!fixtures/projects/ignored-hidden-protected/.env
+!fixtures/projects/ignored-hidden-protected/ignored.log

@@ -1,0 +1,7 @@
+{
+  "name": "yarn-workspace-app",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"console.log('yarn app build ok')\""
+  }
+}

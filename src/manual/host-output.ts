@@ -15,7 +15,11 @@ export type HostRetryDecision =
       action: "retry_same_tool_once";
       classification: "secondary_confirmation_required" | "blocked_by_openai_safety";
     }
-  | { action: "stop"; classification: "secondary_confirmation_required" }
+  | {
+      action: "stop";
+      classification: "secondary_confirmation_required" | "blocked_by_openai_safety";
+      reason?: "manual_gate_blocked";
+    }
   | {
       action: "manual.gate";
       classification: "blocked_by_openai_safety" | "manual_required_capability_limit";
@@ -42,9 +46,13 @@ export function planHostRetry(input: {
   outputText: string | undefined;
   secondaryConfirmationAttempts: number;
   safetyBlockAttempts: number;
+  toolName?: string;
 }): HostRetryDecision {
   const classification = classifyHostOutput(input.outputText);
   if (classification === "blocked_by_openai_safety") {
+    if (input.toolName === "manual.gate" && input.safetyBlockAttempts > 0) {
+      return { action: "stop", classification, reason: "manual_gate_blocked" };
+    }
     return input.safetyBlockAttempts > 0
       ? { action: "manual.gate", classification }
       : { action: "retry_same_tool_once", classification };

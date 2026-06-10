@@ -1,0 +1,5 @@
+test:
+  echo just fixture test
+
+build:
+  echo just fixture build

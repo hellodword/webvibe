@@ -54,6 +54,22 @@ describe("host output classification", () => {
     ).toMatchObject({ action: "manual.gate" });
     expect(
       planHostRetry({
+        outputText: safetyBlock,
+        secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 0,
+        toolName: "manual.gate",
+      }),
+    ).toMatchObject({ action: "retry_same_tool_once" });
+    expect(
+      planHostRetry({
+        outputText: safetyBlock,
+        secondaryConfirmationAttempts: 0,
+        safetyBlockAttempts: 1,
+        toolName: "manual.gate",
+      }),
+    ).toMatchObject({ action: "stop", reason: "manual_gate_blocked" });
+    expect(
+      planHostRetry({
         outputText: "Cannot run arbitrary Node in this tool environment.",
         secondaryConfirmationAttempts: 0,
         safetyBlockAttempts: 0,

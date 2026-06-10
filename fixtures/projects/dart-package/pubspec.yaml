@@ -1,0 +1,5 @@
+name: dart_package_fixture
+description: Minimal Dart package fixture for project scanning.
+publish_to: none
+environment:
+  sdk: ">=3.0.0 <4.0.0"

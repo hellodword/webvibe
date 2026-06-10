@@ -1,0 +1,8 @@
+{
+  "name": "bun-project-fixture",
+  "private": true,
+  "packageManager": "bun@1.1.0",
+  "scripts": {
+    "test": "bun test"
+  }
+}
