@@ -16,6 +16,7 @@ import { workspaceScan } from "../workspace/inspect/scan.js";
 import { workspaceSymbols } from "../workspace/inspect/symbols.js";
 import {
   gitChanged,
+  gitCommitPreview,
   gitCommitPaths,
   gitDiffStaged,
   gitDiffUnstaged,
@@ -146,7 +147,10 @@ export async function callBuiltIn(
     return unavailable(name, "git.blame is not implemented in this phase");
   }
   if (name === "git.commit_preview") {
-    return unavailable(name, "git.commit_preview is not implemented in this phase");
+    return gitCommitPreview(args, {
+      workspaceRoot: context.workspaceRoot,
+      workspace: context.policy.workspace,
+    });
   }
   if (name === "git.commit") {
     return gitCommitPaths(args, {

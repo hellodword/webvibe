@@ -1,5 +1,10 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import type { WorkspacePolicy } from "../../policy/policy.js";
 import { BadRequestError } from "../../util/errors.js";
+import { sha256 } from "../../util/hash.js";
 import { normalizeWorkspacePath } from "./path.js";
 import { runFixedCommand, type FixedCommandResult } from "./command.js";
 
@@ -88,22 +93,56 @@ export async function gitRevParse(args: Record<string, unknown>, context: GitCon
   return runGit(["rev-parse", "--verify", revision], context, "git rev-parse");
 }
 
+export async function gitCommitPreview(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
+  const paths = commitPaths(args, context);
+  const repo = await ensureGitRepo(context, "git commit_preview");
+  if (repo.status !== "ok") return repo;
+  return withTemporaryIndex(context, async (env) => {
+    const head = await runGit(["rev-parse", "--verify", "HEAD"], context, "git rev-parse", env);
+    const readTree =
+      head.status === "ok"
+        ? await runGit(["read-tree", "HEAD"], context, "git read-tree", env)
+        : await runGit(["read-tree", "--empty"], context, "git read-tree --empty", env);
+    if (readTree.status !== "ok") return readTree;
+    const add = await runGit(["add", "--all", "--", ...paths], context, "git add", env);
+    if (add.status !== "ok") return add;
+    const diff = await runGit(["diff", "--cached", "--binary", "--", ...paths], context, "git diff --cached", env);
+    if (diff.status !== "ok") return diff;
+    const nameStatus = await runGit(
+      ["diff", "--cached", "--name-status", "--", ...paths],
+      context,
+      "git diff --cached --name-status",
+      env,
+    );
+    if (nameStatus.status !== "ok") return nameStatus;
+    const previewHash = `sha256:${sha256({ paths, diff: diff.stdout, nameStatus: nameStatus.stdout })}`;
+    return {
+      command: "git commit_preview",
+      status: "ok",
+      exitCode: 0,
+      stdout: diff.stdout,
+      stderr: "",
+      durationMs: diff.durationMs + nameStatus.durationMs,
+      paths,
+      diff: diff.stdout,
+      nameStatus: nameStatus.stdout,
+      clean: diff.stdout.length === 0,
+      previewHash,
+    };
+  });
+}
+
 export async function gitCommitPaths(args: Record<string, unknown>, context: GitContext): Promise<GitToolResult> {
   const message = typeof args.message === "string" ? args.message.trim() : "";
   if (!message) throw new BadRequestError("message must not be empty");
-  if (!Array.isArray(args.paths) || args.paths.length === 0) {
-    throw new BadRequestError("paths must be a non-empty array");
-  }
-  const paths = args.paths.map((item) => {
-    if (typeof item !== "string") throw new BadRequestError("paths items must be string");
-    const resolved = normalizeWorkspacePath(item, context, { allowRoot: false });
-    return resolved.relativePath;
-  });
+  const paths = commitPaths(args, context);
+  const previewHash = typeof args.previewHash === "string" ? args.previewHash : "";
+  if (!previewHash) throw new BadRequestError("previewHash is required");
 
-  const repo = await runGit(["rev-parse", "--is-inside-work-tree"], context, "git rev-parse");
-  if (repo.status !== "ok" || repo.stdout.trim() !== "true") {
-    return unavailable("git commit", "Workspace is not a Git work tree", repo);
-  }
+  const preview = await gitCommitPreview(args, context);
+  if (preview.status !== "ok") return preview;
+  if (preview.previewHash !== previewHash) throw new BadRequestError("previewHash mismatch");
+  if (preview.clean === true) return noChangesResult(preview.durationMs as number);
 
   const add = await runGit(["add", "--all", "--", ...paths], context, "git add");
   if (add.status !== "ok") return add;
@@ -125,17 +164,66 @@ export async function gitCommitPaths(args: Record<string, unknown>, context: Git
   return runGit(["commit", "--only", "-m", message, "--", ...paths], context, "git commit --only");
 }
 
-async function runGit(args: string[], context: GitContext, command: string): Promise<GitToolResult> {
+async function runGit(
+  args: string[],
+  context: GitContext,
+  command: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<GitToolResult> {
   const result = await runFixedCommand({
     executable: "git",
     args,
     cwd: context.workspaceRoot,
+    env,
     timeoutMs: 30000,
   });
   if (result.status === "failed" && /not a git repository|not a gitdir/i.test(result.stderr)) {
     return unavailable(command, "Workspace is not a Git work tree", result);
   }
   return { command, ...result };
+}
+
+function commitPaths(args: Record<string, unknown>, context: GitContext): string[] {
+  if (!Array.isArray(args.paths) || args.paths.length === 0) {
+    throw new BadRequestError("paths must be a non-empty array");
+  }
+  return args.paths.map((item) => {
+    if (typeof item !== "string") throw new BadRequestError("paths items must be string");
+    const resolved = normalizeWorkspacePath(item, context, { allowRoot: false });
+    return resolved.relativePath;
+  });
+}
+
+async function ensureGitRepo(context: GitContext, command: string): Promise<GitToolResult> {
+  const repo = await runGit(["rev-parse", "--is-inside-work-tree"], context, "git rev-parse");
+  if (repo.status !== "ok" || repo.stdout.trim() !== "true") {
+    return unavailable(command, "Workspace is not a Git work tree", repo);
+  }
+  return repo;
+}
+
+async function withTemporaryIndex(
+  context: GitContext,
+  callback: (env: NodeJS.ProcessEnv) => Promise<GitToolResult>,
+): Promise<GitToolResult> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "webvibe-git-index-"));
+  try {
+    return await callback({ ...process.env, GIT_INDEX_FILE: path.join(dir, "index") });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+function noChangesResult(durationMs: number): GitToolResult {
+  return {
+    command: "git commit",
+    status: "failed",
+    exitCode: null,
+    stdout: "",
+    stderr: "No changes in explicit paths",
+    durationMs,
+    unavailableReason: "No changes in explicit paths",
+  };
 }
 
 function pathspecArgs(rawPath: unknown, context: GitContext): string[] {

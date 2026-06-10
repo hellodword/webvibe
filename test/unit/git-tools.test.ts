@@ -8,7 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import type { WorkspacePolicy } from "../../src/policy/policy.js";
 import { findExecutable } from "../../src/workspace/inspect/command.js";
-import { gitChanged, gitCommitPaths, gitStatus } from "../../src/workspace/inspect/git.js";
+import {
+  gitChanged,
+  gitCommitPaths,
+  gitCommitPreview,
+  gitStatus,
+} from "../../src/workspace/inspect/git.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,7 +37,19 @@ describe("Git built-ins", () => {
     await gitRun(root, ["add", "b.txt"]);
 
     await expect(gitCommitPaths({ paths: [".env"], message: "bad" }, context)).rejects.toThrow("protected");
-    await expect(gitCommitPaths({ paths: ["a.txt"], message: "update a" }, context)).resolves.toMatchObject({
+    const preview = await gitCommitPreview({ paths: ["a.txt"] }, context);
+    expect(preview).toMatchObject({
+      status: "ok",
+      previewHash: expect.stringMatching(/^sha256:/),
+      clean: false,
+      nameStatus: expect.stringContaining("a.txt"),
+    });
+    await expect(
+      gitCommitPaths({ paths: ["a.txt"], message: "bad hash", previewHash: "sha256:" + "0".repeat(64) }, context),
+    ).rejects.toThrow("previewHash mismatch");
+    await expect(
+      gitCommitPaths({ paths: ["a.txt"], message: "update a", previewHash: preview.previewHash }, context),
+    ).resolves.toMatchObject({
       status: "ok",
       command: "git commit --only",
     });
@@ -54,7 +71,10 @@ describe("Git built-ins", () => {
       untracked: [expect.objectContaining({ path: "c.txt", nameStatus: "??" })],
     });
 
-    await expect(gitCommitPaths({ paths: ["a.txt"], message: "empty" }, context)).resolves.toMatchObject({
+    const emptyPreview = await gitCommitPreview({ paths: ["a.txt"] }, context);
+    await expect(
+      gitCommitPaths({ paths: ["a.txt"], message: "empty", previewHash: emptyPreview.previewHash }, context),
+    ).resolves.toMatchObject({
       status: "failed",
       unavailableReason: "No changes in explicit paths",
     });

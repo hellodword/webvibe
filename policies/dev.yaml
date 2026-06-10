@@ -927,7 +927,7 @@ tools:
           maxLength: 500
         previewHash:
           type: string
-      required: [paths, message]
+      required: [paths, message, previewHash]
       additionalProperties: false
     outputSchema: *gitOutputSchema
     annotations:
