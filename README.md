@@ -1,74 +1,102 @@
 # webvibe
 
-`webvibe` is a policy-driven MCP relay for ChatGPT Web. It exposes a stable
-local MCP/OAuth surface, connects configured upstream MCP servers, and publishes
-only the tools allowed by policy.
+`webvibe` is a local, policy-driven MCP relay for ChatGPT Web coding sessions. It exposes a stable OAuth/MCP endpoint, loads a policy, and publishes only the tools that policy allows. The relay is not an agent runtime and does not expose a general shell by default.
 
-The project goal is coding completion inside ChatGPT Web's real host
-constraints: review prompts, black-box risk blocks, output truncation, and stale
-tool descriptors. Default tools are shaped to reduce host friction, and manual
-completion with `/resume` is a recovery path for finishing work when the host
-refuses a tool call.
+The default surface is shaped around ChatGPT Web host constraints: tool descriptors can be stale, high-risk calls can be blocked before they reach the relay, outputs can be truncated by the host, and the UI may ask for confirmation. `webvibe` therefore favors sanitized preflight, read-first inspection, fixed task IDs, preview-then-apply file changes, and visible manual completion with `/resume`.
 
-## Run
+## Quick start
+
+Requirements: Node.js 20 or newer, plus a workspace you are willing to expose through the configured policy.
 
 ```bash
 npm install
 npm run build
 npm test
-npm run audit
+
 cp config.example.yaml config.yaml
+export WEBVIBE_PAIRING_CODE="$(openssl rand -base64 24)"
+
 npm run dev -- --config config.yaml
 ```
 
-`config.example.yaml` shows the listen address, public base URL, workspace root,
-state directory, built-in mode or custom policy path, and pairing code secret
-source. Real `config.yaml` files are ignored; set a unique `WEBVIBE_PAIRING_CODE`
-or use `auth.pairingCodeFile`.
+`server.publicBaseUrl` must be reachable by ChatGPT Web. For local development this is normally a tunnel URL that forwards to `server.listen`.
 
-## Default Modes
+After the server starts, connect ChatGPT Web to the configured `publicBaseUrl`. The OAuth authorization page asks for the pairing code from `WEBVIBE_PAIRING_CODE` or from the configured pairing-code source.
 
-- `read-only`: `workspace.context`, read-only `workspace.*`, `fs.*`, Git
-  inspection tools, and `diagnostics.health`.
-- `dev`: everything in `read-only`, plus `file.change_preview`, `file.change_apply`,
-  `manual.prepare`, `manual.gate`, `manual.status`, `manual.resume`, `task.*`,
-  and `git.commit`.
-
-Default `dev` mode uses fixed policy-defined tasks and single-edit workspace
-change tools. The configured `editMode` defaults to `single`, meaning models
-should use one logical file operation at a time; policy can later expose
-`batch.change_preview` / `batch.change_apply` for multi-file changes. The
-default surface does not expose free-form
-process execution, raw per-file write tools, or hidden prepared-payload
-application.
-
-`workspace.context` reports available capability-style tasks plus task candidates discovered from
-npm/pnpm/yarn/bun scripts, Go, Rust, Dart/Flutter, Playwright/Cypress/Vitest/
-Jest/ESLint/TypeScript configs, Prisma/Drizzle/buf/sqlc/OpenAPI configs, and
-Make/just/Taskfile targets. Candidates are informational unless policy maps them
-to a fixed task ID. `task.explain` shows why a task is available, unavailable,
-candidate-only, or manual-first. Default Node task IDs such as `node.test` and `node.build`
-require matching package scripts, so missing scripts do not produce empty
-successful runs.
-
-`diagnostics.health` reports server version, policy hash, effective limits, tool
-surface version/hash, instruction version/hash, upstream health, and recent tool
-errors.
-
-## Development
+For a built run:
 
 ```bash
-npm test
 npm run build
+npm run start -- --config config.yaml
+```
+
+## Configuration
+
+The example config is intentionally small:
+
+```yaml
+version: 1
+server:
+  listen: "127.0.0.1:3000"
+  publicBaseUrl: "https://example.ngrok.app"
+  stateDir: "~/.webvibe"
+  mode: "dev"
+workspace:
+  root: "."
+auth:
+  pairingCodeEnv: "WEBVIBE_PAIRING_CODE"
+  pairingFailures:
+    maxAttempts: 5
+    windowSeconds: 600
+  accessTokenTtlDays: 30
+```
+
+Important rules:
+
+- `--config <path>` is required.
+- `server.mode` and `server.policy` are mutually exclusive.
+- If neither is set, the server uses the built-in `read-only` policy.
+- Exactly one pairing-code source must be configured: `auth.pairingCode`, `auth.pairingCodeEnv`, or `auth.pairingCodeFile`.
+- The pairing code `123456` is rejected at startup.
+- Runtime state goes under `server.stateDir`; workspace task logs go under `.webvibe/task-logs/`.
+
+## Built-in modes
+
+| Mode        | Default surface                                                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `read-only` | `workspace.context`, `workspace.scan`, `workspace.symbols`, `fs.*`, Git inspection and `git.commit_preview`, `diagnostics.health`. |
+| `dev`       | Everything in `read-only`, plus `file.change_preview`, `file.change_apply`, `manual.*`, `task.*`, and `git.commit`.                |
+
+Default `dev` mode uses one logical file change per preview/apply call. Batch change tools exist in the contract registry for custom policies, but the built-in `dev` policy does not expose them.
+
+## Default coding flow
+
+A normal ChatGPT Web session should:
+
+1. Call `workspace.context`.
+2. Inspect with `workspace.scan`, `fs.tree`, `fs.search`, `fs.read`, `fs.read_many`, and `fs.stat`.
+3. Call `task.list` before `task.run`; use `task.explain` when routing is unclear.
+4. Preview workspace writes with `file.change_preview`.
+5. Apply only with the matching `file.change_apply` `previewHash`.
+6. Use `git.commit_preview` before `git.commit`.
+7. Use `manual.prepare`, visible user instructions, `manual.gate`, and `/resume` when the host blocks a required action or no fixed tool/task can perform it.
+
+## Development commands
+
+```bash
+npm run build
+npm test
 npm run lint
 npm run audit
-npx tsc -p tsconfig.json --noEmit
+npm run policy:schema
+npm run generate:tools
 ```
+
+`npm run generate:tools` produces exact tool contract reference files from `src/tools/contracts`. Those generated files are reference artifacts, not hand-authored narrative documentation.
 
 ## Documents
 
 - [Architecture](docs/architecture.md)
-- [ChatGPT Web Constraint Adaptation](docs/chatgpt-web-known-limits.md)
-- [ChatGPT Web Workflow](docs/chatgpt-web-workflow.md)
-- [Policy](docs/policy.md)
-- [Security](docs/security.md)
+- [Workflows](docs/workflows.md)
+- [ChatGPT Web Host Limits](docs/chatgpt-web-known-limits.md)
+- [Policy and Security](docs/policy-security.md)
